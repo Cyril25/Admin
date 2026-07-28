@@ -907,3 +907,619 @@ body.login-page {
     .modal { padding: var(--spacing-lg); }
     .page-header { flex-direction: column; align-items: stretch; }
 }
+
+/* =========================================================
+   12. Projet « Extérieur » — pilotage du chantier
+   Aucune palette nouvelle : uniquement les variables --color-*
+   et les classes existantes (.badge, .modal, .filter-btn, .tile).
+   ========================================================= */
+
+/* ---------- 12.1 Sélecteur de vues ---------- */
+.selecteur-vues {
+    display: flex;
+    gap: var(--spacing-xs);
+    flex-wrap: wrap;
+    margin-bottom: var(--spacing-lg);
+    padding-bottom: var(--spacing-sm);
+    border-bottom: 1px solid var(--color-border-light);
+}
+
+.vue-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    color: var(--color-text-secondary);
+    font-family: inherit;
+    font-size: 0.88rem;
+    cursor: pointer;
+    white-space: nowrap;
+    min-height: 40px;
+    transition: background var(--transition-fast), color var(--transition-fast);
+}
+.vue-btn:hover { background: var(--color-surface); color: var(--color-primary); }
+.vue-btn.active {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: #fff;
+    font-weight: 500;
+}
+.vue-btn i { font-size: 0.9em; }
+
+/* ---------- 12.2 Blocs du tableau de bord ---------- */
+.bloc-etat { margin-bottom: var(--spacing-xl); }
+
+.bloc-titre {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    font-size: 1rem;
+    color: var(--color-primary);
+    margin: 0 0 var(--spacing-sm);
+}
+.bloc-titre i { color: var(--color-accent); }
+
+.bloc-compte {
+    font-size: 0.78rem;
+    font-weight: 400;
+    color: var(--color-text-muted);
+    background: var(--color-surface);
+    border-radius: 10px;
+    padding: 1px 8px;
+}
+
+.bloc-corps { display: flex; flex-direction: column; gap: var(--spacing-sm); }
+
+/* Un bloc vide dit quelque chose plutôt que de disparaître :
+   « rien ne vous attend » est une information. */
+.bloc-vide {
+    margin: 0;
+    padding: var(--spacing-md);
+    background: var(--color-surface);
+    border-radius: var(--radius-md);
+    color: var(--color-text-muted);
+    font-size: 0.9rem;
+    font-style: italic;
+}
+
+/* ---------- 12.3 Cartes ---------- */
+.carte-etat,
+.carte-fil,
+.carte-doc,
+.carte-mail,
+.carte-contact {
+    background: #fff;
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-md);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.carte-entete { display: flex; align-items: flex-start; gap: var(--spacing-sm); }
+.carte-type { color: var(--color-text-muted); padding-top: 2px; }
+
+.carte-titre {
+    font-weight: 500;
+    color: var(--color-text);
+    line-height: 1.35;
+}
+
+/* Un vrai <button> pour ouvrir une fiche : accessible au clavier,
+   contrairement à une <div onclick>. Le style le rend invisible. */
+.carte-titre--bouton {
+    display: block;
+    width: 100%;
+    padding: 0;
+    background: none;
+    border: none;
+    font-family: inherit;
+    font-size: 0.95rem;
+    text-align: left;
+    cursor: pointer;
+}
+.carte-titre--bouton:hover { color: var(--color-primary); text-decoration: underline; }
+
+.carte-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+    margin-top: var(--spacing-sm);
+    font-size: 0.82rem;
+    color: var(--color-text-muted);
+}
+
+.carte-apercu {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin: 4px 0 0;
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+    line-height: 1.45;
+    white-space: pre-wrap;
+}
+
+.carte-liste { margin: var(--spacing-sm) 0 0; padding-left: 20px; font-size: 0.88rem; }
+.carte-liste li { margin-bottom: 2px; }
+
+.carte-choix .carte-titre { font-size: 1rem; }
+
+.lien-bouton {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--color-secondary);
+    font-family: inherit;
+    font-size: 0.85rem;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+/* ---------- 12.4 Boutons de camp ---------- */
+/* Trois boutons, un clic : c'est ce qui rend acceptable la déduction
+   automatique du camp. La correction coûte moins cher que la question
+   qu'on aurait posée à la création. */
+.camp-actions {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin-top: var(--spacing-sm);
+    padding-top: var(--spacing-sm);
+    border-top: 1px solid var(--color-border-light);
+}
+
+.camp-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 12px;
+    background: #fff;
+    border: 1px solid var(--color-border);
+    border-radius: 14px;
+    color: var(--color-text-muted);
+    font-family: inherit;
+    font-size: 0.78rem;
+    cursor: pointer;
+    transition: background var(--transition-fast), color var(--transition-fast);
+}
+.camp-btn:hover { background: var(--color-surface); color: var(--color-primary); }
+.camp-btn.active {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: #fff;
+}
+
+/* ---------- 12.5 Badges du chantier ---------- */
+.badge-camp--a_nous { background: #E3EDF5; color: #2C4A63; }
+.badge-camp--a_eux  { background: #FFF3C4; color: #8D6708; }
+.badge-camp--clos   { background: #E4F5F2; color: #0B6B60; }
+
+.badge-relance  { background: #FDECEA; color: #A63030; font-weight: 700; }
+.badge-attente  { background: #FFF3C4; color: #8D6708; }
+.badge-retard   { background: #FDECEA; color: #A63030; font-weight: 700; }
+.badge-assigne  { background: #E3EDF5; color: #2C4A63; }
+.badge-personne { background: #F0F2F4; color: #8A94A0; font-style: italic; }
+.badge-sujet    { background: #E4F5F2; color: #0B6B60; }
+.badge-contact  { background: var(--color-surface); color: var(--color-text-secondary); }
+.badge-comparer { background: var(--color-accent); color: #fff; font-weight: 700; }
+.badge-envoye   { background: #E3EDF5; color: #2C4A63; }
+.badge-recu     { background: #E4F5F2; color: #0B6B60; }
+.badge-alerte   { background: #FFF7E6; color: #7A5200; font-weight: 700; }
+.badge-categorie { background: var(--color-surface); color: var(--color-text-secondary); }
+.badge-lies     { background: #E3EDF5; color: #2C4A63; }
+
+.badge-lien { background: var(--color-surface); color: var(--color-secondary); text-decoration: none; }
+.badge-lien:hover { background: var(--color-border-light); }
+
+/* ---------- 12.6 Mouvement ---------- */
+.mouvement-phrase {
+    margin: 0;
+    padding: var(--spacing-md);
+    background: #fff;
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-md);
+    font-size: 0.95rem;
+}
+.mouvement-phrase i { color: var(--color-accent); margin-right: 6px; }
+.mouvement-phrase--calme { color: var(--color-text-muted); font-style: italic; }
+.mouvement-phrase--fige {
+    border-left: 3px solid #F0A500;
+    background: #FFF7E6;
+    color: #7A5200;
+}
+.mouvement-phrase--fige i { color: #F0A500; }
+
+/* ---------- 12.7 Fil ---------- */
+.fil { display: flex; flex-direction: column; gap: var(--spacing-sm); }
+
+.carte-fil { display: flex; gap: var(--spacing-md); }
+.carte-fil--close { opacity: 0.55; }
+.carte-fil-corps { flex: 1; min-width: 0; }
+
+.carte-fil-date {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    min-width: 84px;
+    color: var(--color-text-muted);
+    font-size: 0.76rem;
+    text-align: center;
+}
+.carte-fil-date i { font-size: 1.05rem; color: var(--color-accent); }
+
+.carte-vignette {
+    display: block;
+    max-width: 220px;
+    width: 100%;
+    margin-top: var(--spacing-sm);
+    border-radius: var(--radius-sm);
+}
+
+/* ---------- 12.8 Tri secondaire ---------- */
+.filter-row--tri { align-items: center; }
+.filter-label { font-size: 0.78rem; color: var(--color-text-muted); margin-right: 4px; }
+
+/* ---------- 12.9 Documents groupés ---------- */
+.groupe-docs { margin-bottom: var(--spacing-xl); }
+
+.grille-docs {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: var(--spacing-md);
+}
+
+.doc-ligne {
+    margin-top: 6px;
+    font-size: 0.83rem;
+    color: var(--color-text-muted);
+}
+.doc-ligne i { width: 14px; color: var(--color-text-disabled); }
+
+.doc-ouvrir {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: var(--spacing-sm);
+    font-size: 0.85rem;
+    color: var(--color-secondary);
+}
+
+/* ---------- 12.10 Images ---------- */
+.images-actions {
+    display: flex;
+    gap: var(--spacing-sm);
+    flex-wrap: wrap;
+    margin-bottom: var(--spacing-md);
+}
+
+.grille-images {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: var(--spacing-md);
+}
+
+.vignette {
+    margin: 0;
+    background: #fff;
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.vignette-bouton {
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: none;
+    background: var(--color-surface);
+    cursor: pointer;
+}
+.vignette-bouton img {
+    display: block;
+    width: 100%;
+    height: 150px;
+    object-fit: cover;
+}
+
+.vignette figcaption {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-xs);
+    padding: 6px 8px;
+}
+.vignette-date { font-size: 0.76rem; color: var(--color-text-muted); }
+
+.visionneuse-overlay { background: rgba(0, 0, 0, 0.86); }
+
+.visionneuse {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--spacing-md);
+    max-width: 96vw;
+    max-height: 92vh;
+}
+.visionneuse img {
+    max-width: 96vw;
+    max-height: 76vh;
+    object-fit: contain;
+    border-radius: var(--radius-sm);
+}
+
+.visionneuse-fermer {
+    position: absolute;
+    top: -44px;
+    right: 0;
+    background: transparent;
+    border: none;
+    color: #fff;
+    font-size: 1.5rem;
+    cursor: pointer;
+    min-width: 44px;
+    min-height: 44px;
+}
+
+.visionneuse-pied {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    flex-wrap: wrap;
+    justify-content: center;
+    color: #fff;
+    font-size: 0.88rem;
+}
+
+/* ---------- 12.11 Emails ---------- */
+.mail-entete {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-sm);
+    margin-bottom: 6px;
+}
+.mail-date { font-size: 0.8rem; color: var(--color-text-muted); }
+
+.mail-champs {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 2px var(--spacing-sm);
+    margin: var(--spacing-sm) 0;
+    font-size: 0.83rem;
+}
+.mail-champs dt { color: var(--color-text-muted); }
+.mail-champs dd { margin: 0; color: var(--color-text-secondary); word-break: break-word; }
+
+/* Police à chasse fixe et retours conservés : on relit un mail tel
+   qu'il a été écrit, et surtout on le copie tel quel. */
+.mail-corps {
+    max-height: 420px;
+    overflow-y: auto;
+    margin: var(--spacing-sm) 0;
+    padding: var(--spacing-md);
+    background: var(--color-surface);
+    border-radius: var(--radius-sm);
+    font-family: 'Roboto Mono', ui-monospace, Consolas, monospace;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.mail-note { margin: 0 0 var(--spacing-sm); font-size: 0.78rem; color: var(--color-text-muted); }
+
+.mail-actions {
+    display: flex;
+    gap: var(--spacing-sm);
+    flex-wrap: wrap;
+    margin-top: var(--spacing-sm);
+}
+.mail-actions .btn-export,
+.mail-actions .btn-add {
+    padding: 6px 12px;
+    min-height: 38px;
+    font-size: 0.84rem;
+    text-decoration: none;
+}
+
+.alerte-parse {
+    margin: 0 0 var(--spacing-sm);
+    padding: 8px 12px;
+    background: #FFF7E6;
+    border-left: 3px solid #F0A500;
+    border-radius: var(--radius-sm);
+    color: #7A5200;
+    font-size: 0.84rem;
+    line-height: 1.45;
+}
+.alerte-parse .lien-bouton { color: #7A5200; }
+
+/* ---------- 12.12 Carnet ---------- */
+.carnet-section { margin-bottom: var(--spacing-xl); }
+
+.carnet-entete {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-md);
+    flex-wrap: wrap;
+    margin-bottom: var(--spacing-sm);
+}
+
+.grille-contacts {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: var(--spacing-md);
+}
+
+.carte-contact-entete {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--spacing-sm);
+}
+
+.contact-nom {
+    margin: 0 0 4px;
+    font-size: 0.98rem;
+    color: var(--color-primary);
+}
+.contact-nom a { color: inherit; }
+
+.contact-ligne { margin-top: 6px; font-size: 0.85rem; color: var(--color-text-secondary); }
+.contact-ligne i { width: 16px; color: var(--color-text-disabled); }
+.contact-url { color: var(--color-text-muted); font-size: 0.78rem; word-break: break-all; }
+
+.contact-commentaire {
+    margin: var(--spacing-sm) 0 0;
+    font-size: 0.83rem;
+    color: var(--color-text-muted);
+    line-height: 1.45;
+}
+
+/* ---------- 12.13 Fiche projet ---------- */
+.fiche-projet { max-width: 780px; }
+.fiche-projet .field { margin-bottom: var(--spacing-md); }
+
+.fiche-actions {
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--spacing-lg);
+}
+
+.fiche-separateur {
+    border: none;
+    border-top: 1px solid var(--color-border-light);
+    margin: var(--spacing-xl) 0;
+}
+
+.fiche-listes {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: var(--spacing-xl);
+}
+
+.liste-etiquettes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: var(--spacing-sm) 0;
+}
+
+.etiquette {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 6px 4px 12px;
+    background: var(--color-surface);
+    border-radius: 14px;
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+}
+
+.etiquette-x {
+    background: none;
+    border: none;
+    padding: 0 4px;
+    color: var(--color-text-disabled);
+    cursor: pointer;
+}
+.etiquette-x:hover { color: var(--color-danger); }
+
+.ligne-ajout { display: flex; gap: var(--spacing-sm); flex-wrap: wrap; }
+.ligne-ajout input {
+    flex: 1;
+    min-width: 150px;
+    padding: 8px 10px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-size: 0.9rem;
+}
+
+/* ---------- 12.14 Dépôt de fichier ---------- */
+.depot-zone {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: var(--spacing-xl) var(--spacing-md);
+    border: 2px dashed var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+    color: var(--color-text-secondary);
+    text-align: center;
+    cursor: pointer;
+    transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+.depot-zone:hover,
+.depot-zone.dragover {
+    border-color: var(--color-accent);
+    background: #E4F5F2;
+}
+.depot-zone i { font-size: 1.8rem; color: var(--color-accent); }
+.depot-zone span { font-size: 0.82rem; color: var(--color-text-muted); }
+
+/* Progression réelle (XMLHttpRequest.upload.onprogress), pas un
+   0 % → 100 % décoratif : sur un PDF de 10 Mo depuis un téléphone,
+   une fausse barre ressemble à un plantage. */
+.upload-progress { margin-top: var(--spacing-md); }
+.upload-progress-nom {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+    word-break: break-all;
+}
+.upload-progress-piste {
+    height: 6px;
+    background: var(--color-border-light);
+    border-radius: 3px;
+    overflow: hidden;
+}
+.upload-progress-bar {
+    height: 100%;
+    width: 0;
+    background: var(--color-accent);
+    transition: width 0.2s linear;
+}
+
+.ajout-separateur {
+    margin: var(--spacing-lg) 0 var(--spacing-sm);
+    text-align: center;
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.ajout-choix {
+    display: flex;
+    gap: var(--spacing-sm);
+    flex-wrap: wrap;
+    margin-bottom: var(--spacing-md);
+}
+.ajout-choix .btn-export { flex: 1; min-width: 140px; }
+
+/* ---------- 12.15 Mobile ---------- */
+/* Les photos du terrain se prennent au téléphone : c'est la seule
+   partie du projet qui doit être vraiment confortable en mobilité. */
+@media (max-width: 620px) {
+    .selecteur-vues { overflow-x: auto; flex-wrap: nowrap; }
+    .vue-btn { flex-shrink: 0; }
+    .carte-fil { flex-direction: column; gap: var(--spacing-sm); }
+    .carte-fil-date { flex-direction: row; min-width: 0; justify-content: flex-start; }
+    .grille-images { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+    .images-actions .btn-add,
+    .images-actions .btn-export { flex: 1; }
+    .mail-champs { grid-template-columns: 1fr; }
+    .mail-champs dt { margin-top: 4px; }
+}

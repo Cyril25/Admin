@@ -12,6 +12,23 @@ d'étape de build.
 |---|---|
 | `test-droits.js` | Le système d'accès : qui voit quels projets et quels sites, et ce que fait l'impersonation |
 | `test-idees.js` | La page Idées : tri, filtres, échappement, export JSON |
+| `test-exterieur.js` | Le pilotage du chantier : analyseur `.eml`, camp et relances, regroupement des devis, recherche, écritures |
+
+### `test-exterieur.js` — où porte l'effort
+
+L'essentiel vise l'**analyseur `.eml`** : une fonction pure, sans DOM ni réseau, donc la
+plus testable — et celle où une régression serait la plus silencieuse. Le cas à ne jamais
+casser est un corps `base64` en `charset=UTF-8` : `atob()` rend du Latin-1, et sans repasse
+« été » ressort en « Ã©tÃ© » **avec `parseOk` à `true`**, donc sans que la dégradation
+prévue se déclenche. Rien n'échoue, tout est faux.
+
+Le reste couvre ce qu'un clic ne rattrape pas : le calcul d'ancienneté et le seuil de
+relance, le regroupement des devis par sujet malgré les variantes de casse et d'accents,
+la recherche, la traçabilité sous impersonation (`creePar` doit nommer l'utilisateur
+*réel*), et la validité JavaScript de chaque `onclick` généré.
+
+Un faux Firestore capture les écritures : on vérifie ce qui **part réellement** en base,
+pas seulement ce que l'écran affiche.
 
 ## Comment ça marche
 

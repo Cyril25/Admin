@@ -673,7 +673,7 @@ Champs propres à chaque type :
     les dégâts si le nom du preset était deviné. Rien ne se teste de bout en bout tant
     que ce preset n'existe pas.
 
-- [ ] **Task 2 : Déclarer Cloudinary dans la configuration du hub**
+- [x] **Task 2 : Déclarer Cloudinary dans la configuration du hub**
   - File : `config.js`
   - Action : ajouter `var CLOUDINARY_CLOUD_NAME = 'dxoyqxben';` et
     `var CLOUDINARY_UPLOAD_PRESET = 'ofildudoubs-hub';`
@@ -681,7 +681,7 @@ Champs propres à chaque type :
     signé permet à quiconque de téléverser dans le compte — c'est déjà le cas pour
     BilletsTouristiques, on assume le même niveau de risque.
 
-- [ ] **Task 3 : Socle de données**
+- [x] **Task 3 : Socle de données**
   - File : `exterieur/exterieur-donnees.js` *(nouveau)*
   - Action : constantes (`TYPES`, `CAMPS`, `CATEGORIES_IMAGE`, `CATEGORIES_CONTACT`,
     `SEUIL_RELANCE_JOURS = 15`) ; `onSnapshot` sur la collection `exterieur` alimentant
@@ -698,7 +698,7 @@ Champs propres à chaque type :
     redéfinir. `jsAttr` est à recopier depuis `idees/idees.js` — c'est la fonction qui
     évite le bug des apostrophes dans les `onclick`.
 
-- [ ] **Task 4 : Upload Cloudinary et détection du type**
+- [x] **Task 4 : Upload Cloudinary et détection du type**
   - File : `exterieur/exterieur-upload.js` *(nouveau)*
   - Action : `uploadFichier(file)` → POST `FormData` (`file`, `upload_preset`) vers
     `https://api.cloudinary.com/v1_1/<cloud>/auto/upload`, retourne `secure_url` ;
@@ -715,7 +715,7 @@ Champs propres à chaque type :
     — si Cloudinary refuse le `raw` en unsigned, basculer sur le repli `emlBrut` décrit
     en D6 sans attendre.
 
-- [ ] **Task 5 : Analyseur de fichiers `.eml`**
+- [x] **Task 5 : Analyseur de fichiers `.eml`**
   - File : `exterieur/exterieur-eml.js` *(nouveau)*
   - Action : `analyserEml(texte)` → `{ de, a, objet, dateEnvoi, corps, parseOk }` ;
     `sensDepuisDe(de, nosAdresses)` → `envoye` si l'expéditeur figure dans la liste,
@@ -732,7 +732,7 @@ Champs propres à chaque type :
     reste enregistré et tous les champs demeurent saisissables à la main (D2). Fonction
     pure, sans DOM ni réseau : c'est la plus facile à tester.
 
-- [ ] **Task 6 : Coquille HTML et navigation par vues**
+- [x] **Task 6 : Coquille HTML et navigation par vues**
   - File : `exterieur/index.html` *(remplacement intégral)*
   - Action : `<body data-projet="exterieur" data-racine="../">` ; barre de sélection des
     neuf vues (T2) ; un conteneur `<div id="vue-*">` par vue ; champ de recherche global ;
@@ -745,7 +745,7 @@ Champs propres à chaque type :
   - Notes : les PDF s'ouvrent dans un onglet (`target="_blank"`), jamais en `<iframe>` —
     ça évite de toucher `frame-src`.
 
-- [ ] **Task 7 : Routeur de vues et recherche globale**
+- [x] **Task 7 : Routeur de vues et recherche globale**
   - File : `exterieur/exterieur.js` *(remplacement intégral)*
   - Action : `onHubReady()` instancie Firestore et branche l'écoute ; `afficherVue(nom)`
     masque/affiche les conteneurs et met à jour `location.hash` ; lecture du hash au
@@ -756,7 +756,7 @@ Champs propres à chaque type :
     `String.prototype.normalize('NFD')` — **ES6 explicitement autorisé ici** (T13),
     plutôt qu'une table de translittération écrite à la main.
 
-- [ ] **Task 8 : Vue « Où on en est » (vue par défaut)**
+- [x] **Task 8 : Vue « Où on en est » (vue par défaut)**
   - File : `exterieur/exterieur-etat.js` *(nouveau)*
   - Action : quatre blocs — **À nous** (`camp = a_nous`, échéances dépassées en tête,
     avec l'assignation) ; **En attente d'eux** (`camp = a_eux`, tri par ancienneté
@@ -770,28 +770,28 @@ Champs propres à chaque type :
     affiche une phrase rassurante plutôt que de disparaître — « rien ne vous attend »
     est une information.
 
-- [ ] **Task 9 : Vue Fil**
+- [x] **Task 9 : Vue Fil**
   - File : `exterieur/exterieur-fil.js` *(nouveau)*
   - Action : tous les types événementiels (`tache`, `email`, `document`, `image`,
     `note`) triés sur **`dateEvenement`** décroissant (R5), filtres par type, carte
     adaptée à chaque type.
   - Notes : exclure `contact`, `lien` et `projet` — ce ne sont pas des événements (D5).
 
-- [ ] **Task 9a : Vue Tâches** *(T2)*
+- [x] **Task 9a : Vue Tâches** *(T2)*
   - File : `exterieur/exterieur-taches.js` *(nouveau)*
   - Action : liste des `type = tache`, triable par échéance et par `assigneA`, filtres
     par `camp`, échéances dépassées signalées, création et édition en modale.
   - Notes : un fil chronologique ne permet ni le tri par échéance ni le regroupement par
     personne — c'est ce qui justifie une vue propre plutôt qu'un filtre.
 
-- [ ] **Task 9b : Vue Documents** *(T2)*
+- [x] **Task 9b : Vue Documents** *(T2)*
   - File : `exterieur/exterieur-documents.js` *(nouveau)*
   - Action : les documents **groupés par `sujet`** (clé normalisée, T10), les devis d'un
     même sujet alignés côte à côte, avec date, contact lié et lien d'ouverture.
   - Notes : c'est la vue qui répond à « on est sur le point de choisir une presta ».
     Disperser les devis dans l'ordre chronologique rendrait la comparaison impraticable.
 
-- [ ] **Task 10 : Vues Images**
+- [x] **Task 10 : Vues Images**
   - File : `exterieur/exterieur-images.js` *(nouveau)*
   - Action : deux vues (`actuelle`, `projection`) en grille de vignettes, visionneuse
     plein écran au clic, bascule de catégorie sans réuploader, dépôt avec
@@ -801,7 +801,7 @@ Champs propres à chaque type :
   - Notes : vignettes via les transformations Cloudinary (`w_400,f_auto,q_auto`) pour ne pas
     télécharger les originaux dans la grille.
 
-- [ ] **Task 11 : Vue Emails**
+- [x] **Task 11 : Vue Emails**
   - File : `exterieur/exterieur-emails.js` *(nouveau)*
   - Action : liste des `type = email` du plus récent au plus ancien, filtre
     envoyés / reçus, ouverture du corps complet, **bouton « Copier le corps »**, lien
@@ -810,7 +810,7 @@ Champs propres à chaque type :
     « ne pas devoir tout réécrire ». Un email dont `parseOk = false` s'affiche avec un
     avertissement et ses champs éditables.
 
-- [ ] **Task 12 : Vue Carnet**
+- [x] **Task 12 : Vue Carnet**
   - File : `exterieur/exterieur-carnet.js` *(nouveau)*
   - Action : deux sections — contacts (cartes, filtre par catégorie, `tel:` et `mailto:`
     cliquables) et liens (titre, commentaire, ouverture en nouvel onglet). Modales de
@@ -820,7 +820,7 @@ Champs propres à chaque type :
     dont le `contactId` ne résout plus affichent « contact supprimé » plutôt que de
     planter (F10) — on ne casse pas la référence en base, on la tolère à l'affichage.
 
-- [ ] **Task 13 : Vue « Le projet »**
+- [x] **Task 13 : Vue « Le projet »**
   - File : `exterieur/exterieur-projet.js` *(nouveau)*
   - Action : lecture/écriture du document singleton `_projet` — trois zones de texte
     (notes de budget, ce qu'on veut, ce qu'on ne veut pas) plus les listes `intervenants`
@@ -830,14 +830,14 @@ Champs propres à chaque type :
   - Notes : dernière écriture gagnante, sans verrou (D10). Afficher « modifié par X le
     Y » rend le risque visible sans le supprimer.
 
-- [ ] **Task 14 : Styles**
+- [x] **Task 14 : Styles**
   - File : `style.css`
   - Action : sélecteur de vues, cartes du tableau de bord, badges `camp`, grille
     d'images, visionneuse, cartes email, zone de dépôt.
   - Notes : réutiliser les variables et classes existantes (`.tile`, `.badge`, `.modal`,
     `.filter-btn`). Ne pas introduire de nouvelle palette.
 
-- [ ] **Task 15 : Tests**
+- [x] **Task 15 : Tests**
   - File : `tests/test-exterieur.js` *(nouveau)*
   - Action : analyseur `.eml` (cas nominal, en-têtes encodés, multipart, base64,
     quoted-printable, fichier illisible) ; `typeDepuisFichier` ; calcul d'ancienneté et
@@ -847,7 +847,7 @@ Champs propres à chaque type :
     une fonction pure, il se teste sans DOM ni réseau — c'est là que doit porter
     l'essentiel de l'effort.
 
-- [ ] **Task 15b : Fichier utilitaire partagé** *(T14)*
+- [x] **Task 15b : Fichier utilitaire partagé** *(T14)*
   - File : `hub-utils.js` *(nouveau, à la racine)*, `idees/idees.js`
   - Action : y déplacer `toDate`, `formatDateFr`, `escapeAttr`, `jsAttr` ; charger le
     fichier avant les scripts de page ; migrer `idees/idees.js` dessus.
@@ -855,7 +855,7 @@ Champs propres à chaque type :
     la duplication que la fiche notes signale déjà pour `auth.js` et `style.css`.
     `tests/test-idees.js` attrape la régression si la migration rate.
 
-- [ ] **Task 16 : Documentation et registre**
+- [x] **Task 16 : Documentation et registre**
   - File : `projets.js`, `README.md`
   - Action : mettre à jour la description du projet `exterieur` dans le registre ;
     documenter dans le README le modèle de données, le concept de `camp`, l'action
@@ -873,89 +873,89 @@ Champs propres à chaque type :
   l'URL directement, alors il est redirigé vers l'accueil. *Vérification côté serveur à
   faire séparément dans le Rules Playground de la console Firebase — non couvrable par
   les tests automatisés (F14).*
-- [ ] **AC3** — Étant donné un fichier `devis-terrasse.pdf` déposé sur la zone Ajouter,
+- [x] **AC3** — Étant donné un fichier `devis-terrasse.pdf` déposé sur la zone Ajouter,
   quand le dépôt se termine, alors un élément de type `document` est créé, le titre est
   **déjà pré-rempli** depuis le nom du fichier et n'est refusé que s'il est vidé (R8,
   T13), et le PDF s'ouvre dans un nouvel onglet.
 - [ ] **AC4** — Étant donné un `.eml` exporté de Gmail, quand il est déposé, alors
   expéditeur, destinataires, objet, date et corps sont pré-remplis sans aucune saisie, et
   `parseOk` vaut `true`.
-- [ ] **AC5** — Étant donné un `.eml` d'un format non géré, quand il est déposé, alors
+- [x] **AC5** — Étant donné un `.eml` d'un format non géré, quand il est déposé, alors
   aucune erreur n'est levée, le fichier est conservé, `parseOk` vaut `false`, et
   l'élément apparaît avec un avertissement et des champs éditables.
-- [ ] **AC6** — Étant donné un élément basculé en `camp = a_eux` il y a 18 jours
+- [x] **AC6** — Étant donné un élément basculé en `camp = a_eux` il y a 18 jours
   (`campDepuis`, T6), quand on ouvre la vue « Où on en est », alors il apparaît dans « En attente
   d'eux » avec « 18 jours » et un badge « à relancer ».
 - [ ] **AC7** — Étant donné le même élément passé à `camp = a_nous`, quand la vue se
   rafraîchit, alors il quitte « En attente d'eux » et rejoint « À nous » — sans
   rechargement de page, `onSnapshot` suffisant.
-- [ ] **AC8** — Étant donné deux documents portant le sujet « terrasse », quand on ouvre
+- [x] **AC8** — Étant donné deux documents portant le sujet « terrasse », quand on ouvre
   la vue d'état, alors le bloc « Choix à faire » affiche « Terrasse — 2 devis, à
   comparer ». Avec un seul devis, le sujet n'apparaît pas.
-- [ ] **AC9** — Étant donné aucun élément créé depuis 9 jours, quand on ouvre la vue
+- [x] **AC9** — Étant donné aucun élément créé depuis 9 jours, quand on ouvre la vue
   d'état, alors le bloc Mouvement affiche « rien n'a bougé depuis 9 jours », et **aucun
   pourcentage d'avancement n'est affiché nulle part**.
-- [ ] **AC10** — Étant donné une recherche « paysagiste », quand on la saisit, alors les
+- [x] **AC10** — Étant donné une recherche « paysagiste », quand on la saisit, alors les
   résultats mêlent contacts, emails et documents correspondants, quelle que soit la vue
   active au moment de la saisie.
-- [ ] **AC11** — Étant donné une image téléversée en `projection`, quand on la bascule en
+- [x] **AC11** — Étant donné une image téléversée en `projection`, quand on la bascule en
   `actuelle`, alors elle quitte la vue Projections pour la vue Actuelles sans être
   téléversée à nouveau.
-- [ ] **AC12** — Étant donné la vue Emails, quand on clique « Copier le corps », alors le
+- [x] **AC12** — Étant donné la vue Emails, quand on clique « Copier le corps », alors le
   texte intégral est dans le presse-papier, prêt à être collé dans Gmail.
 - [ ] **AC13** — Étant donné la fiche projet éditée par Cyril, quand Alisson l'ouvre,
   alors elle voit le texte à jour ainsi que « modifié par cyril… le … ».
-- [ ] **AC14** — Étant donné Cyril en impersonation d'Alisson, quand il crée un élément,
+- [x] **AC14** — Étant donné Cyril en impersonation d'Alisson, quand il crée un élément,
   alors `creePar` contient **l'adresse de Cyril**, pas celle d'Alisson (D18).
-- [ ] **AC15** — Étant donné un mobile, quand on appuie sur « Prendre une photo » dans la
+- [x] **AC15** — Étant donné un mobile, quand on appuie sur « Prendre une photo » dans la
   vue Images, alors la caméra s'ouvre (`capture`) ; et quand on appuie sur « Choisir un
   fichier », alors la galerie s'ouvre. Deux entrées distinctes, parce qu'`accept` seul
   n'ouvre pas la caméra (T7).
-- [ ] **AC16** — Étant donné un échec réseau pendant le téléversement, quand l'erreur
+- [x] **AC16** — Étant donné un échec réseau pendant le téléversement, quand l'erreur
   survient, alors un message l'indique et **aucun document Firestore orphelin** n'est
   créé.
 - [ ] **AC17** — Étant donné la vue Emails ouverte, quand on recharge la page, alors on
   revient sur la vue Emails (`#emails` dans l'URL).
-- [ ] **AC18** — Étant donné `node tests/run-tests.js`, quand on le lance, alors tous les
+- [x] **AC18** — Étant donné `node tests/run-tests.js`, quand on le lance, alors tous les
   tests passent, y compris ceux du nouveau `test-exterieur.js`.
 
-- [ ] **AC19** — Étant donné un `.eml` envoyé par Cyril, quand il est archivé, alors
+- [x] **AC19** — Étant donné un `.eml` envoyé par Cyril, quand il est archivé, alors
   `sens` vaut `envoye` et `camp` vaut `a_eux` **sans aucune saisie**. Un `.eml` reçu donne
   `recu` et `a_nous`. (R1, R3)
-- [ ] **AC20** — Étant donné une déduction de `camp` erronée, quand on clique « c'est à
+- [x] **AC20** — Étant donné une déduction de `camp` erronée, quand on clique « c'est à
   nous » sur la carte, alors l'élément change de colonne immédiatement et `campDepuis` est
   réinitialisé à maintenant. (R1, R7)
-- [ ] **AC21** — Étant donné une base vierge et Alisson qui ouvre le projet pour la
+- [x] **AC21** — Étant donné une base vierge et Alisson qui ouvre le projet pour la
   première fois, quand la page se charge, alors son adresse rejoint `nosAdresses` et son
   nom `intervenants` — sans passer par la fiche projet. (R3, R6)
-- [ ] **AC22** — Étant donné un `.eml` daté du 3 juillet archivé le 28 juillet, quand on
+- [x] **AC22** — Étant donné un `.eml` daté du 3 juillet archivé le 28 juillet, quand on
   ouvre le fil, alors il se place au 3 juillet ; et le bloc « Mouvement » le compte bien
   dans l'activité de la semaine du 28. (R5)
-- [ ] **AC23** — Étant donné le bouton Ajouter, quand on le clique, alors on peut créer
+- [x] **AC23** — Étant donné le bouton Ajouter, quand on le clique, alors on peut créer
   une tâche ou une note sans déposer de fichier. (R2)
-- [ ] **AC24** — Étant donné `devis-terrasse-dupont.pdf` déposé, quand le formulaire
+- [x] **AC24** — Étant donné `devis-terrasse-dupont.pdf` déposé, quand le formulaire
   s'ouvre, alors le titre est déjà « Devis terrasse dupont » et l'enregistrement passe
   sans rien saisir. (R8)
-- [ ] **AC25** — Étant donné un élément supprimé, quand on recharge, alors il a disparu de
+- [x] **AC25** — Étant donné un élément supprimé, quand on recharge, alors il a disparu de
   toutes les vues — **et son fichier Cloudinary existe toujours**, conformément à la
   limite assumée. (R4)
-- [ ] **AC26** — Étant donné un contact supprimé alors que des éléments le référencent,
+- [x] **AC26** — Étant donné un contact supprimé alors que des éléments le référencent,
   quand on ouvre le fil, alors ces éléments s'affichent sans planter, avec la mention
   « contact supprimé ». (F10)
-- [ ] **AC27** — Étant donné une tâche assignée à Alisson, quand Cyril ouvre la vue
+- [x] **AC27** — Étant donné une tâche assignée à Alisson, quand Cyril ouvre la vue
   Tâches, alors il peut filtrer sur « Alisson » et la voit ; et le tableau de bord affiche
   l'assignation sur la carte. (D13, T15)
-- [ ] **AC28** — Étant donné un `.eml` en `base64` / `charset=UTF-8` contenant « été »,
+- [x] **AC28** — Étant donné un `.eml` en `base64` / `charset=UTF-8` contenant « été »,
   quand il est analysé, alors le corps affiche « été » et non « Ã©tÃ© ». (T4)
-- [ ] **AC29** — Étant donné une base où `_projet` n'existe pas, quand une personne ouvre
+- [x] **AC29** — Étant donné une base où `_projet` n'existe pas, quand une personne ouvre
   le projet, alors le document est créé avec son adresse et son nom, sans erreur
   `not-found`, et sans écraser les notes de budget d'une écriture concurrente. (T8)
-- [ ] **AC30** — Étant donné trois devis saisis « terrasse », « Terrasse » et « TERRASSE »,
+- [x] **AC30** — Étant donné trois devis saisis « terrasse », « Terrasse » et « TERRASSE »,
   quand on ouvre la vue Documents, alors ils forment **un seul** groupe. (T10)
 - [ ] **AC31** — Étant donné la collection purgée (Task 0), quand on ouvre le projet pour
   la première fois, alors aucune tâche de l'ancienne coquille n'apparaît et aucun document
   sans `type` ne subsiste en base. (T1)
-- [ ] **AC32** — Étant donné `hub-utils.js` en place, quand on lance
+- [x] **AC32** — Étant donné `hub-utils.js` en place, quand on lance
   `node tests/run-tests.js`, alors `test-idees.js` passe toujours — la migration des
   utilitaires n'a rien cassé. (T14)
 

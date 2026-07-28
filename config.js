@@ -30,3 +30,24 @@ var SUPERADMIN_EMAIL = 'cyril.samson41@gmail.com';
 // --- 3. Identite du site -------------------------------------
 var SITE_TITLE = "Hub O'Fil du Doubs";
 var SITE_ICON  = 'fa-solid fa-compass-drafting';
+
+// --- 4. Cloudinary (fichiers des projets) --------------------
+// Meme compte que BilletsTouristiques, mais un preset a part : sans ca
+// les photos du chantier se melangeraient aux images de l'association,
+// dans le meme dossier et les memes quotas.
+//
+// Le preset « ofildudoubs-hub » doit etre cree a la main dans la
+// console (Settings -> Upload -> Add upload preset) avec :
+//   Signing mode  : Unsigned     (pas de cle secrete cote navigateur)
+//   Resource type : Auto         (sinon les .eml, de type « raw », sont refuses)
+//   Folder        : hub/exterieur
+//   Use filename  : Off   +  Unique filename : On
+// Les deux dernieres options ne sont pas cosmetiques : avec un
+// public_id derive du nom de fichier, l'URL d'un devis devient
+// devinable — et Cloudinary ne permet pas de l'effacer sans cle secrete.
+//
+// Valeurs publiques par nature, comme le reste de ce fichier. Un preset
+// non signe permet a quiconque connait son nom de televerser dans le
+// compte : c'est deja le cas pour BilletsTouristiques, meme risque assume.
+var CLOUDINARY_CLOUD_NAME    = 'dxoyqxben';
+var CLOUDINARY_UPLOAD_PRESET = 'ofildudoubs-hub';

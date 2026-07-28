@@ -31,7 +31,7 @@ var PROJETS = [
         nom: 'Exterieur de la maison',
         icone: 'fa-solid fa-seedling',
         url: 'exterieur/',
-        description: "Jardin, terrasse, exterieurs : ce qu'il y a a faire et ce qui a ete fait."
+        description: "Le chantier au meme endroit : devis, mails archives, photos, taches, contacts. La vue d'accueil repond a une seule question — la balle est dans quel camp ?"
     }
 ];
 

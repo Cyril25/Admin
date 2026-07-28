@@ -31,7 +31,7 @@ service cloud.firestore {
     // Les documents membres ont pour identifiant l'email en minuscules.
     function idAppelant() {
       return request.auth.token.email.lower();
-vscode-webview://16ntlm9be48s99gi6sb4sufp316mtrm118beisvukc28o66lk5st/index.html?id=19c1c7c0-58d1-4b48-ba70-1f529014993a&parentId=1&origin=b2eed966-80d3-4521-aedd-d4a62694fcd9&swVersion=6&extensionId=Anthropic.claude-code&platform=electron&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&parentOrigin=vscode-file%3A%2F%2Fvscode-app&session=cce90300-5755-478f-94b3-f64ff2cbec43#    }
+    }
 
     function existeMembre() {
       return connecte()

@@ -2,10 +2,17 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://cdnjs.cloudflare.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; img-src 'self' data: https://lh3.googleusercontent.com; connect-src 'self' https://www.gstatic.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://www.googleapis.com https://accounts.google.com; frame-src 'self' https://ofildudoubs-hub.firebaseapp.com https://apis.google.com https://accounts.google.com;">
+    <!-- CSP élargie pour Cloudinary :
+           api.cloudinary.com en connect-src → l'envoi des fichiers
+           res.cloudinary.com en img-src     → les vignettes
+           res.cloudinary.com en connect-src → la relecture d'un .eml
+                                               dont le corps a été abrégé
+         Les PDF s'ouvrent dans un onglet, jamais en <iframe> : ça évite
+         d'avoir à toucher frame-src. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://cdnjs.cloudflare.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; img-src 'self' data: blob: https://lh3.googleusercontent.com https://res.cloudinary.com; connect-src 'self' https://www.gstatic.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://www.googleapis.com https://accounts.google.com https://api.cloudinary.com https://res.cloudinary.com; frame-src 'self' https://ofildudoubs-hub.firebaseapp.com https://apis.google.com https://accounts.google.com;">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
-    <meta name="description" content="Extérieur de la maison — hub O'Fil du Doubs.">
+    <meta name="description" content="Extérieur de la maison — pilotage du chantier, hub O'Fil du Doubs.">
     <title>Extérieur de la maison — Hub O'Fil du Doubs</title>
     <link rel="icon" href="../icon.svg" type="image/svg+xml">
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
@@ -20,69 +27,281 @@
         <div class="page-header">
             <h1><i class="fa-solid fa-seedling"></i> Extérieur de la maison</h1>
             <div class="page-header-actions">
-                <button type="button" class="btn-add" onclick="ouvrirModale(null)">
-                    <i class="fa-solid fa-plus"></i> Nouvelle tâche
+                <button type="button" class="btn-add" onclick="ouvrirModaleAjout()">
+                    <i class="fa-solid fa-plus"></i> Ajouter
                 </button>
             </div>
         </div>
 
-        <div id="etat-filter" class="filter-row"></div>
-        <div id="result-count" class="result-count"></div>
+        <div class="toolbar">
+            <div class="search">
+                <i class="fa-solid fa-magnifying-glass search__icon"></i>
+                <input type="text" id="search-input" class="search__input"
+                       placeholder="Chercher partout (mails, devis, contacts, tâches…)"
+                       oninput="surRecherche()" autocomplete="off">
+                <button type="button" class="search__clear" id="search-clear" onclick="effacerRecherche()" style="display:none">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+        </div>
 
-        <div id="taches-list" class="idees-list"></div>
+        <!-- Le sélecteur des neuf vues, construit par exterieur.js -->
+        <nav id="selecteur-vues" class="selecteur-vues"></nav>
 
-        <div class="empty-state" id="empty-state" style="display:none">
-            <i class="fa-solid fa-seedling"></i>
-            <p>Rien à faire dehors pour l'instant</p>
+        <div id="vues">
+            <div id="vue-etat"></div>
+            <div id="vue-fil" style="display:none"></div>
+            <div id="vue-taches" style="display:none"></div>
+            <div id="vue-documents" style="display:none"></div>
+            <div id="vue-images-actuelle" style="display:none"></div>
+            <div id="vue-images-projection" style="display:none"></div>
+            <div id="vue-emails" style="display:none"></div>
+            <div id="vue-carnet" style="display:none"></div>
+            <div id="vue-projet" style="display:none"></div>
+            <div id="vue-resultats" style="display:none"></div>
         </div>
 
     </div>
 
-    <!-- Modale ajout / édition -->
-    <div id="modal-overlay" class="modal-overlay" style="display:none">
-        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-            <h2 class="modal-title" id="modal-title">Nouvelle tâche</h2>
+    <!-- Champs de fichier cachés.
+         Deux entrées distinctes pour les photos, et ce n'est pas un
+         détail : accept="image/*" seul n'ouvre PAS l'appareil photo (ni
+         sur iOS ni sur Android), il ouvre un sélecteur. capture force la
+         caméra mais fait perdre la galerie. Il faut donc les deux. -->
+    <input type="file" id="depot-fichier" style="display:none"
+           accept=".eml,.pdf,.doc,.docx,image/*">
+    <input type="file" id="photo-camera" style="display:none"
+           accept="image/*" capture="environment">
+    <input type="file" id="photo-galerie" style="display:none"
+           accept="image/*">
+
+    <!-- ============ Modale Ajouter ============ -->
+    <div id="ajout-overlay" class="modal-overlay" style="display:none">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="ajout-titre" style="max-width:520px">
+            <h2 class="modal-title" id="ajout-titre">Ajouter</h2>
+
+            <div id="depot-zone" class="depot-zone">
+                <i class="fa-solid fa-cloud-arrow-up"></i>
+                <strong>Déposer un fichier</strong>
+                <span>.eml, PDF, photo — le type est deviné tout seul</span>
+            </div>
+
+            <div id="upload-progress" class="upload-progress" style="display:none">
+                <span id="upload-progress-nom" class="upload-progress-nom"></span>
+                <div class="upload-progress-piste"><div id="upload-progress-bar" class="upload-progress-bar"></div></div>
+            </div>
+
+            <p class="ajout-separateur">ou, sans fichier</p>
+
+            <div class="ajout-choix">
+                <button type="button" class="btn-export" onclick="ajouterEnEcrivant('tache')">
+                    <i class="fa-solid fa-list-check"></i> Une tâche
+                </button>
+                <button type="button" class="btn-export" onclick="ajouterEnEcrivant('note')">
+                    <i class="fa-solid fa-note-sticky"></i> Une note
+                </button>
+            </div>
+
+            <p class="field-hint">Contacts et liens se créent depuis la vue Carnet, là où on les cherche.</p>
+
+            <div class="modal-actions">
+                <button type="button" class="modal-btn" onclick="fermerModaleAjout()">Fermer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ Modale élément (tâche, note, document, image, email) ============ -->
+    <div id="element-overlay" class="modal-overlay" style="display:none">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="element-modal-titre">
+            <h2 class="modal-title" id="element-modal-titre">Élément</h2>
+            <input type="hidden" id="e-type">
+
+            <p class="alerte-parse" id="e-alerte-parse" style="display:none">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                Ce mail a été conservé, mais son format n'a pas été compris.
+                Les champs ci-dessous sont vides ou approximatifs : corrigez-les à la main.
+            </p>
+
             <div class="modal-form">
                 <div class="field field--full">
-                    <label for="f-titre">Quoi ? *</label>
-                    <input type="text" id="f-titre" maxlength="140" placeholder="Ex : tailler la haie côté route">
+                    <label for="e-titre">Titre *</label>
+                    <input type="text" id="e-titre" maxlength="180" placeholder="En une phrase : quoi ?">
                 </div>
-                <div class="field">
-                    <label for="f-etat">État</label>
-                    <select id="f-etat"></select>
+
+                <div id="bloc-email" class="field--full" style="display:none">
+                    <div class="modal-form" style="margin-bottom:0">
+                        <div class="field">
+                            <label for="e-de">De</label>
+                            <input type="text" id="e-de">
+                        </div>
+                        <div class="field">
+                            <label for="e-sens">Sens</label>
+                            <select id="e-sens">
+                                <option value="envoye">Envoyé</option>
+                                <option value="recu">Reçu</option>
+                            </select>
+                        </div>
+                        <div class="field field--full">
+                            <label for="e-a">À</label>
+                            <input type="text" id="e-a">
+                        </div>
+                        <div class="field field--full">
+                            <label for="e-objet">Objet</label>
+                            <input type="text" id="e-objet">
+                        </div>
+                        <div class="field field--full">
+                            <label for="e-corps">Corps</label>
+                            <textarea id="e-corps" rows="8"></textarea>
+                        </div>
+                    </div>
                 </div>
-                <div class="field">
-                    <label for="f-periode">Période</label>
-                    <input type="text" id="f-periode" list="periode-list" placeholder="Ex : printemps" autocomplete="off">
-                    <datalist id="periode-list">
-                        <option value="Printemps"></option>
-                        <option value="Été"></option>
-                        <option value="Automne"></option>
-                        <option value="Hiver"></option>
-                        <option value="Dès que possible"></option>
-                    </datalist>
+
+                <div class="field field--full" id="ligne-notes">
+                    <label for="e-notes">Notes</label>
+                    <textarea id="e-notes" rows="4" placeholder="Mesures, matériel, à qui demander…"></textarea>
                 </div>
-                <div class="field field--full">
-                    <label for="f-notes">Notes</label>
-                    <textarea id="f-notes" rows="4" placeholder="Matériel, mesures, à qui demander…"></textarea>
+
+                <div class="field" id="ligne-camp">
+                    <label for="e-camp">La balle est dans quel camp ?</label>
+                    <select id="e-camp"></select>
                 </div>
-                <p class="modal-meta" id="f-meta" style="display:none"></p>
+
+                <div class="field" id="ligne-echeance">
+                    <label for="e-echeance">Échéance</label>
+                    <input type="date" id="e-echeance">
+                </div>
+
+                <div class="field" id="ligne-assigne">
+                    <label for="e-assigne">Assignée à</label>
+                    <select id="e-assigne"></select>
+                </div>
+
+                <div class="field" id="ligne-sujet">
+                    <label for="e-sujet">Sujet <span class="field-hint">(regroupe les devis)</span></label>
+                    <input type="text" id="e-sujet" list="e-sujets" autocomplete="off"
+                           placeholder="Ex : terrasse">
+                    <datalist id="e-sujets"></datalist>
+                </div>
+
+                <div class="field" id="ligne-contact">
+                    <label for="e-contact">Contact lié</label>
+                    <select id="e-contact"></select>
+                </div>
+
+                <div class="field" id="ligne-categorie">
+                    <label for="e-categorie">Catégorie</label>
+                    <select id="e-categorie"></select>
+                </div>
+
+                <p class="field--full">
+                    <a id="e-fichier" class="badge badge-lien" target="_blank" rel="noopener" href="#" style="display:none">
+                        <i class="fa-solid fa-arrow-up-right-from-square"></i> Ouvrir le fichier
+                    </a>
+                </p>
+
+                <p class="modal-meta" id="e-meta"></p>
             </div>
+
             <div class="modal-actions">
-                <button type="button" id="btn-delete" class="modal-btn modal-btn-danger" style="display:none" onclick="ouvrirModaleSuppression()">Supprimer</button>
-                <button type="button" class="modal-btn" onclick="fermerModale()">Annuler</button>
-                <button type="button" class="modal-btn modal-btn-primary" onclick="sauverTache()">Enregistrer</button>
+                <button type="button" id="e-btn-supprimer" class="modal-btn modal-btn-danger" style="display:none"
+                        onclick="demanderSuppression(elementEnEdition, '')">Supprimer</button>
+                <button type="button" class="modal-btn" onclick="fermerModaleElement()">Annuler</button>
+                <button type="button" class="modal-btn modal-btn-primary" onclick="sauverElement()">Enregistrer</button>
             </div>
         </div>
     </div>
 
-    <div id="delete-overlay" class="modal-overlay" style="display:none">
-        <div class="modal" role="alertdialog" aria-modal="true" style="max-width:460px">
-            <h2 class="modal-title">Supprimer cette tâche ?</h2>
-            <p class="modal-desc">Suppression définitive.</p>
+    <!-- ============ Modale contact ============ -->
+    <div id="contact-overlay" class="modal-overlay" style="display:none">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="contact-modal-titre">
+            <h2 class="modal-title" id="contact-modal-titre">Nouveau contact</h2>
+            <div class="modal-form">
+                <div class="field">
+                    <label for="c-prenom">Prénom</label>
+                    <input type="text" id="c-prenom">
+                </div>
+                <div class="field">
+                    <label for="c-nom">Nom</label>
+                    <input type="text" id="c-nom">
+                </div>
+                <div class="field">
+                    <label for="c-entreprise">Entreprise</label>
+                    <input type="text" id="c-entreprise">
+                </div>
+                <div class="field">
+                    <label for="c-categorie">Catégorie</label>
+                    <select id="c-categorie"></select>
+                </div>
+                <div class="field">
+                    <label for="c-telephone">Téléphone</label>
+                    <input type="tel" id="c-telephone">
+                </div>
+                <div class="field">
+                    <label for="c-email">Email</label>
+                    <input type="email" id="c-email">
+                </div>
+                <div class="field field--full">
+                    <label for="c-commentaire">Commentaire</label>
+                    <textarea id="c-commentaire" rows="3" placeholder="Réactif, cher, recommandé par…"></textarea>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" id="c-btn-supprimer" class="modal-btn modal-btn-danger" style="display:none">Supprimer</button>
+                <button type="button" class="modal-btn" onclick="fermerModaleContact()">Annuler</button>
+                <button type="button" class="modal-btn modal-btn-primary" onclick="sauverContact()">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ Modale lien ============ -->
+    <div id="lien-overlay" class="modal-overlay" style="display:none">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="lien-modal-titre" style="max-width:520px">
+            <h2 class="modal-title" id="lien-modal-titre">Nouveau lien</h2>
+            <div class="modal-form">
+                <div class="field field--full">
+                    <label for="l-titre">Titre *</label>
+                    <input type="text" id="l-titre" placeholder="Ex : générateur de rendus IA">
+                </div>
+                <div class="field field--full">
+                    <label for="l-url">Adresse *</label>
+                    <input type="url" id="l-url" placeholder="https://…">
+                </div>
+                <div class="field field--full">
+                    <label for="l-commentaire">Commentaire</label>
+                    <textarea id="l-commentaire" rows="3"></textarea>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" id="l-btn-supprimer" class="modal-btn modal-btn-danger" style="display:none">Supprimer</button>
+                <button type="button" class="modal-btn" onclick="fermerModaleLien()">Annuler</button>
+                <button type="button" class="modal-btn modal-btn-primary" onclick="sauverLien()">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ Visionneuse d'image ============ -->
+    <div id="visionneuse-overlay" class="modal-overlay visionneuse-overlay" style="display:none">
+        <div class="visionneuse">
+            <button type="button" class="visionneuse-fermer" onclick="fermerVisionneuse()" title="Fermer">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+            <img id="visionneuse-image" alt="">
+            <div class="visionneuse-pied">
+                <span id="visionneuse-legende"></span>
+                <button type="button" id="visionneuse-bascule" class="btn-export"></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ Confirmation de suppression ============ -->
+    <div id="suppression-overlay" class="modal-overlay" style="display:none">
+        <div class="modal" role="alertdialog" aria-modal="true" style="max-width:480px">
+            <h2 class="modal-title">Supprimer cet élément ?</h2>
+            <p class="modal-desc" id="suppression-detail"></p>
             <div class="modal-actions">
                 <button type="button" class="modal-btn" onclick="fermerModaleSuppression()">Annuler</button>
-                <button type="button" class="modal-btn modal-btn-danger" style="margin-right:0" onclick="confirmerSuppression()">Confirmer</button>
+                <button type="button" class="modal-btn modal-btn-danger" style="margin-right:0"
+                        onclick="confirmerSuppression()">Confirmer</button>
             </div>
         </div>
     </div>
@@ -93,6 +312,19 @@
     <script src="../config.js"></script>
     <script src="../projets.js"></script>
     <script src="../auth.js"></script>
+    <script src="../hub-utils.js"></script>
+    <script src="exterieur-donnees.js"></script>
+    <script src="exterieur-upload.js"></script>
+    <script src="exterieur-eml.js"></script>
+    <script src="exterieur-etat.js"></script>
+    <script src="exterieur-fil.js"></script>
+    <script src="exterieur-taches.js"></script>
+    <script src="exterieur-documents.js"></script>
+    <script src="exterieur-images.js"></script>
+    <script src="exterieur-emails.js"></script>
+    <script src="exterieur-carnet.js"></script>
+    <script src="exterieur-projet.js"></script>
+    <!-- En dernier : il référence les fonctions de rendu des huit vues. -->
     <script src="exterieur.js"></script>
 </body>
 </html>

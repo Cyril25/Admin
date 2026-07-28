@@ -62,6 +62,10 @@ vm.runInContext(`
   function escapeHtml(t){ var d=document.createElement('div'); d.appendChild(document.createTextNode(t==null?'':t)); return d.innerHTML; }
   function showToast(){}
 `, sandbox);
+// hub-utils.js fournit toDate / formatDateFr / escapeAttr / jsAttr,
+// que idees.js ne definit plus lui-meme (T14). Le charger ici est ce
+// qui fait echouer ce test si la page oublie la balise <script>.
+vm.runInContext(fs.readFileSync(path.join(REPO, '..', 'hub-utils.js'), 'utf8'), sandbox);
 vm.runInContext(fs.readFileSync(path.join(REPO, 'idees.js'), 'utf8'), sandbox);
 
 // --- Donnees factices --------------------------------------------
