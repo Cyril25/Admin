@@ -88,16 +88,21 @@ Puis **Settings → Pages** : source `Deploy from a branch`, branche `main`, dos
 `/ (root)`. Le fichier `CNAME` renseigne automatiquement le domaine custom ; cocher
 **Enforce HTTPS** une fois le certificat émis (quelques minutes).
 
-### 3. DNS (Cloudflare)
+### 3. DNS (OVH)
 
-Un enregistrement à créer dans la zone `ofildudoubs.fr` :
+Le domaine `ofildudoubs.fr` est géré chez **OVH** — pas chez Cloudflare, qui n'héberge
+que les Workers. Manager OVH → *Noms de domaine* → `ofildudoubs.fr` → onglet **Zone DNS**
+→ **Ajouter une entrée** :
 
-| Type | Nom | Cible | Proxy |
-|---|---|---|---|
-| CNAME | `admin` | `cyril25.github.io` | **DNS only** (nuage gris) |
+| Type | Sous-domaine | Cible |
+|---|---|---|
+| CNAME | `admin` | `cyril25.github.io.` |
 
-Le proxy Cloudflare (nuage orange) doit rester **désactivé** : il casse l'émission du
-certificat Let's Encrypt de GitHub Pages.
+Le point final de la cible est attendu par OVH (nom de domaine pleinement qualifié) ;
+l'interface l'ajoute généralement toute seule, vérifier après validation.
+
+Un CNAME ne peut pas coexister avec un autre enregistrement sur le même sous-domaine :
+si OVH refuse, c'est qu'une entrée `admin` existe déjà, il faut la supprimer d'abord.
 
 ## Développement local
 
