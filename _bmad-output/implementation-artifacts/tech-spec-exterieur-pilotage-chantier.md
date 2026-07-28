@@ -229,16 +229,35 @@ attendu : quelques centaines de documents — aucun enjeu de performance.
 *Validé par Cyril après explication.*
 
 **D6 — Un nouveau preset Cloudinary, et l'endpoint `auto` au lieu de `image`.**
-Deux obstacles trouvés dans le code existant :
-1. L'endpoint utilisé par BilletsTouristiques est `/image/upload`, qui **refuse les PDF
-   et les `.eml`**. Il faut `/auto/upload`, qui route selon le type réel du fichier.
+
+⚠ *Correction du 28/07 : une première version de cette décision affirmait que
+`/image/upload` refuse les PDF. C'est faux — Cloudinary traite les PDF comme des images
+et sait même en produire des vignettes de page. La conclusion tient, la justification
+était erronée.*
+
+Deux obstacles réels :
+1. L'endpoint utilisé par BilletsTouristiques est `/image/upload`. Il accepte les PDF,
+   mais **pas les `.eml`**, qui relèvent du type `raw`. `/auto/upload` aiguille selon le
+   type réel du fichier et couvre les deux.
 2. Le preset non signé s'appelle `billets-touristiques` : le réutiliser mélangerait les
    pièces du chantier avec les images de l'association, dans le même compte et les mêmes
    quotas.
 
 *Action manuelle requise de Cyril* : créer dans la console Cloudinary un second preset
-non signé — proposition `ofildudoubs-hub` — avec **Resource type: Auto** et un dossier
-dédié (`hub/exterieur`). Le nom du preset ira dans `config.js` du hub.
+non signé — `ofildudoubs-hub` — avec **Resource type: Auto** et un dossier dédié
+(`hub/exterieur`), sur le **même compte** `dxoyqxben`. Le nom du preset ira dans
+`config.js` du hub. Ne pas modifier le preset `billets-touristiques`.
+
+**Incertitude à lever au développement :** le téléversement de fichiers `raw` en mode
+*unsigned* est bloqué par défaut sur certains comptes Cloudinary. À vérifier avec un vrai
+`.eml` dès la Task 4.
+
+**Repli si c'est bloqué** — stocker le texte brut du `.eml` directement dans le document
+Firestore, dans un champ `emlBrut`. Le fichier est de toute façon lu et analysé côté
+navigateur : on perdrait seulement le fichier retéléchargeable, pas le contenu. Un email
+pèse quelques kilo-octets, très loin de la limite d'un mégaoctet par document Firestore.
+Aucune infrastructure supplémentaire, contrairement à un upload signé qui exigerait un
+Worker.
 
 **D7 — Élargir la CSP de la page.**
 La CSP actuelle de `exterieur/index.html` n'autorise ni l'envoi vers Cloudinary ni
@@ -406,9 +425,11 @@ Champs propres à chaque type :
   - File : aucun (console Cloudinary)
   - Action : Settings → Upload → Add upload preset. Nom `ofildudoubs-hub`,
     **Signing mode : Unsigned**, **Resource type : Auto**, dossier `hub/exterieur`.
-  - Notes : le preset existant `billets-touristiques` n'est **pas** réutilisable — il est
-    lié à l'autre projet et l'endpoint `/image/upload` refuse les PDF et les `.eml`
-    (voir D6). Rien ne peut être testé de bout en bout tant que ce preset n'existe pas.
+  - Notes : même compte `dxoyqxben`, second preset — pas un nouveau compte. Ne pas
+    toucher au preset `billets-touristiques`, qui fait tourner l'autre site. Facultatif
+    mais conseillé : *Max file size* à 10 Mo et liste de formats autorisés, pour limiter
+    les dégâts si le nom du preset était deviné. Rien ne se teste de bout en bout tant
+    que ce preset n'existe pas.
 
 - [ ] **Task 2 : Déclarer Cloudinary dans la configuration du hub**
   - File : `config.js`
@@ -438,7 +459,9 @@ Champs propres à chaque type :
     `dragover` / `drop` + barre de progression.
   - Notes : transposer `admin.js:291-345` de BilletsTouristiques en changeant
     `/image/upload` en `/auto/upload`. En cas d'échec réseau, afficher l'erreur et **ne
-    pas** créer de document Firestore orphelin.
+    pas** créer de document Firestore orphelin. **Premier test à faire : un vrai `.eml`**
+    — si Cloudinary refuse le `raw` en unsigned, basculer sur le repli `emlBrut` décrit
+    en D6 sans attendre.
 
 - [ ] **Task 5 : Analyseur de fichiers `.eml`**
   - File : `exterieur/exterieur-eml.js` *(nouveau)*
