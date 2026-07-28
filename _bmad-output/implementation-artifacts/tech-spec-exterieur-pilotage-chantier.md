@@ -4,8 +4,9 @@ slug: 'exterieur-pilotage-chantier'
 created: '2026-07-28'
 status: 'ready-for-dev'
 stepsCompleted: [1, 2, 3, 4]
+revues: ['adversariale F1-F14 -> R1-R8', 'technique sur code F15-F31 -> T1-T15']
 tech_stack: ['HTML5', 'CSS3', 'JavaScript ES5 (vanilla, sans build)', 'Firebase v8.10.1 compat (Auth + Firestore)', 'Cloudinary (upload non signe)', 'GitHub Pages']
-files_to_modify: ['config.js', 'projets.js', 'style.css', 'README.md', 'exterieur/index.html', 'exterieur/exterieur.js', 'exterieur/exterieur-donnees.js', 'exterieur/exterieur-upload.js', 'exterieur/exterieur-eml.js', 'exterieur/exterieur-etat.js', 'exterieur/exterieur-fil.js', 'exterieur/exterieur-images.js', 'exterieur/exterieur-emails.js', 'exterieur/exterieur-carnet.js', 'exterieur/exterieur-projet.js', 'tests/test-exterieur.js']
+files_to_modify: ['config.js', 'projets.js', 'style.css', 'README.md', 'hub-utils.js', 'idees/idees.js', 'exterieur/exterieur-taches.js', 'exterieur/exterieur-documents.js', 'exterieur/index.html', 'exterieur/exterieur.js', 'exterieur/exterieur-donnees.js', 'exterieur/exterieur-upload.js', 'exterieur/exterieur-eml.js', 'exterieur/exterieur-etat.js', 'exterieur/exterieur-fil.js', 'exterieur/exterieur-images.js', 'exterieur/exterieur-emails.js', 'exterieur/exterieur-carnet.js', 'exterieur/exterieur-projet.js', 'tests/test-exterieur.js']
 code_patterns: ['un fichier JS par page, scope global', 'onHubReady() comme point d entree', 'onSnapshot temps reel + filtrage client', 'escapeHtml/escapeAttr/jsAttr pour tout rendu', 'innerHTML construit par concatenation', 'modale overlay + Echap', 'SRI obligatoire sur les CDN']
 test_patterns: ['harnais Node + module vm avec DOM minimal', 'assertions maison via verifie()', 'aucun framework, aucun npm']
 ---
@@ -201,7 +202,8 @@ confiance ; ils ne constituent pas une piste d'audit inviolable, puisque c'est l
 qui les écrit. Suffisant pour l'usage.
 
 **D5 — Une seule collection `exterieur`, discriminée par un champ `type`.**
-Valeurs : `tache` / `email` / `document` / `image` / `note` / `contact` / `lien`. Les
+Valeurs : `tache` / `email` / `document` / `image` / `note` / `contact` / `lien` /
+`projet` (le singleton de D10). Les
 pages ne sont que des filtres sur cette étiquette.
 
 Deux natures d'éléments se dégagent, et elles structurent les pages :
@@ -353,20 +355,23 @@ Champ `assigneA` : Cyril, Alisson, ou personne. À deux, une tâche sans nom est
 dont chacun pense que l'autre s'occupe.
 
 **D14 — Aucune reprise d'historique.**
-L'outil démarre vide et se remplit au fil de l'eau. Seuls les contacts et la fiche projet
+L'outil démarre vide et se remplit au fil de l'eau. ⚠ *Corrigé par T1 : la collection
+n'était PAS vierge — la coquille de test y avait déjà écrit. Elle démarre vide parce
+qu'on la purge en Task 0.* Seuls les contacts et la fiche projet
 justifient une saisie initiale. Exiger de ressaisir six mois d'emails garantirait que
 l'outil ne démarre jamais.
 
 **D15 — Le mobile, pour les photos seulement.**
 Les photos du terrain se prennent au téléphone : la vue images et le dépôt d'image
-doivent être confortables sur mobile (`<input type="file" accept="image/*">` ouvre
-directement l'appareil photo). En revanche, l'archivage d'emails restera une opération
+doivent être confortables sur mobile. ⚠ *Corrigé par T7 : `accept="image/*"` n'ouvre
+pas l'appareil photo, il ouvre un sélecteur. Deux entrées distinctes sont nécessaires.* En revanche, l'archivage d'emails restera une opération
 de bureau — l'application Gmail mobile ne permet pas de télécharger un `.eml`.
 
 **D16 — La relance vit sur le couple contact + demande.**
 Une relance n'est pas un champ flottant : c'est « j'ai demandé un devis à Dupont le 3,
 sans réponse le 17 je le rappelle ». Elle se matérialise donc par un élément
-`camp: 'a_eux'` portant un `contactId` et une `dateDemande`. L'ancienneté se calcule, le
+`camp: 'a_eux'` portant un `contactId`, dont l'ancienneté se calcule sur `campDepuis`
+(R7, T6). Le
 seuil déclenche l'alerte. Pas de champ « date de relance » saisi séparément.
 
 **D17 — L'assignation ne peut pas utiliser l'annuaire des membres.**
@@ -417,7 +422,8 @@ prétend simplement plus que tout est un fichier.
 auto-alimentée.**
 
 La fiche projet porte `nosAdresses`, un tableau d'adresses email. À chaque ouverture du
-projet, l'adresse de la personne connectée y est ajoutée si elle en est absente : au bout
+projet, l'adresse **réelle** de la personne connectée (`HUB.user.email`, voir T9) y est
+ajoutée si elle en est absente : au bout
 d'une visite chacun, la liste est complète **sans aucune saisie**. L'analyseur compare
 l'en-tête `De` à cette liste — correspondance = `envoye`, sinon `recu`. Un bouton bascule
 le sens en un clic si la déduction se trompe.
@@ -458,7 +464,8 @@ bibliothèque n'en vaut pas le coût.*
 **R6 (corrige F6) — `intervenants` s'auto-alimente, comme `nosAdresses`.**
 
 Même mécanisme que R3 : à l'ouverture, le nom de la personne connectée
-(`HUB.effectif.nom`, à défaut la partie gauche de son email) est ajouté à `intervenants`
+(`HUB.user`, jamais `HUB.effectif` — voir T9 ; à défaut la partie gauche de son email)
+est ajouté à `intervenants`
 s'il en est absent. L'assignation fonctionne donc dès la première visite, sans fiche
 projet préalable. La liste reste modifiable à la main.
 
@@ -474,6 +481,138 @@ elle-même. Exact, gratuit, et aucun champ à remplir. Un champ de saisie de moi
 et soulignés changés en espaces, première lettre en capitale. Le champ reste modifiable,
 et n'est refusé que s'il finit réellement vide. Le cas courant redevient un seul geste,
 ce qui réconcilie D6 et D12.
+
+## Révisions après revue technique (2026-07-28, seconde passe)
+
+Seconde revue, celle-ci **croisée avec le code réel** plutôt qu'avec le texte seul
+(`revue-technique-exterieur-2026-07-28.md`, findings F15–F31). Elle a confirmé exactes
+toutes les affirmations de la spec portant sur du code existant — et trouvé sept défauts
+qu'une relecture de texte ne pouvait pas voir.
+
+Les révisions T ci-dessous priment sur D1–D18 et R1–R8 en cas de contradiction.
+
+**T1 (corrige F15, arbitré par Cyril : PURGE) — la collection n'est pas vierge, on la
+vide.**
+
+D14 affirmait « l'outil démarre vide ». **C'était faux** : `exterieur/exterieur.js:255`
+écrit déjà des documents `{titre, notes, periode, etat, createdAt, updatedAt}` — sans
+`type`, donc invisibles dans toutes les vues du nouveau modèle, et jamais supprimés.
+
+Décision : **purge complète** de la collection avant tout développement. La coquille
+n'avait servi qu'à éprouver les droits de bout en bout, son modèle ne correspond à rien
+du besoin réel. Le champ `periode` (Printemps/Été/…) disparaît avec elle : le pilotage
+d'un chantier n'a pas de rythme saisonnier.
+
+→ **Task 0**, avant toute autre. D14 est corrigée : l'outil démarre vide *parce qu'on
+l'aura vidé*.
+
+**T2 (corrige F16, arbitré par Cyril : DEUX VUES DÉDIÉES) — Tâches et Documents ont
+chacune leur vue.**
+
+Elles étaient annoncées dans le sélecteur et dans D9 sans aucune tâche propriétaire.
+
+- **Vue Tâches** — triable par échéance et par assignation, ce qu'un fil chronologique
+  ne permet pas.
+- **Vue Documents** — les devis alignés et **groupés par `sujet`**, pour comparaison.
+  C'est le cœur du besoin exprimé (« on est sur le point de choisir une presta ») ; les
+  disperser dans un fil chronologique l'aurait rendu impraticable.
+
+→ **Task 9a** et **Task 9b**. Le compte de vues est corrigé partout : **neuf**
+conteneurs (état, fil, tâches, documents, images actuelles, images projections, emails,
+carnet, projet) plus la vue Résultats de recherche.
+
+**T3 (corrige F17) — les URLs Cloudinary ne doivent pas être devinables.**
+
+R4 concluait « accessible seulement à qui connaît son URL exacte ». Avec un dossier fixe
+et un `public_id` dérivé du nom de fichier, `devis-terrasse-dupont.pdf` donne une URL
+**devinable**. Or ce qui part sur ce CDN public et sans authentification, ce sont des
+devis chiffrés et des `.eml` contenant adresses personnelles et coordonnées d'artisans —
+et R4 garantit qu'on ne pourra jamais les effacer.
+
+→ Sur le preset : **Use filename : Off** et **Unique filename : On**. Le `public_id`
+devient aléatoire. Gratuit, et à faire avant le premier téléversement.
+
+**T4 (corrige F18) — `atob()` rend du Latin-1, pas de l'UTF-8.**
+
+Un corps `base64` en `charset=UTF-8` — le cas normal d'un mail Gmail en français —
+ressort en `Ã©tÃ©`. Le piège est sournois : `parseOk` vaudrait `true`, donc la
+dégradation prévue en D2 **ne se déclencherait pas**. Même problème sur les en-têtes
+`=?UTF-8?B?...?=`.
+
+→ Passe explicite `decodeURIComponent(escape(atob(s)))`, ou `TextDecoder` si disponible.
+À tester avec un mail contenant des accents : c'est le premier cas à écrire.
+
+**T5 (corrige F19) — `multipart` imbriqué : un seul niveau géré.**
+
+Gmail imbrique `multipart/alternative` dans `multipart/mixed` dès qu'il y a une pièce
+jointe. Cadrage explicite pour éviter que la Task 5 s'étale : **un niveau
+d'imbrication**, `parseOk: false` au-delà, pièces jointes ignorées.
+
+**T6 (corrige F20) — `dateDemande` est éradiqué.**
+
+R7 l'avait remplacé par `campDepuis`, mais il survivait dans D16 et AC6. Un agent suivant
+les critères d'acceptation aurait recréé le champ supprimé. Corrigé aux deux endroits.
+
+**T7 (corrige F21) — `accept="image/*"` n'ouvre pas l'appareil photo.**
+
+iOS comme Android affichent un sélecteur. Forcer la caméra demande
+`capture="environment"`, mais on perd alors l'accès à la galerie. D15 et AC15
+promettaient un comportement impossible.
+
+→ **Deux entrées** dans la vue Images : « Prendre une photo » (avec `capture`) et
+« Choisir un fichier » (sans).
+
+**T8 (corrige F22) — l'amorçage doit utiliser `set(merge)` + `arrayUnion`.**
+
+Le document `_projet` n'existe pas au premier lancement : un `update()` lèverait
+`not-found` — l'amorçage R3/R6 échouerait précisément dans le cas qu'il est censé
+couvrir. Et un `set()` complet écraserait les notes de budget de l'autre.
+
+→ `set({ nosAdresses: FieldValue.arrayUnion(email) }, { merge: true })`. Idempotent, sûr
+en concurrence. **Effet de bord heureux : ça neutralise le risque « dernière écriture
+gagnante » de D10 sur ces deux tableaux.**
+
+**T9 (corrige F23) — l'amorçage utilise `HUB.user`, jamais `HUB.effectif`.**
+
+R6 disait `HUB.effectif.nom`, ce qui contredit D18. Sous impersonation, Alisson serait
+inscrite dans `intervenants` et son adresse dans `nosAdresses` sans s'être jamais
+connectée — cassant exactement la garantie vendue par R3 et R6, et faussant la déduction
+`envoye` / `recu`.
+
+**T10 (corrige F24) — le `sujet` est normalisé, sinon il ne groupe rien.**
+
+« terrasse », « Terrasse » et « Terasse » feraient trois blocs, alors qu'AC8 suppose le
+regroupement acquis. → clé de regroupement en minuscules accents pliés, plus un
+`<datalist>` des sujets déjà saisis pour éviter les variantes à la source.
+
+**T11 (corrige F25) — la barre de progression de `admin.js` est un placebo.**
+
+Elle passe à 30 % puis à 100 % : `fetch` ne donne pas la progression d'upload. Sur un PDF
+de 10 Mo depuis un téléphone, c'est trompeur. → `XMLHttpRequest.upload.onprogress`,
+une dizaine de lignes, pour une vraie mesure.
+
+**T12 (corrige F26) — le poids du snapshot, pas seulement le nombre de documents.**
+
+D5 justifiait « quelques centaines de documents, aucun enjeu ». Le raisonnement portait
+sur le *nombre*, pas la *taille* : avec le repli `emlBrut`, un email pèse 20 à 100 Ko, et
+`onSnapshot` retélécharge **tout** à chaque ouverture. → `corps` tronqué à 4 000
+caractères pour l'affichage courant, `emlBrut` **jamais** chargé dans le snapshot
+initial : lecture à la demande du seul document ouvert.
+
+**T13 (corrige F27, F28, F29)** — `projet` ajouté à la liste des types de D5 ; AC3
+reformulé pour refléter R8 (titre pré-rempli, refusé seulement s'il est vidé) ;
+`String.prototype.normalize` (ES6) explicitement autorisé pour la recherche, plutôt que
+de laisser réécrire une table de translittération.
+
+**T14 (corrige F30) — un `hub-utils.js` partagé.**
+
+`toDate` et `formatDateFr` en seraient à leur troisième copie. C'est exactement la
+duplication que la fiche notes signale déjà pour `auth.js` et `style.css`. → un fichier
+racine `hub-utils.js` chargé avant les pages, et `idees/idees.js` migré dessus dans la
+même tâche. Les tests existants attrapent la régression si la migration rate.
+
+**T15 (corrige F31)** — un critère d'acceptation sur `assigneA`, seule fonctionnalité
+vraiment « à deux » du lot, jusqu'ici non couverte.
 
 ## Implementation Plan
 
@@ -513,10 +652,21 @@ Champs propres à chaque type :
 
 ### Tasks
 
+- [ ] **Task 0 : Purger la collection `exterieur`** — *avant toute autre chose (T1)*
+  - File : aucun (console Firebase)
+  - Action : Firestore Database → collection `exterieur` → supprimer tous les documents
+    existants. Ils viennent de la coquille de test et n'ont pas de champ `type`.
+  - Notes : arbitré par Cyril le 28/07. Sans cette purge, ces documents restent en base,
+    invisibles dans toutes les vues (qui filtrent sur `type`), et facturés en lecture à
+    chaque ouverture. Le champ `periode` disparaît avec eux : le pilotage d'un chantier
+    n'a pas de rythme saisonnier.
+
 - [ ] **Task 1 : Créer le preset Cloudinary** — *action manuelle de Cyril, bloquante*
   - File : aucun (console Cloudinary)
   - Action : Settings → Upload → Add upload preset. Nom `ofildudoubs-hub`,
-    **Signing mode : Unsigned**, **Resource type : Auto**, dossier `hub/exterieur`.
+    **Signing mode : Unsigned**, **Resource type : Auto**, dossier `hub/exterieur`,
+    **Use filename : Off**, **Unique filename : On** (T3 — sans ça les URLs des devis et
+    des `.eml` sont devinables, et elles ne sont pas effaçables).
   - Notes : même compte `dxoyqxben`, second preset — pas un nouveau compte. Ne pas
     toucher au preset `billets-touristiques`, qui fait tourner l'autre site. Facultatif
     mais conseillé : *Max file size* à 10 Mo et liste de formats autorisés, pour limiter
@@ -540,7 +690,10 @@ Champs propres à chaque type :
     `supprimerElement` remplissant seuls la traçabilité (D18) ; `campParDefaut(type, sens)`
     (R1) ; `changerCamp(id, camp)` qui réécrit `campDepuis` (R7) ; `amorcerProjet()` qui
     ajoute l'adresse et le nom de la personne connectée à `nosAdresses` et `intervenants`
-    s'ils manquent (R3, R6), appelé une fois au démarrage.
+    s'ils manquent (R3, R6), appelé une fois au démarrage — via
+    `set({...: FieldValue.arrayUnion(v)}, {merge: true})` et **jamais** `update()`, qui
+    échouerait sur un document inexistant (T8), en lisant `HUB.user` et non
+    `HUB.effectif` (T9) ; `cleSujet(s)` qui normalise en minuscules accents pliés (T10).
   - Notes : `escapeHtml` et `showToast` viennent déjà de `auth.js`, ne pas les
     redéfinir. `jsAttr` est à recopier depuis `idees/idees.js` — c'est la fonction qui
     évite le bug des apostrophes dans les `onclick`.
@@ -553,7 +706,9 @@ Champs propres à chaque type :
     `.jpg`/`.jpeg`/`.png`/`.heic`/`.webp` = `image`, sinon `document` ; zone de dépôt
     `dragover` / `drop` + barre de progression ; `titreDepuisNomFichier(nom)` — extension
     retirée, tirets et soulignés en espaces, capitale initiale (R8) ; le bouton Ajouter
-    ouvre un choix court « Déposer un fichier » / « Écrire » (R2).
+    ouvre un choix court « Déposer un fichier » / « Écrire » (R2). Progression via
+    `XMLHttpRequest.upload.onprogress`, pas `fetch` — celle de `admin.js` affiche 30 %
+    puis 100 % sans rien mesurer (T11).
   - Notes : transposer `admin.js:291-345` de BilletsTouristiques en changeant
     `/image/upload` en `/auto/upload`. En cas d'échec réseau, afficher l'erreur et **ne
     pas** créer de document Firestore orphelin. **Premier test à faire : un vrai `.eml`**
@@ -565,6 +720,10 @@ Champs propres à chaque type :
   - Action : `analyserEml(texte)` → `{ de, a, objet, dateEnvoi, corps, parseOk }` ;
     `sensDepuisDe(de, nosAdresses)` → `envoye` si l'expéditeur figure dans la liste,
     `recu` sinon (R3). `dateEnvoi` alimente `dateEvenement` (R5).
+    **Décodage UTF-8 obligatoire** après `atob()`, qui rend du Latin-1 (T4) — sinon les
+    accents cassent avec `parseOk: true`, donc sans que la dégradation se déclenche.
+    `multipart` : **un seul niveau d'imbrication**, `parseOk: false` au-delà, pièces
+    jointes ignorées (T5).
     Découper en-têtes / corps sur la première ligne vide ; déplier les en-têtes
     repliés (lignes commençant par espace ou tabulation) ; décoder les en-têtes encodés
     `=?UTF-8?B?...?=` et `=?UTF-8?Q?...?=` ; pour un corps `multipart`, retenir la partie
@@ -576,12 +735,12 @@ Champs propres à chaque type :
 - [ ] **Task 6 : Coquille HTML et navigation par vues**
   - File : `exterieur/index.html` *(remplacement intégral)*
   - Action : `<body data-projet="exterieur" data-racine="../">` ; barre de sélection des
-    sept vues ; un conteneur `<div id="vue-*">` par vue ; champ de recherche global ;
+    neuf vues (T2) ; un conteneur `<div id="vue-*">` par vue ; champ de recherche global ;
     bouton **Ajouter** unique ; modales (élément, contact, lien, visionneuse d'image,
     suppression). CSP élargie : `https://api.cloudinary.com` en `connect-src`,
     `https://res.cloudinary.com` en `img-src` (D7). Scripts dans l'ordre : Firebase
     app/auth/firestore → `../config.js` → `../projets.js` → `../auth.js` →
-    `exterieur-donnees.js` → `exterieur-upload.js` → `exterieur-eml.js` → les six vues
+    `exterieur-donnees.js` → `exterieur-upload.js` → `exterieur-eml.js` → les huit fichiers de vues
     → `exterieur.js`.
   - Notes : les PDF s'ouvrent dans un onglet (`target="_blank"`), jamais en `<iframe>` —
     ça évite de toucher `frame-src`.
@@ -593,7 +752,9 @@ Champs propres à chaque type :
     chargement, `etat` par défaut ; `hashchange` géré ; la recherche filtre l'ensemble
     des éléments et bascule sur une vue « Résultats » quand elle est non vide.
   - Notes : la recherche balaie `titre`, `corps`, `objet`, `commentaire`, `nom`,
-    `prenom`, `entreprise`, `sujet`, `de`, `a`. Insensible à la casse et aux accents.
+    `prenom`, `entreprise`, `sujet`, `de`, `a`. Insensible à la casse et aux accents via
+    `String.prototype.normalize('NFD')` — **ES6 explicitement autorisé ici** (T13),
+    plutôt qu'une table de translittération écrite à la main.
 
 - [ ] **Task 8 : Vue « Où on en est » (vue par défaut)**
   - File : `exterieur/exterieur-etat.js` *(nouveau)*
@@ -616,13 +777,28 @@ Champs propres à chaque type :
     adaptée à chaque type.
   - Notes : exclure `contact`, `lien` et `projet` — ce ne sont pas des événements (D5).
 
+- [ ] **Task 9a : Vue Tâches** *(T2)*
+  - File : `exterieur/exterieur-taches.js` *(nouveau)*
+  - Action : liste des `type = tache`, triable par échéance et par `assigneA`, filtres
+    par `camp`, échéances dépassées signalées, création et édition en modale.
+  - Notes : un fil chronologique ne permet ni le tri par échéance ni le regroupement par
+    personne — c'est ce qui justifie une vue propre plutôt qu'un filtre.
+
+- [ ] **Task 9b : Vue Documents** *(T2)*
+  - File : `exterieur/exterieur-documents.js` *(nouveau)*
+  - Action : les documents **groupés par `sujet`** (clé normalisée, T10), les devis d'un
+    même sujet alignés côte à côte, avec date, contact lié et lien d'ouverture.
+  - Notes : c'est la vue qui répond à « on est sur le point de choisir une presta ».
+    Disperser les devis dans l'ordre chronologique rendrait la comparaison impraticable.
+
 - [ ] **Task 10 : Vues Images**
   - File : `exterieur/exterieur-images.js` *(nouveau)*
   - Action : deux vues (`actuelle`, `projection`) en grille de vignettes, visionneuse
     plein écran au clic, bascule de catégorie sans réuploader, dépôt avec
-    `<input type="file" accept="image/*">`.
-  - Notes : `accept="image/*"` ouvre directement l'appareil photo sur mobile (D15).
-    Vignettes via les transformations Cloudinary (`w_400,f_auto,q_auto`) pour ne pas
+    **deux entrées distinctes** : « Prendre une photo » (`capture="environment"`) et
+    « Choisir un fichier » (`accept="image/*"` seul) — `accept` seul n'ouvre pas la
+    caméra, il ouvre un sélecteur (T7).
+  - Notes : vignettes via les transformations Cloudinary (`w_400,f_auto,q_auto`) pour ne pas
     télécharger les originaux dans la grille.
 
 - [ ] **Task 11 : Vue Emails**
@@ -671,6 +847,14 @@ Champs propres à chaque type :
     une fonction pure, il se teste sans DOM ni réseau — c'est là que doit porter
     l'essentiel de l'effort.
 
+- [ ] **Task 15b : Fichier utilitaire partagé** *(T14)*
+  - File : `hub-utils.js` *(nouveau, à la racine)*, `idees/idees.js`
+  - Action : y déplacer `toDate`, `formatDateFr`, `escapeAttr`, `jsAttr` ; charger le
+    fichier avant les scripts de page ; migrer `idees/idees.js` dessus.
+  - Notes : sans ça, `toDate` et `formatDateFr` en seraient à leur troisième copie —
+    la duplication que la fiche notes signale déjà pour `auth.js` et `style.css`.
+    `tests/test-idees.js` attrape la régression si la migration rate.
+
 - [ ] **Task 16 : Documentation et registre**
   - File : `projets.js`, `README.md`
   - Action : mettre à jour la description du projet `exterieur` dans le registre ;
@@ -691,15 +875,16 @@ Champs propres à chaque type :
   les tests automatisés (F14).*
 - [ ] **AC3** — Étant donné un fichier `devis-terrasse.pdf` déposé sur la zone Ajouter,
   quand le dépôt se termine, alors un élément de type `document` est créé, le titre est
-  demandé et refusé s'il est vide, et le PDF s'ouvre dans un nouvel onglet.
+  **déjà pré-rempli** depuis le nom du fichier et n'est refusé que s'il est vidé (R8,
+  T13), et le PDF s'ouvre dans un nouvel onglet.
 - [ ] **AC4** — Étant donné un `.eml` exporté de Gmail, quand il est déposé, alors
   expéditeur, destinataires, objet, date et corps sont pré-remplis sans aucune saisie, et
   `parseOk` vaut `true`.
 - [ ] **AC5** — Étant donné un `.eml` d'un format non géré, quand il est déposé, alors
   aucune erreur n'est levée, le fichier est conservé, `parseOk` vaut `false`, et
   l'élément apparaît avec un avertissement et des champs éditables.
-- [ ] **AC6** — Étant donné un élément `camp = a_eux` dont `dateDemande` remonte à
-  18 jours, quand on ouvre la vue « Où on en est », alors il apparaît dans « En attente
+- [ ] **AC6** — Étant donné un élément basculé en `camp = a_eux` il y a 18 jours
+  (`campDepuis`, T6), quand on ouvre la vue « Où on en est », alors il apparaît dans « En attente
   d'eux » avec « 18 jours » et un badge « à relancer ».
 - [ ] **AC7** — Étant donné le même élément passé à `camp = a_nous`, quand la vue se
   rafraîchit, alors il quitte « En attente d'eux » et rejoint « À nous » — sans
@@ -722,8 +907,10 @@ Champs propres à chaque type :
   alors elle voit le texte à jour ainsi que « modifié par cyril… le … ».
 - [ ] **AC14** — Étant donné Cyril en impersonation d'Alisson, quand il crée un élément,
   alors `creePar` contient **l'adresse de Cyril**, pas celle d'Alisson (D18).
-- [ ] **AC15** — Étant donné un mobile, quand on appuie sur Ajouter dans la vue Images,
-  alors l'appareil photo s'ouvre directement et la photo prise est téléversée.
+- [ ] **AC15** — Étant donné un mobile, quand on appuie sur « Prendre une photo » dans la
+  vue Images, alors la caméra s'ouvre (`capture`) ; et quand on appuie sur « Choisir un
+  fichier », alors la galerie s'ouvre. Deux entrées distinctes, parce qu'`accept` seul
+  n'ouvre pas la caméra (T7).
 - [ ] **AC16** — Étant donné un échec réseau pendant le téléversement, quand l'erreur
   survient, alors un message l'indique et **aucun document Firestore orphelin** n'est
   créé.
@@ -755,6 +942,22 @@ Champs propres à chaque type :
 - [ ] **AC26** — Étant donné un contact supprimé alors que des éléments le référencent,
   quand on ouvre le fil, alors ces éléments s'affichent sans planter, avec la mention
   « contact supprimé ». (F10)
+- [ ] **AC27** — Étant donné une tâche assignée à Alisson, quand Cyril ouvre la vue
+  Tâches, alors il peut filtrer sur « Alisson » et la voit ; et le tableau de bord affiche
+  l'assignation sur la carte. (D13, T15)
+- [ ] **AC28** — Étant donné un `.eml` en `base64` / `charset=UTF-8` contenant « été »,
+  quand il est analysé, alors le corps affiche « été » et non « Ã©tÃ© ». (T4)
+- [ ] **AC29** — Étant donné une base où `_projet` n'existe pas, quand une personne ouvre
+  le projet, alors le document est créé avec son adresse et son nom, sans erreur
+  `not-found`, et sans écraser les notes de budget d'une écriture concurrente. (T8)
+- [ ] **AC30** — Étant donné trois devis saisis « terrasse », « Terrasse » et « TERRASSE »,
+  quand on ouvre la vue Documents, alors ils forment **un seul** groupe. (T10)
+- [ ] **AC31** — Étant donné la collection purgée (Task 0), quand on ouvre le projet pour
+  la première fois, alors aucune tâche de l'ancienne coquille n'apparaît et aucun document
+  sans `type` ne subsiste en base. (T1)
+- [ ] **AC32** — Étant donné `hub-utils.js` en place, quand on lance
+  `node tests/run-tests.js`, alors `test-idees.js` passe toujours — la migration des
+  utilitaires n'a rien cassé. (T14)
 
 ## Additional Context
 
@@ -796,6 +999,11 @@ console.
    assumé, non corrigé (D10).
 5. **Aucune sauvegarde Firestore sur le plan gratuit.** Même limite que la page Idées.
    Un export JSON équivalent devra être prévu ici aussi — noté comme suite.
+6. **Le stockage Cloudinary est public par URL et non effaçable.** Durci par T3 (URLs
+   aléatoires), mais la nature du service ne change pas : ne pas y déposer ce qu'on
+   pourrait vouloir faire disparaître pour de bon.
+7. **Le poids du snapshot, pas son nombre de documents.** Traité par T12 (corps tronqué,
+   `emlBrut` hors chargement initial), à re-mesurer une fois cinquante emails archivés.
 
 **Limites connues**
 
