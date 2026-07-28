@@ -1,0 +1,39 @@
+// ============================================================
+// RÈGLES DE SÉCURITÉ FIRESTORE — Hub O'Fil du Doubs
+// ============================================================
+// C'est ICI qu'est la vraie barrière de sécurité : le filtre par
+// email dans config.js n'est qu'un confort d'interface, tout le
+// monde peut lire le JavaScript d'une page publique. Ces règles,
+// elles, sont appliquées par Google côté serveur.
+//
+// Déploiement (console Firebase) :
+//   1. https://console.firebase.google.com → projet du hub
+//   2. Firestore Database → onglet « Règles »
+//   3. Copier-coller ce fichier, puis « Publier »
+//
+// À maintenir en phase avec ALLOWED_EMAILS de config.js.
+// ============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Le propriétaire du hub, et lui seul.
+    function isOwner() {
+      return request.auth != null
+          && request.auth.token.email_verified == true
+          && request.auth.token.email == 'cyril.samson41@gmail.com';
+    }
+
+    // Carnet d'idées / projets
+    match /idees/{ideeId} {
+      allow read, write: if isOwner();
+    }
+
+    // Tout le reste est fermé. Une nouvelle collection doit être
+    // déclarée explicitement au-dessus pour devenir accessible.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

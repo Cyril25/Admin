@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://cdnjs.cloudflare.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; img-src 'self' data: https://lh3.googleusercontent.com; connect-src 'self' https://www.gstatic.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://www.googleapis.com https://accounts.google.com; frame-src 'self' https://*.firebaseapp.com https://apis.google.com https://accounts.google.com;">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="description" content="Hub O'Fil du Doubs — point d'entrée de mes projets.">
+    <title>Accueil — Hub O'Fil du Doubs</title>
+    <link rel="icon" href="icon.svg" type="image/svg+xml">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="header-placeholder"></div>
+
+    <div id="app-content" class="page" style="display:none">
+
+        <div class="page-header">
+            <h1><i class="fa-solid fa-compass-drafting"></i> Le centre de mes projets</h1>
+        </div>
+
+        <p class="section-title">Suivi</p>
+        <div class="tiles">
+            <a class="tile" href="idees.html">
+                <div class="tile-icon"><i class="fa-solid fa-lightbulb"></i></div>
+                <h2>Idées / Projets</h2>
+                <p>Le carnet d'idées : importance, complexité, état d'avancement, tous projets confondus.</p>
+            </a>
+        </div>
+
+        <p class="section-title">Sites en ligne</p>
+        <div class="tiles">
+            <a class="tile" href="https://ofildudoubs.fr" target="_blank" rel="noopener">
+                <div class="tile-icon"><i class="fa-solid fa-house-chimney"></i></div>
+                <h2>O'Fil du Doubs</h2>
+                <p>Site vitrine du gîte de Labergement-Sainte-Marie.</p>
+                <span class="tile-url">ofildudoubs.fr</span>
+            </a>
+            <a class="tile" href="https://lefuverat.ofildudoubs.fr" target="_blank" rel="noopener">
+                <div class="tile-icon"><i class="fa-solid fa-tree"></i></div>
+                <h2>Le Fuverat</h2>
+                <p>Site vitrine du second hébergement.</p>
+                <span class="tile-url">lefuverat.ofildudoubs.fr</span>
+            </a>
+            <a class="tile" href="https://cyril25.github.io/BilletsTouristiques/" target="_blank" rel="noopener">
+                <div class="tile-icon"><i class="fa-solid fa-ticket"></i></div>
+                <h2>Billets Touristiques</h2>
+                <p>Gestion de collection du groupe — le seul projet en équipe.</p>
+                <span class="tile-url">cyril25.github.io/BilletsTouristiques</span>
+            </a>
+            <a class="tile" href="https://collections.ofildudoubs.fr" target="_blank" rel="noopener">
+                <div class="tile-icon"><i class="fa-solid fa-boxes-stacked"></i></div>
+                <h2>Collections</h2>
+                <p>Coquille en place, contenu à définir.</p>
+                <span class="tile-url">collections.ofildudoubs.fr</span>
+            </a>
+            <a class="tile" href="https://lephare.ofildudoubs.fr" target="_blank" rel="noopener">
+                <div class="tile-icon"><i class="fa-solid fa-martini-glass"></i></div>
+                <h2>Le Phare <span class="badge">standby</span></h2>
+                <p>POC de site vitrine, en attente de débranchement (DNS → domaine custom → privé).</p>
+                <span class="tile-url">lephare.ofildudoubs.fr</span>
+            </a>
+        </div>
+
+        <p class="section-title">Consoles</p>
+        <div class="tiles">
+            <a class="tile" href="https://github.com/Cyril25?tab=repositories" target="_blank" rel="noopener">
+                <div class="tile-icon"><i class="fa-brands fa-github"></i></div>
+                <h2>GitHub</h2>
+                <p>Dépôts et GitHub Pages.</p>
+            </a>
+            <a class="tile" href="https://dash.cloudflare.com" target="_blank" rel="noopener">
+                <div class="tile-icon"><i class="fa-brands fa-cloudflare"></i></div>
+                <h2>Cloudflare</h2>
+                <p>DNS de ofildudoubs.fr et Workers.</p>
+            </a>
+            <a class="tile" href="https://console.firebase.google.com" target="_blank" rel="noopener">
+                <div class="tile-icon"><i class="fa-solid fa-fire"></i></div>
+                <h2>Firebase</h2>
+                <p>Authentification et Firestore de ce hub.</p>
+            </a>
+            <a class="tile" href="https://supabase.com/dashboard" target="_blank" rel="noopener">
+                <div class="tile-icon"><i class="fa-solid fa-database"></i></div>
+                <h2>Supabase</h2>
+                <p>Base de données de Billets Touristiques.</p>
+            </a>
+        </div>
+
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js" integrity="sha384-v3Z/Xdw1sCeo6M/geW7sn1Lt9obIm7MhAk8laVV+rvYFmzuWDELOiygx7dVte2dX" crossorigin="anonymous"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js" integrity="sha384-p62xBRve8PdqGDGASZtZMuHgPsyPcT5VsFwgmz2p4zaFdEtt5ZzNqxK+CLzQS7xP" crossorigin="anonymous"></script>
+    <script src="config.js"></script>
+    <script src="auth.js"></script>
+</body>
+</html>
