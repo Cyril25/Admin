@@ -99,29 +99,36 @@ function estMoi(email) {
 // ------------------------------------------------------------
 // 3. Cases à cocher des projets
 // ------------------------------------------------------------
-function construireCasesProjets() {
-    var wrap = document.getElementById('f-projets');
+// Les deux groupes de cases fonctionnent pareil ; seule la source
+// change (registre des projets ou registre des sites).
+function construireCases(idConteneur, classe, entrees) {
+    var wrap = document.getElementById(idConteneur);
     if (!wrap) return;
-    wrap.innerHTML = PROJETS.map(function(p) {
+    wrap.innerHTML = entrees.map(function(e) {
         return '<label class="checkbox-inline">'
-            + '<input type="checkbox" class="cb-projet" value="' + escapeAttr(p.slug) + '"> '
-            + '<i class="' + p.icone + '"></i> ' + escapeHtml(p.nom)
+            + '<input type="checkbox" class="' + classe + '" value="' + escapeAttr(e.slug) + '"> '
+            + '<i class="' + e.icone + '"></i> ' + escapeHtml(e.nom)
             + '</label>';
     }).join('');
 }
 
-function lireCasesProjets() {
+function construireCasesProjets() {
+    construireCases('f-projets', 'cb-projet', PROJETS);
+    construireCases('f-sites', 'cb-site', SITES);
+}
+
+function lireCases(classe) {
     var coches = [];
-    var cases = document.querySelectorAll('.cb-projet');
+    var cases = document.querySelectorAll('.' + classe);
     for (var i = 0; i < cases.length; i++) {
         if (cases[i].checked) coches.push(cases[i].value);
     }
     return coches;
 }
 
-function ecrireCasesProjets(slugs) {
+function ecrireCases(classe, slugs) {
     var liste = slugs || [];
-    var cases = document.querySelectorAll('.cb-projet');
+    var cases = document.querySelectorAll('.' + classe);
     for (var i = 0; i < cases.length; i++) {
         cases[i].checked = (liste.indexOf(cases[i].value) !== -1);
     }
@@ -131,16 +138,29 @@ function ecrireCasesProjets(slugs) {
 // au lieu de laisser croire que les cases limitent quelque chose.
 function majApercuRole() {
     var estSuper = document.getElementById('f-role').value === 'superadmin';
-    var wrap = document.getElementById('f-projets');
-    var aide = document.getElementById('f-projets-hint');
-    var cases = document.querySelectorAll('.cb-projet');
-    for (var i = 0; i < cases.length; i++) cases[i].disabled = estSuper;
-    if (wrap) wrap.classList.toggle('projets-checkboxes--inactif', estSuper);
-    if (aide) {
-        aide.textContent = estSuper
+
+    grisemeGroupe('f-projets', 'cb-projet', estSuper);
+    grisemeGroupe('f-sites', 'cb-site', estSuper);
+
+    var aideProjets = document.getElementById('f-projets-hint');
+    if (aideProjets) {
+        aideProjets.textContent = estSuper
             ? 'Un superadmin accède à tous les projets, présents et futurs — ces cases ne s\'appliquent pas.'
             : 'La personne ne verra que ce qui est coché : ni menu, ni tuile, ni données pour le reste.';
     }
+    var aideSites = document.getElementById('f-sites-hint');
+    if (aideSites) {
+        aideSites.textContent = estSuper
+            ? 'Un superadmin voit tous les sites, présents et futurs.'
+            : 'Simples raccourcis sur son accueil. Les masquer ne protège rien : ces sites ont leur propre accès.';
+    }
+}
+
+function grisemeGroupe(idConteneur, classe, inactif) {
+    var wrap = document.getElementById(idConteneur);
+    var cases = document.querySelectorAll('.' + classe);
+    for (var i = 0; i < cases.length; i++) cases[i].disabled = inactif;
+    if (wrap) wrap.classList.toggle('projets-checkboxes--inactif', inactif);
 }
 
 // ------------------------------------------------------------
@@ -208,7 +228,26 @@ function renderCarte(m) {
         +   '</div>'
         + '</div>'
         + '<div class="membre-projets">' + badgesProjets + '</div>'
+        + '<div class="membre-projets">' + badgesSites(m, estSuper) + '</div>'
         + '</div>';
+}
+
+// Les sites sont des raccourcis : on les affiche en retrait des projets,
+// pour qu'on ne confonde pas un droit sur des données avec un lien.
+function badgesSites(m, estSuper) {
+    if (estSuper) {
+        return '<span class="badge badge-site"><i class="fa-solid fa-globe"></i>Tous les sites</span>';
+    }
+    if (!m.sites || !m.sites.length) {
+        return '<span class="badge badge-site badge-site--vide">Aucun site</span>';
+    }
+    return m.sites.map(function(slug) {
+        var s = getSite(slug);
+        return '<span class="badge badge-site">'
+            + (s ? '<i class="' + s.icone + '"></i>' + escapeHtml(s.nom)
+                 : '<i class="fa-solid fa-triangle-exclamation"></i>' + escapeHtml(slug) + ' (inconnu)')
+            + '</span>';
+    }).join('');
 }
 
 // ------------------------------------------------------------
@@ -232,7 +271,8 @@ function ouvrirModale(email) {
     document.getElementById('f-nom').value = m ? (m.nom || '') : '';
     document.getElementById('f-role').value = m ? (m.role || 'membre') : 'membre';
     document.getElementById('f-actif').checked = m ? (m.actif !== false) : true;
-    ecrireCasesProjets(m ? m.projets : []);
+    ecrireCases('cb-projet', m ? m.projets : []);
+    ecrireCases('cb-site', m ? m.sites : []);
     majApercuRole();
 
     document.getElementById('btn-delete').style.display = (m && !estMoi(m.email)) ? '' : 'none';
@@ -265,7 +305,8 @@ function sauverMembre() {
         role:      role,
         // Un superadmin a tout : on stocke une liste vide plutôt qu'une
         // liste figée qui deviendrait fausse au prochain projet.
-        projets:   (role === 'superadmin') ? [] : lireCasesProjets(),
+        projets:   (role === 'superadmin') ? [] : lireCases('cb-projet'),
+        sites:     (role === 'superadmin') ? [] : lireCases('cb-site'),
         actif:     document.getElementById('f-actif').checked,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
@@ -293,6 +334,7 @@ function creerFicheProprietaire() {
         nom:       'Cyril',
         role:      'superadmin',
         projets:   [],
+        sites:     [],
         actif:     true,
         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()

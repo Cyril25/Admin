@@ -29,42 +29,14 @@
             <p>Aucun projet ne vous est encore attribué.</p>
         </div>
 
+        <!-- Sites : filtrés par les droits de la personne -->
+        <div id="bloc-sites" style="display:none">
+            <p class="section-title">Sites</p>
+            <div class="tiles" id="tuiles-sites"></div>
+        </div>
+
         <!-- Réservé au superadmin -->
         <div id="bloc-superadmin" style="display:none">
-            <p class="section-title">Sites en ligne</p>
-            <div class="tiles">
-                <a class="tile" href="https://ofildudoubs.fr" target="_blank" rel="noopener">
-                    <div class="tile-icon"><i class="fa-solid fa-house-chimney"></i></div>
-                    <h2>O'Fil du Doubs</h2>
-                    <p>Site vitrine du gîte de Labergement-Sainte-Marie.</p>
-                    <span class="tile-url">ofildudoubs.fr</span>
-                </a>
-                <a class="tile" href="https://lefuverat.ofildudoubs.fr" target="_blank" rel="noopener">
-                    <div class="tile-icon"><i class="fa-solid fa-tree"></i></div>
-                    <h2>Le Fuverat</h2>
-                    <p>Site vitrine du second hébergement.</p>
-                    <span class="tile-url">lefuverat.ofildudoubs.fr</span>
-                </a>
-                <a class="tile" href="https://cyril25.github.io/BilletsTouristiques/" target="_blank" rel="noopener">
-                    <div class="tile-icon"><i class="fa-solid fa-ticket"></i></div>
-                    <h2>Billets Touristiques</h2>
-                    <p>Gestion de collection du groupe — le seul projet en équipe.</p>
-                    <span class="tile-url">cyril25.github.io/BilletsTouristiques</span>
-                </a>
-                <a class="tile" href="https://collections.ofildudoubs.fr" target="_blank" rel="noopener">
-                    <div class="tile-icon"><i class="fa-solid fa-boxes-stacked"></i></div>
-                    <h2>Collections</h2>
-                    <p>Coquille en place, contenu à définir.</p>
-                    <span class="tile-url">collections.ofildudoubs.fr</span>
-                </a>
-                <a class="tile" href="https://lephare.ofildudoubs.fr" target="_blank" rel="noopener">
-                    <div class="tile-icon"><i class="fa-solid fa-martini-glass"></i></div>
-                    <h2>Le Phare <span class="badge">standby</span></h2>
-                    <p>POC de site vitrine, en attente de débranchement (DNS → domaine custom → privé).</p>
-                    <span class="tile-url">lephare.ofildudoubs.fr</span>
-                </a>
-            </div>
-
             <p class="section-title">Consoles</p>
             <div class="tiles">
                 <a class="tile" href="https://github.com/Cyril25?tab=repositories" target="_blank" rel="noopener">
@@ -102,6 +74,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js" integrity="sha384-3LctmFHtNDZwkVOSZ0fvJZJD9XR5Og5ol/MVEfNt36gUUnSYBRJN0iFjIMbFecOg" crossorigin="anonymous"></script>
     <script src="config.js"></script>
     <script src="projets.js"></script>
+    <script src="sites.js"></script>
     <script src="auth.js"></script>
     <script src="accueil.js"></script>
 </body>

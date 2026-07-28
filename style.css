@@ -789,6 +789,15 @@ body.login-page {
     margin-top: var(--spacing-sm);
 }
 
+/* Les sites sont des raccourcis, pas des droits sur des données :
+   badge plus discret que celui des projets, pour ne pas les confondre. */
+.badge-site {
+    background: #fff;
+    color: var(--color-text-muted);
+    border: 1px solid var(--color-border-light);
+}
+.badge-site--vide { color: var(--color-text-disabled); font-style: italic; }
+
 .badge-superadmin { background: #E3EDF5; color: #2C4A63; font-weight: 700; }
 .badge-moi        { background: var(--color-accent); color: #fff; }
 .badge-inactif    { background: #F0F2F4; color: #8A94A0; }

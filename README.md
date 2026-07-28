@@ -13,6 +13,7 @@ dans Firestore.
 |---|---|
 | `config.js` | Config Firebase + adresse du propriétaire |
 | `projets.js` | **Registre des projets** — source unique du menu, des tuiles et des droits |
+| `sites.js` | Registre des sites en ligne (raccourcis de l'accueil) |
 | `auth.js` | Le vigile : garde des pages, droits, en-tête, impersonation |
 | `login.html` | Page de connexion Google |
 | `index.html` / `accueil.js` | Accueil, construit d'après les droits de la personne |
@@ -31,6 +32,12 @@ dans Firestore.
   propre document.
 - **Membre** — ne voit que les projets cochés sur sa fiche. Menu, tuiles d'accueil
   et accès aux données sont filtrés ensemble.
+
+**Projets et sites sont deux choses différentes.** Un *projet* est une page du hub
+adossée à une collection Firestore : le droit y protège de vraies données. Un *site*
+n'est qu'un lien externe posé sur l'accueil : le cocher ou non ne relève que du confort
+d'affichage, ces sites ayant leur propre protection. D'où deux listes séparées sur la
+fiche membre — et aucune règle Firestore à écrire pour un site.
 
 ### ⚠ Ce que la garde JavaScript ne fait pas
 
@@ -77,7 +84,8 @@ l'appelant en une lecture, sans requête.
 |---|---|---|
 | `nom` | string | Nom affiché |
 | `role` | string | `membre` / `superadmin` |
-| `projets` | array | Slugs autorisés (vide pour un superadmin, qui a tout) |
+| `projets` | array | Slugs de projets autorisés (vide pour un superadmin, qui a tout) |
+| `sites` | array | Slugs de sites visibles sur son accueil (vide pour un superadmin) |
 | `actif` | bool | `false` = refusé à la connexion, droits conservés |
 | `createdAt`, `updatedAt` | timestamp | Horodatage serveur |
 

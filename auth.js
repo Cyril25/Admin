@@ -102,10 +102,28 @@ function projetsVisibles() {
     return PROJETS.filter(function(p) { return aAcces(p.slug); });
 }
 
+// Les sites sont de simples liens externes : les masquer relève de la
+// pertinence du menu, pas de la sécurité. D'où une liste séparée de
+// celle des projets, et aucune règle Firestore associée.
+function aAccesSite(slug) {
+    if (!HUB.effectif) return false;
+    if (HUB.effectif.role === 'superadmin') return true;
+    var liste = HUB.effectif.sites || [];
+    return liste.indexOf(slug) !== -1;
+}
+
+function sitesVisibles() {
+    // sites.js n'est chargé que sur les pages qui en ont besoin.
+    if (typeof SITES === 'undefined') return [];
+    return SITES.filter(function(s) { return aAccesSite(s.slug); });
+}
+
 window.estSuperadminReel = estSuperadminReel;
 window.estSuperadmin = estSuperadmin;
 window.aAcces = aAcces;
 window.projetsVisibles = projetsVisibles;
+window.aAccesSite = aAccesSite;
+window.sitesVisibles = sitesVisibles;
 
 // ------------------------------------------------------------
 // 4. Impersonation
