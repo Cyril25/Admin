@@ -22,6 +22,7 @@ dans Firestore.
 | `exterieur/` | Projet « Extérieur de la maison » |
 | `style.css` | Feuille de styles unique |
 | `firestore.rules` | Règles de sécurité à publier dans la console Firebase |
+| `tests/` | Tests hors navigateur — `node tests/run-tests.js` |
 | `CNAME` | Domaine custom GitHub Pages |
 
 ### Rôles et accès
@@ -157,6 +158,15 @@ l'interface l'ajoute généralement toute seule, vérifier après validation.
 
 Un CNAME ne peut pas coexister avec un autre enregistrement sur le même sous-domaine :
 si OVH refuse, c'est qu'une entrée `admin` existe déjà, il faut la supprimer d'abord.
+
+## Tests
+
+```bash
+node tests/run-tests.js
+```
+
+Aucune installation nécessaire. Voir `tests/README.md` pour ce qui est couvert — et
+surtout pour ce qui ne l'est pas (les règles Firestore ne s'exécutent que chez Google).
 
 ## Développement local
 
