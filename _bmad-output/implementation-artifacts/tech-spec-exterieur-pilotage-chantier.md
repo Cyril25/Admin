@@ -384,6 +384,97 @@ impersonation, les écritures partent bel et bien avec le jeton du superadmin : 
 l'identité impersonnée ferait mentir la trace.
 
 
+## Révisions après revue adversariale (2026-07-28)
+
+La revue a mis au jour un déséquilibre : les vues étaient sur-spécifiées, la **saisie**
+sous-spécifiée. Les huit corrections ci-dessous portent toutes sur ce point. Elles
+priment sur les décisions D1–D18 en cas de contradiction.
+
+**R1 (corrige F1) — `camp` est déduit à la création, jamais demandé.**
+
+| Contexte de création | `camp` initial |
+|---|---|
+| Email dont le sens est `envoye` | `a_eux` — on attend une réponse |
+| Email dont le sens est `recu` | `a_nous` — on doit traiter |
+| Document (devis reçu) | `a_nous` — à lire et comparer |
+| Tâche | `a_nous` |
+| Image, note, contact, lien | *aucun* — non actionnable |
+
+Sur chaque carte du tableau de bord, trois boutons permettent de corriger en **un clic** :
+« c'est à eux » / « c'est à nous » / « réglé ». Aucune saisie obligatoire à la création,
+correction immédiate quand la déduction se trompe. C'est ce qui rend le pivot du produit
+compatible avec D12.
+
+**R2 (corrige F2) — le bouton Ajouter ouvre un choix court, pas seulement une zone de
+dépôt.**
+
+Deux entrées : **Déposer un fichier** (zone glisser-déposer, chemin principal) et
+**Écrire** → tâche ou note. Les contacts et les liens ne passent pas par ce bouton : ils
+se créent depuis la vue Carnet, là où on les cherche. Le bouton reste unique, il ne
+prétend simplement plus que tout est un fichier.
+
+**R3 (corrige F3) — le sens d'un email se déduit d'une liste `nosAdresses`
+auto-alimentée.**
+
+La fiche projet porte `nosAdresses`, un tableau d'adresses email. À chaque ouverture du
+projet, l'adresse de la personne connectée y est ajoutée si elle en est absente : au bout
+d'une visite chacun, la liste est complète **sans aucune saisie**. L'analyseur compare
+l'en-tête `De` à cette liste — correspondance = `envoye`, sinon `recu`. Un bouton bascule
+le sens en un clic si la déduction se trompe.
+
+Ce mécanisme d'auto-amorçage lève au passage l'objection de D17 : le code n'a jamais
+besoin de lire l'annuaire des membres, chaque personne renseigne la sienne en se
+connectant.
+
+**R4 (corrige F4) — les fichiers Cloudinary ne sont PAS supprimés, et c'est une limite
+technique assumée.**
+
+Supprimer un fichier chez Cloudinary exige la clé secrète du compte. La mettre dans une
+page publique reviendrait à la publier ; un Worker dédié serait de l'infrastructure en
+plus, hors périmètre. Donc : supprimer un élément supprime **le document Firestore
+uniquement**. Le fichier demeure sur Cloudinary, sans lien nulle part, accessible
+seulement à qui connaît son URL exacte.
+
+Conséquences à documenter dans le README : le stockage grossit lentement sans jamais
+diminuer, et **une suppression n'est pas un effacement** — ne pas téléverser ici ce
+qu'on pourrait vouloir effacer réellement. Ménage manuel possible depuis la console
+Cloudinary.
+
+**R5 (corrige F5) — deux dates distinctes, et chacune son usage.**
+
+- `dateEvenement` — **quand la chose s'est produite** : date d'envoi extraite du `.eml`,
+  date saisie sur un devis, à défaut la date d'archivage. **C'est elle qui ordonne le
+  fil.**
+- `creeLe` — **quand on l'a archivé**. C'est elle qui alimente le bloc « Mouvement » du
+  tableau de bord.
+
+Sans cette distinction, archiver dix vieux mails d'un coup les propulserait en tête du
+fil, et « 10 éléments cette semaine » laisserait croire à une activité qui n'a pas eu
+lieu. Les deux lectures sont légitimes, elles ne doivent simplement pas être confondues.
+
+*Les photos gardent `creeLe` comme `dateEvenement` : lire une date EXIF sans
+bibliothèque n'en vaut pas le coût.*
+
+**R6 (corrige F6) — `intervenants` s'auto-alimente, comme `nosAdresses`.**
+
+Même mécanisme que R3 : à l'ouverture, le nom de la personne connectée
+(`HUB.effectif.nom`, à défaut la partie gauche de son email) est ajouté à `intervenants`
+s'il en est absent. L'assignation fonctionne donc dès la première visite, sans fiche
+projet préalable. La liste reste modifiable à la main.
+
+**R7 (corrige F7) — `dateDemande` est supprimée, remplacée par `campDepuis`.**
+
+`campDepuis` est un horodatage réécrit automatiquement **à chaque changement de `camp`**.
+L'ancienneté affichée devient « à eux depuis 18 jours », comptés depuis la bascule
+elle-même. Exact, gratuit, et aucun champ à remplir. Un champ de saisie de moins.
+
+**R8 (corrige F8) — le titre est pré-rempli à partir du nom de fichier.**
+
+`devis-terrasse-dupont.pdf` devient « Devis terrasse dupont » : extension retirée, tirets
+et soulignés changés en espaces, première lettre en capitale. Le champ reste modifiable,
+et n'est refusé que s'il finit réellement vide. Le cas courant redevient un seul geste,
+ce qui réconcilie D6 et D12.
+
 ## Implementation Plan
 
 ### Modèle de données — collection `exterieur`
@@ -395,14 +486,15 @@ Un seul tiroir, discriminé par `type`. Champs communs à tous les documents :
 | `type` | string | `tache` / `email` / `document` / `image` / `note` / `contact` / `lien` / `projet` |
 | `titre` | string | Obligatoire pour `document`, `tache`, `lien` ; dérivé pour `email` et `image` |
 | `creePar`, `modifiePar` | string | Email de l'utilisateur **réel** (voir D18) |
-| `creeLe`, `modifieLe` | timestamp | Horodatage serveur |
+| `creeLe`, `modifieLe` | timestamp | Horodatage serveur — `creeLe` = date d'**archivage** |
+| `dateEvenement` | timestamp | Quand la chose s'est **produite** ; ordonne le fil (R5) |
 
 Champs des éléments **actionnables** (`tache`, `document`, `email`) :
 
 | Champ | Type | Détail |
 |---|---|---|
 | `camp` | string | `a_nous` / `a_eux` / `clos` — absent = non actionnable |
-| `dateDemande` | timestamp | Point de départ du compteur d'ancienneté quand `camp = a_eux` |
+| `campDepuis` | timestamp | Réécrit **automatiquement** à chaque changement de `camp` ; base du calcul d'ancienneté (R7) |
 | `dateEcheance` | timestamp | Facultatif, tâches surtout |
 | `assigneA` | string | Étiquette issue de `intervenants` (voir D17), ou `''` |
 | `contactId` | string | Id du document `contact` lié, ou `''` |
@@ -417,7 +509,7 @@ Champs propres à chaque type :
 | `email` | `url` (le `.eml` d'origine), `de`, `a`, `objet`, `dateEnvoi`, `corps`, `sens` (`envoye` / `recu`), `parseOk` (bool) |
 | `contact` | `nom`, `prenom`, `entreprise`, `telephone`, `email`, `commentaire`, `categorie` (`btp` / `paysagiste` / `archi-paysagiste` / `autre`) |
 | `lien` | `url`, `titre`, `commentaire` |
-| `projet` | Singleton d'id `_projet` : `budgetNotes`, `ceQuonVeut`, `ceQuonNeVeutPas`, `intervenants` (array) |
+| `projet` | Singleton d'id `_projet` : `budgetNotes`, `ceQuonVeut`, `ceQuonNeVeutPas`, `intervenants` (array, auto-alimenté R6), `nosAdresses` (array, auto-alimenté R3) |
 
 ### Tasks
 
@@ -445,7 +537,10 @@ Champs propres à chaque type :
     `SEUIL_RELANCE_JOURS = 15`) ; `onSnapshot` sur la collection `exterieur` alimentant
     un tableau `elements` en mémoire ; helpers `toDate`, `formatDateFr`, `joursDepuis`,
     `escapeAttr`, `jsAttr` ; CRUD générique `creerElement` / `modifierElement` /
-    `supprimerElement` remplissant seuls la traçabilité (D18).
+    `supprimerElement` remplissant seuls la traçabilité (D18) ; `campParDefaut(type, sens)`
+    (R1) ; `changerCamp(id, camp)` qui réécrit `campDepuis` (R7) ; `amorcerProjet()` qui
+    ajoute l'adresse et le nom de la personne connectée à `nosAdresses` et `intervenants`
+    s'ils manquent (R3, R6), appelé une fois au démarrage.
   - Notes : `escapeHtml` et `showToast` viennent déjà de `auth.js`, ne pas les
     redéfinir. `jsAttr` est à recopier depuis `idees/idees.js` — c'est la fonction qui
     évite le bug des apostrophes dans les `onclick`.
@@ -456,7 +551,9 @@ Champs propres à chaque type :
     `https://api.cloudinary.com/v1_1/<cloud>/auto/upload`, retourne `secure_url` ;
     `typeDepuisFichier(file)` → `.eml` = `email`, `.pdf`/`.doc`/`.docx` = `document`,
     `.jpg`/`.jpeg`/`.png`/`.heic`/`.webp` = `image`, sinon `document` ; zone de dépôt
-    `dragover` / `drop` + barre de progression.
+    `dragover` / `drop` + barre de progression ; `titreDepuisNomFichier(nom)` — extension
+    retirée, tirets et soulignés en espaces, capitale initiale (R8) ; le bouton Ajouter
+    ouvre un choix court « Déposer un fichier » / « Écrire » (R2).
   - Notes : transposer `admin.js:291-345` de BilletsTouristiques en changeant
     `/image/upload` en `/auto/upload`. En cas d'échec réseau, afficher l'erreur et **ne
     pas** créer de document Firestore orphelin. **Premier test à faire : un vrai `.eml`**
@@ -465,7 +562,9 @@ Champs propres à chaque type :
 
 - [ ] **Task 5 : Analyseur de fichiers `.eml`**
   - File : `exterieur/exterieur-eml.js` *(nouveau)*
-  - Action : `analyserEml(texte)` → `{ de, a, objet, dateEnvoi, corps, parseOk }`.
+  - Action : `analyserEml(texte)` → `{ de, a, objet, dateEnvoi, corps, parseOk }` ;
+    `sensDepuisDe(de, nosAdresses)` → `envoye` si l'expéditeur figure dans la liste,
+    `recu` sinon (R3). `dateEnvoi` alimente `dateEvenement` (R5).
     Découper en-têtes / corps sur la première ligne vide ; déplier les en-têtes
     repliés (lignes commençant par espace ou tabulation) ; décoder les en-têtes encodés
     `=?UTF-8?B?...?=` et `=?UTF-8?Q?...?=` ; pour un corps `multipart`, retenir la partie
@@ -482,7 +581,7 @@ Champs propres à chaque type :
     suppression). CSP élargie : `https://api.cloudinary.com` en `connect-src`,
     `https://res.cloudinary.com` en `img-src` (D7). Scripts dans l'ordre : Firebase
     app/auth/firestore → `../config.js` → `../projets.js` → `../auth.js` →
-    `exterieur-donnees.js` → `exterieur-upload.js` → `exterieur-eml.js` → les cinq vues
+    `exterieur-donnees.js` → `exterieur-upload.js` → `exterieur-eml.js` → les six vues
     → `exterieur.js`.
   - Notes : les PDF s'ouvrent dans un onglet (`target="_blank"`), jamais en `<iframe>` —
     ça évite de toucher `frame-src`.
@@ -500,7 +599,9 @@ Champs propres à chaque type :
   - File : `exterieur/exterieur-etat.js` *(nouveau)*
   - Action : quatre blocs — **À nous** (`camp = a_nous`, échéances dépassées en tête,
     avec l'assignation) ; **En attente d'eux** (`camp = a_eux`, tri par ancienneté
-    décroissante, badge « à relancer » au-delà de `SEUIL_RELANCE_JOURS`) ; **Choix à
+    décroissante calculée sur `campDepuis`, badge « à relancer » au-delà de
+    `SEUIL_RELANCE_JOURS`) ; trois boutons de bascule à un clic sur chaque carte —
+    « c'est à eux » / « c'est à nous » / « réglé » (R1) ; **Choix à
     faire** (documents groupés par `sujet` non vide, affichés dès 2 devis) ;
     **Mouvement** (compte des éléments créés sur 7 jours, et « rien n'a bougé depuis N
     jours » si `N >= 7`).
@@ -511,7 +612,8 @@ Champs propres à chaque type :
 - [ ] **Task 9 : Vue Fil**
   - File : `exterieur/exterieur-fil.js` *(nouveau)*
   - Action : tous les types événementiels (`tache`, `email`, `document`, `image`,
-    `note`) du plus récent au plus ancien, filtres par type, carte adaptée à chaque type.
+    `note`) triés sur **`dateEvenement`** décroissant (R5), filtres par type, carte
+    adaptée à chaque type.
   - Notes : exclure `contact`, `lien` et `projet` — ce ne sont pas des événements (D5).
 
 - [ ] **Task 10 : Vues Images**
@@ -538,12 +640,15 @@ Champs propres à chaque type :
     cliquables) et liens (titre, commentaire, ouverture en nouvel onglet). Modales de
     création et d'édition pour les deux.
   - Notes : transposer `mes-contacts.js` de BilletsTouristiques. Un contact affiche le
-    nombre d'éléments qui lui sont rattachés.
+    nombre d'éléments qui lui sont rattachés, et la suppression le rappelle. Les éléments
+    dont le `contactId` ne résout plus affichent « contact supprimé » plutôt que de
+    planter (F10) — on ne casse pas la référence en base, on la tolère à l'affichage.
 
 - [ ] **Task 13 : Vue « Le projet »**
   - File : `exterieur/exterieur-projet.js` *(nouveau)*
   - Action : lecture/écriture du document singleton `_projet` — trois zones de texte
-    (notes de budget, ce qu'on veut, ce qu'on ne veut pas) plus la liste `intervenants`.
+    (notes de budget, ce qu'on veut, ce qu'on ne veut pas) plus les listes `intervenants`
+    et `nosAdresses`, toutes deux auto-alimentées mais modifiables (R3, R6).
     Sauvegarde explicite par bouton, avec la date et l'auteur de la dernière
     modification.
   - Notes : dernière écriture gagnante, sans verrou (D10). Afficher « modifié par X le
@@ -569,8 +674,9 @@ Champs propres à chaque type :
 - [ ] **Task 16 : Documentation et registre**
   - File : `projets.js`, `README.md`
   - Action : mettre à jour la description du projet `exterieur` dans le registre ;
-    documenter dans le README le modèle de données, le concept de `camp` et l'action
-    manuelle Cloudinary.
+    documenter dans le README le modèle de données, le concept de `camp`, l'action
+    manuelle Cloudinary, et **la limite de suppression (R4) : supprimer un élément
+    n'efface pas son fichier**.
   - Notes : aucun bloc à ajouter dans `firestore.rules` (D8) — le seul lot du hub dans
     ce cas, autant l'écrire noir sur blanc pour éviter qu'on le cherche.
 
@@ -580,8 +686,9 @@ Champs propres à chaque type :
   ouvre `admin.ofildudoubs.fr/exterieur/`, alors la vue « Où on en est » s'affiche et le
   menu ne contient ni « Idées » ni « Membres ».
 - [ ] **AC2** — Étant donné un membre sans le projet `exterieur`, quand il tente d'ouvrir
-  l'URL directement, alors il est redirigé vers l'accueil, et une lecture Firestore
-  forcée à la main est refusée par les règles.
+  l'URL directement, alors il est redirigé vers l'accueil. *Vérification côté serveur à
+  faire séparément dans le Rules Playground de la console Firebase — non couvrable par
+  les tests automatisés (F14).*
 - [ ] **AC3** — Étant donné un fichier `devis-terrasse.pdf` déposé sur la zone Ajouter,
   quand le dépôt se termine, alors un élément de type `document` est créé, le titre est
   demandé et refusé s'il est vide, et le PDF s'ouvre dans un nouvel onglet.
@@ -624,6 +731,30 @@ Champs propres à chaque type :
   revient sur la vue Emails (`#emails` dans l'URL).
 - [ ] **AC18** — Étant donné `node tests/run-tests.js`, quand on le lance, alors tous les
   tests passent, y compris ceux du nouveau `test-exterieur.js`.
+
+- [ ] **AC19** — Étant donné un `.eml` envoyé par Cyril, quand il est archivé, alors
+  `sens` vaut `envoye` et `camp` vaut `a_eux` **sans aucune saisie**. Un `.eml` reçu donne
+  `recu` et `a_nous`. (R1, R3)
+- [ ] **AC20** — Étant donné une déduction de `camp` erronée, quand on clique « c'est à
+  nous » sur la carte, alors l'élément change de colonne immédiatement et `campDepuis` est
+  réinitialisé à maintenant. (R1, R7)
+- [ ] **AC21** — Étant donné une base vierge et Alisson qui ouvre le projet pour la
+  première fois, quand la page se charge, alors son adresse rejoint `nosAdresses` et son
+  nom `intervenants` — sans passer par la fiche projet. (R3, R6)
+- [ ] **AC22** — Étant donné un `.eml` daté du 3 juillet archivé le 28 juillet, quand on
+  ouvre le fil, alors il se place au 3 juillet ; et le bloc « Mouvement » le compte bien
+  dans l'activité de la semaine du 28. (R5)
+- [ ] **AC23** — Étant donné le bouton Ajouter, quand on le clique, alors on peut créer
+  une tâche ou une note sans déposer de fichier. (R2)
+- [ ] **AC24** — Étant donné `devis-terrasse-dupont.pdf` déposé, quand le formulaire
+  s'ouvre, alors le titre est déjà « Devis terrasse dupont » et l'enregistrement passe
+  sans rien saisir. (R8)
+- [ ] **AC25** — Étant donné un élément supprimé, quand on recharge, alors il a disparu de
+  toutes les vues — **et son fichier Cloudinary existe toujours**, conformément à la
+  limite assumée. (R4)
+- [ ] **AC26** — Étant donné un contact supprimé alors que des éléments le référencent,
+  quand on ouvre le fil, alors ces éléments s'affichent sans planter, avec la mention
+  « contact supprimé ». (F10)
 
 ## Additional Context
 
