@@ -18,86 +18,91 @@
     <div id="app-content" class="page" style="display:none">
 
         <div class="page-header">
-            <h1><i class="fa-solid fa-compass-drafting"></i> Le centre de mes projets</h1>
+            <h1 id="accueil-titre"><i class="fa-solid fa-compass-drafting"></i> Le centre de mes projets</h1>
         </div>
 
-        <p class="section-title">Suivi</p>
-        <div class="tiles">
-            <a class="tile" href="idees.html">
-                <div class="tile-icon"><i class="fa-solid fa-lightbulb"></i></div>
-                <h2>Idées / Projets</h2>
-                <p>Le carnet d'idées : importance, complexité, état d'avancement, tous projets confondus.</p>
-            </a>
+        <!-- Tuiles construites à partir des droits de la personne connectée -->
+        <p class="section-title">Sous-projets</p>
+        <div class="tiles" id="tuiles-projets"></div>
+        <div class="empty-state" id="aucun-projet" style="display:none">
+            <i class="fa-solid fa-folder-open"></i>
+            <p>Aucun sous-projet ne vous est encore attribué.</p>
         </div>
 
-        <p class="section-title">Sites en ligne</p>
-        <div class="tiles">
-            <a class="tile" href="https://ofildudoubs.fr" target="_blank" rel="noopener">
-                <div class="tile-icon"><i class="fa-solid fa-house-chimney"></i></div>
-                <h2>O'Fil du Doubs</h2>
-                <p>Site vitrine du gîte de Labergement-Sainte-Marie.</p>
-                <span class="tile-url">ofildudoubs.fr</span>
-            </a>
-            <a class="tile" href="https://lefuverat.ofildudoubs.fr" target="_blank" rel="noopener">
-                <div class="tile-icon"><i class="fa-solid fa-tree"></i></div>
-                <h2>Le Fuverat</h2>
-                <p>Site vitrine du second hébergement.</p>
-                <span class="tile-url">lefuverat.ofildudoubs.fr</span>
-            </a>
-            <a class="tile" href="https://cyril25.github.io/BilletsTouristiques/" target="_blank" rel="noopener">
-                <div class="tile-icon"><i class="fa-solid fa-ticket"></i></div>
-                <h2>Billets Touristiques</h2>
-                <p>Gestion de collection du groupe — le seul projet en équipe.</p>
-                <span class="tile-url">cyril25.github.io/BilletsTouristiques</span>
-            </a>
-            <a class="tile" href="https://collections.ofildudoubs.fr" target="_blank" rel="noopener">
-                <div class="tile-icon"><i class="fa-solid fa-boxes-stacked"></i></div>
-                <h2>Collections</h2>
-                <p>Coquille en place, contenu à définir.</p>
-                <span class="tile-url">collections.ofildudoubs.fr</span>
-            </a>
-            <a class="tile" href="https://lephare.ofildudoubs.fr" target="_blank" rel="noopener">
-                <div class="tile-icon"><i class="fa-solid fa-martini-glass"></i></div>
-                <h2>Le Phare <span class="badge">standby</span></h2>
-                <p>POC de site vitrine, en attente de débranchement (DNS → domaine custom → privé).</p>
-                <span class="tile-url">lephare.ofildudoubs.fr</span>
-            </a>
-        </div>
+        <!-- Réservé au superadmin -->
+        <div id="bloc-superadmin" style="display:none">
+            <p class="section-title">Sites en ligne</p>
+            <div class="tiles">
+                <a class="tile" href="https://ofildudoubs.fr" target="_blank" rel="noopener">
+                    <div class="tile-icon"><i class="fa-solid fa-house-chimney"></i></div>
+                    <h2>O'Fil du Doubs</h2>
+                    <p>Site vitrine du gîte de Labergement-Sainte-Marie.</p>
+                    <span class="tile-url">ofildudoubs.fr</span>
+                </a>
+                <a class="tile" href="https://lefuverat.ofildudoubs.fr" target="_blank" rel="noopener">
+                    <div class="tile-icon"><i class="fa-solid fa-tree"></i></div>
+                    <h2>Le Fuverat</h2>
+                    <p>Site vitrine du second hébergement.</p>
+                    <span class="tile-url">lefuverat.ofildudoubs.fr</span>
+                </a>
+                <a class="tile" href="https://cyril25.github.io/BilletsTouristiques/" target="_blank" rel="noopener">
+                    <div class="tile-icon"><i class="fa-solid fa-ticket"></i></div>
+                    <h2>Billets Touristiques</h2>
+                    <p>Gestion de collection du groupe — le seul projet en équipe.</p>
+                    <span class="tile-url">cyril25.github.io/BilletsTouristiques</span>
+                </a>
+                <a class="tile" href="https://collections.ofildudoubs.fr" target="_blank" rel="noopener">
+                    <div class="tile-icon"><i class="fa-solid fa-boxes-stacked"></i></div>
+                    <h2>Collections</h2>
+                    <p>Coquille en place, contenu à définir.</p>
+                    <span class="tile-url">collections.ofildudoubs.fr</span>
+                </a>
+                <a class="tile" href="https://lephare.ofildudoubs.fr" target="_blank" rel="noopener">
+                    <div class="tile-icon"><i class="fa-solid fa-martini-glass"></i></div>
+                    <h2>Le Phare <span class="badge">standby</span></h2>
+                    <p>POC de site vitrine, en attente de débranchement (DNS → domaine custom → privé).</p>
+                    <span class="tile-url">lephare.ofildudoubs.fr</span>
+                </a>
+            </div>
 
-        <p class="section-title">Consoles</p>
-        <div class="tiles">
-            <a class="tile" href="https://github.com/Cyril25?tab=repositories" target="_blank" rel="noopener">
-                <div class="tile-icon"><i class="fa-brands fa-github"></i></div>
-                <h2>GitHub</h2>
-                <p>Dépôts et GitHub Pages.</p>
-            </a>
-            <a class="tile" href="https://www.ovh.com/manager/#/web/domain/ofildudoubs.fr/zone" target="_blank" rel="noopener">
-                <div class="tile-icon"><i class="fa-solid fa-globe"></i></div>
-                <h2>OVH — Zone DNS</h2>
-                <p>Le domaine ofildudoubs.fr et ses sous-domaines.</p>
-            </a>
-            <a class="tile" href="https://dash.cloudflare.com" target="_blank" rel="noopener">
-                <div class="tile-icon"><i class="fa-brands fa-cloudflare"></i></div>
-                <h2>Cloudflare</h2>
-                <p>Workers uniquement (proxy billets, état ménage) — pas le DNS.</p>
-            </a>
-            <a class="tile" href="https://console.firebase.google.com" target="_blank" rel="noopener">
-                <div class="tile-icon"><i class="fa-solid fa-fire"></i></div>
-                <h2>Firebase</h2>
-                <p>Authentification et Firestore de ce hub.</p>
-            </a>
-            <a class="tile" href="https://supabase.com/dashboard" target="_blank" rel="noopener">
-                <div class="tile-icon"><i class="fa-solid fa-database"></i></div>
-                <h2>Supabase</h2>
-                <p>Base de données de Billets Touristiques.</p>
-            </a>
+            <p class="section-title">Consoles</p>
+            <div class="tiles">
+                <a class="tile" href="https://github.com/Cyril25?tab=repositories" target="_blank" rel="noopener">
+                    <div class="tile-icon"><i class="fa-brands fa-github"></i></div>
+                    <h2>GitHub</h2>
+                    <p>Dépôts et GitHub Pages.</p>
+                </a>
+                <a class="tile" href="https://www.ovh.com/manager/#/web/domain/ofildudoubs.fr/zone" target="_blank" rel="noopener">
+                    <div class="tile-icon"><i class="fa-solid fa-globe"></i></div>
+                    <h2>OVH — Zone DNS</h2>
+                    <p>Le domaine ofildudoubs.fr et ses sous-domaines.</p>
+                </a>
+                <a class="tile" href="https://dash.cloudflare.com" target="_blank" rel="noopener">
+                    <div class="tile-icon"><i class="fa-brands fa-cloudflare"></i></div>
+                    <h2>Cloudflare</h2>
+                    <p>Workers uniquement (proxy billets, état ménage) — pas le DNS.</p>
+                </a>
+                <a class="tile" href="https://console.firebase.google.com" target="_blank" rel="noopener">
+                    <div class="tile-icon"><i class="fa-solid fa-fire"></i></div>
+                    <h2>Firebase</h2>
+                    <p>Authentification, Firestore et règles de sécurité du hub.</p>
+                </a>
+                <a class="tile" href="https://supabase.com/dashboard" target="_blank" rel="noopener">
+                    <div class="tile-icon"><i class="fa-solid fa-database"></i></div>
+                    <h2>Supabase</h2>
+                    <p>Base de données de Billets Touristiques.</p>
+                </a>
+            </div>
         </div>
 
     </div>
 
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js" integrity="sha384-v3Z/Xdw1sCeo6M/geW7sn1Lt9obIm7MhAk8laVV+rvYFmzuWDELOiygx7dVte2dX" crossorigin="anonymous"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js" integrity="sha384-p62xBRve8PdqGDGASZtZMuHgPsyPcT5VsFwgmz2p4zaFdEtt5ZzNqxK+CLzQS7xP" crossorigin="anonymous"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js" integrity="sha384-3LctmFHtNDZwkVOSZ0fvJZJD9XR5Og5ol/MVEfNt36gUUnSYBRJN0iFjIMbFecOg" crossorigin="anonymous"></script>
     <script src="config.js"></script>
+    <script src="projets.js"></script>
     <script src="auth.js"></script>
+    <script src="accueil.js"></script>
 </body>
 </html>

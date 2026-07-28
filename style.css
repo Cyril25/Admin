@@ -706,6 +706,139 @@ body.login-page {
 }
 .modal-btn-danger:hover { opacity: 0.9; }
 
+/* ---------- 9b. Bandeau d'impersonation ---------- */
+/* Volontairement voyant et collé en haut : on ne doit jamais oublier
+   qu'on regarde le hub avec les yeux de quelqu'un d'autre. */
+.impersonation-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-md);
+    flex-wrap: wrap;
+    padding: 8px var(--spacing-md);
+    background: repeating-linear-gradient(45deg, #7A5200, #7A5200 18px, #8D6708 18px, #8D6708 36px);
+    color: #fff;
+    font-size: 0.85rem;
+    text-align: center;
+}
+.impersonation-bar strong { font-weight: 700; }
+.impersonation-bar button {
+    padding: 4px 12px;
+    background: #fff;
+    color: #7A5200;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-size: 0.82rem;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.impersonation-bar button:hover { opacity: 0.88; }
+
+/* ---------- 9c. Membres ---------- */
+.membres-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: var(--spacing-md);
+}
+
+.membre-carte {
+    background: #fff;
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-md) var(--spacing-lg);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+.membre-carte--inactif { opacity: 0.6; }
+
+.membre-entete {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--spacing-sm);
+}
+
+.membre-nom {
+    margin: 0;
+    font-size: 1rem;
+    color: var(--color-primary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.membre-email {
+    margin: 2px 0 0;
+    font-size: 0.82rem;
+    color: var(--color-text-muted);
+    word-break: break-all;
+}
+
+.membre-actions {
+    display: flex;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+.membre-projets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: var(--spacing-sm);
+}
+
+.badge-superadmin { background: #E3EDF5; color: #2C4A63; font-weight: 700; }
+.badge-moi        { background: var(--color-accent); color: #fff; }
+.badge-inactif    { background: #F0F2F4; color: #8A94A0; }
+.badge-vide       { background: #FDECEA; color: #A63030; }
+
+/* ---------- 9d. Cases à cocher ---------- */
+/* Collées à leur libellé : inline-flex + nowrap, pour qu'une case ne se
+   retrouve jamais seule en fin de ligne. */
+.checkbox-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    font-size: 0.88rem;
+    font-weight: 400;
+    color: var(--color-text);
+    cursor: pointer;
+}
+
+.projets-checkboxes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+    padding: 6px 0;
+}
+.projets-checkboxes--inactif { opacity: 0.45; }
+
+.field-hint {
+    font-size: 0.76rem;
+    color: var(--color-text-muted);
+    line-height: 1.4;
+}
+
+.notice {
+    border-radius: var(--radius-md);
+    padding: var(--spacing-md) var(--spacing-lg);
+    margin-bottom: var(--spacing-lg);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-md);
+    flex-wrap: wrap;
+}
+.notice p { margin: 0; font-size: 0.9rem; line-height: 1.5; }
+.notice-warning {
+    background: #FFF7E6;
+    border-left: 3px solid #F0A500;
+    color: #7A5200;
+}
+
 /* ---------- 10. Toasts ---------- */
 .toast {
     position: fixed;

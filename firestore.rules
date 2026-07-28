@@ -1,37 +1,91 @@
 // ============================================================
 // RÈGLES DE SÉCURITÉ FIRESTORE — Hub O'Fil du Doubs
 // ============================================================
-// C'est ICI qu'est la vraie barrière de sécurité : le filtre par
-// email dans config.js n'est qu'un confort d'interface, tout le
-// monde peut lire le JavaScript d'une page publique. Ces règles,
-// elles, sont appliquées par Google côté serveur.
+// C'est ICI qu'est la vraie barrière. Le JavaScript des pages ne fait
+// que masquer des boutons : le dépôt est public, n'importe qui peut
+// lire le code et appeler Firestore à la main. Ces règles, elles, sont
+// appliquées par Google côté serveur et ne se contournent pas.
 //
 // Déploiement (console Firebase) :
-//   1. https://console.firebase.google.com → projet du hub
+//   1. https://console.firebase.google.com → projet ofildudoubs-hub
 //   2. Firestore Database → onglet « Règles »
 //   3. Copier-coller ce fichier, puis « Publier »
 //
-// À maintenir en phase avec ALLOWED_EMAILS de config.js.
+// ⚠ AJOUTER UN SOUS-PROJET = AJOUTER UN BLOC ICI.
+// Sans son bloc `match`, une collection tombe dans le catch-all final
+// et reste inaccessible à tout le monde, superadmin compris.
 // ============================================================
 
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Le propriétaire du hub, et lui seul.
-    function isOwner() {
+    // --- Identité de l'appelant ---------------------------------
+
+    function connecte() {
       return request.auth != null
-          && request.auth.token.email_verified == true
-          && request.auth.token.email == 'cyril.samson41@gmail.com';
+          && request.auth.token.email != null
+          && request.auth.token.email_verified == true;
     }
 
-    // Carnet d'idées / projets
-    match /idees/{ideeId} {
-      allow read, write: if isOwner();
+    // Les documents membres ont pour identifiant l'email en minuscules.
+    function idAppelant() {
+      return request.auth.token.email.lower();
     }
 
-    // Tout le reste est fermé. Une nouvelle collection doit être
-    // déclarée explicitement au-dessus pour devenir accessible.
+    function existeMembre() {
+      return connecte()
+          && exists(/databases/$(database)/documents/membres/$(idAppelant()));
+    }
+
+    function docMembre() {
+      return get(/databases/$(database)/documents/membres/$(idAppelant())).data;
+    }
+
+    function membreActif() {
+      return existeMembre() && docMembre().actif == true;
+    }
+
+    // --- Filet de sécurité --------------------------------------
+    // Le propriétaire est superadmin *par son adresse*, indépendamment
+    // de la collection membres. Sans ça, supprimer ou désactiver son
+    // propre document membre par erreur verrouillerait la base pour
+    // toujours : plus personne ne pourrait la rouvrir, puisque seul un
+    // superadmin peut écrire dans membres.
+    function proprietaire() {
+      return connecte() && idAppelant() == 'cyril.samson41@gmail.com';
+    }
+
+    function superadmin() {
+      return proprietaire() || (membreActif() && docMembre().role == 'superadmin');
+    }
+
+    // Un membre accède à un sous-projet si sa fiche le liste.
+    function aAcces(projet) {
+      return superadmin() || (membreActif() && projet in docMembre().projets);
+    }
+
+    // --- Annuaire des membres -----------------------------------
+    // Lecture : le superadmin voit tout le monde (il gère les droits et
+    // l'impersonation) ; un membre ne lit QUE sa propre fiche, ce dont
+    // il a besoin pour construire son menu.
+    // Écriture : superadmin uniquement — sinon n'importe qui pourrait
+    // s'ajouter des sous-projets ou se promouvoir superadmin.
+    match /membres/{email} {
+      allow read:  if superadmin() || (connecte() && email == idAppelant());
+      allow write: if superadmin();
+    }
+
+    // --- Sous-projets -------------------------------------------
+    match /idees/{document} {
+      allow read, write: if aAcces('idees');
+    }
+
+    match /exterieur/{document} {
+      allow read, write: if aAcces('exterieur');
+    }
+
+    // --- Tout le reste est fermé --------------------------------
     match /{document=**} {
       allow read, write: if false;
     }

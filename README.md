@@ -1,9 +1,7 @@
 # Hub O'Fil du Doubs — `admin.ofildudoubs.fr`
 
-Point d'entrée privé de mes projets : liens vers les sites et les consoles, et un
-carnet d'idées trié par importance et complexité.
-
-Accès réservé à **cyril.samson41@gmail.com**.
+Point d'entrée privé de mes projets, organisé en **sous-projets** dont l'accès se
+donne membre par membre.
 
 ## Architecture
 
@@ -13,29 +11,75 @@ dans Firestore.
 
 | Fichier | Rôle |
 |---|---|
-| `config.js` | **Le seul fichier à personnaliser** : config Firebase, emails autorisés, navigation |
-| `auth.js` | Le vigile : init Firebase, garde des pages, en-tête, connexion/déconnexion |
+| `config.js` | Config Firebase + adresse du propriétaire |
+| `projets.js` | **Registre des sous-projets** — source unique du menu, des tuiles et des droits |
+| `auth.js` | Le vigile : garde des pages, droits, en-tête, impersonation |
 | `login.html` | Page de connexion Google |
-| `index.html` | Accueil : tuiles vers les sites et les consoles |
-| `idees.html` / `idees.js` | Carnet d'idées (CRUD Firestore, filtres, tri) |
+| `index.html` / `accueil.js` | Accueil, construit d'après les droits de la personne |
+| `membres.html` / `membres.js` | Annuaire des membres et attribution des accès (superadmin) |
+| `idees/` | Sous-projet « Idées / Projets » |
+| `exterieur/` | Sous-projet « Extérieur de la maison » |
 | `style.css` | Feuille de styles unique |
 | `firestore.rules` | Règles de sécurité à publier dans la console Firebase |
 | `CNAME` | Domaine custom GitHub Pages |
 
-### Comment l'accès est protégé
+### Rôles et accès
 
-Deux niveaux, et un seul compte vraiment :
+- **Superadmin** — voit tout, y compris les sous-projets créés plus tard, et gère les
+  membres. Le propriétaire (`SUPERADMIN_EMAIL`) l'est *par son adresse*, indépendamment
+  de sa fiche : c'est le filet qui empêche de se verrouiller dehors en supprimant son
+  propre document.
+- **Membre** — ne voit que les sous-projets cochés sur sa fiche. Menu, tuiles d'accueil
+  et accès aux données sont filtrés ensemble.
 
-1. **`config.js` / `auth.js`** — filtre côté client. Confort d'interface : un compte
-   non autorisé est déconnecté avec un message clair. Ce n'est *pas* de la sécurité :
-   le dépôt est public, ce code est lisible par tout le monde.
-2. **`firestore.rules`** — la vraie barrière. Google refuse toute lecture ou écriture
-   dont le jeton ne porte pas l'email autorisé. Même en trafiquant le JavaScript, on
-   n'obtient rien.
+### ⚠ Ce que la garde JavaScript ne fait pas
 
-Conséquence : **les deux listes doivent rester identiques.** Ajouter une adresse dans
-`config.js` sans l'ajouter dans les règles donne une page qui s'affiche et ne charge
-rien.
+Le site est **statique** et le dépôt **public**. N'importe qui peut télécharger
+`exterieur/index.html` : cette page n'est pas secrète et ne le sera jamais.
+
+Ce qui protège réellement, ce sont les **règles Firestore**. Sans droit sur la
+collection, la page s'affiche — vide. Autrement dit :
+
+- la **structure** (l'existence d'un sous-projet, ses libellés, son code) est publique ;
+- les **données** sont protégées côté serveur.
+
+Tant que rien de confidentiel n'est écrit en dur dans le HTML, c'est sain. Le jour où
+ce ne serait plus vrai, il faudrait passer le dépôt en privé (GitHub Pro) — ce qui ne
+changerait d'ailleurs rien à la protection des données, seulement à celle du code.
+
+### Ajouter un sous-projet — trois gestes indissociables
+
+1. une entrée dans `PROJETS` (`projets.js`) ;
+2. un dossier à la racine avec un `index.html` dont le `<body>` porte
+   `data-projet="<slug>"` et `data-racine="../"` ;
+3. **un bloc `match` dans `firestore.rules`** pour sa collection.
+
+Sauter le point 3 donne une page qui s'affiche et ne charge rien : c'est le catch-all
+`allow read, write: if false` qui ferme toute collection non déclarée.
+
+### Impersonation
+
+Depuis la page Membres, l'icône masque affiche le hub tel que le voit la personne
+choisie : menu, tuiles et gardes suivent ses droits. Un bandeau rayé le rappelle en
+permanence, et ça meurt avec l'onglet (`sessionStorage`).
+
+**C'est un aperçu d'interface, pas un bac à sable.** Les requêtes partent toujours avec
+le jeton du superadmin : Firestore continue de tout autoriser. On voit ce que l'autre
+verrait, on ne subit pas ses restrictions — donc ça ne sert pas à tester les règles.
+Pour ça, utiliser le *Rules Playground* de la console Firebase.
+
+### Modèle de données — collection `membres`
+
+Identifiant du document = **email en minuscules** : les règles retrouvent la fiche de
+l'appelant en une lecture, sans requête.
+
+| Champ | Type | Détail |
+|---|---|---|
+| `nom` | string | Nom affiché |
+| `role` | string | `membre` / `superadmin` |
+| `projets` | array | Slugs autorisés (vide pour un superadmin, qui a tout) |
+| `actif` | bool | `false` = refusé à la connexion, droits conservés |
+| `createdAt`, `updatedAt` | timestamp | Horodatage serveur |
 
 ### Modèle de données — collection `idees`
 
@@ -66,6 +110,8 @@ téléphone apparaît sur le PC sans rechargement.
 3. **Build → Firestore Database → Créer une base** → mode **production** →
    région `eur3 (europe-west)`.
 4. Onglet **Règles** : coller le contenu de `firestore.rules`, **Publier**.
+   ⚠ À refaire à chaque modification du fichier — les règles ne se déploient pas
+   avec le site.
 5. **Authentication → Settings → Authorized domains → Add domain** :
    `admin.ofildudoubs.fr` (et `collections.ofildudoubs.fr` si ce site partage le
    même projet Firebase). `localhost` y est déjà pour les tests.

@@ -1,19 +1,31 @@
 // ============================================================
 // auth.js — Le vigile du hub
 // ============================================================
-// Même principe que global.js de BilletsTouristiques :
+// Sur chaque page :
 //   1. init Firebase
-//   2. onAuthStateChanged → pas connecté = redirection vers login
-//   3. email hors liste = déconnexion immédiate
-//   4. email autorisé = injection de l'en-tête + affichage du contenu
+//   2. pas connecté           → redirection vers login
+//   3. connecté               → lecture de sa fiche dans « membres »
+//   4. pas membre / inactif   → déconnexion immédiate
+//   5. membre                 → en-tête filtrée par ses droits, garde
+//                               du sous-projet, puis affichage
 //
-// Le contenu de chaque page protégée vit dans #app-content, masqué
-// en CSS inline : rien ne s'affiche tant que le vigile n'a pas
-// validé. Ce filtrage côté client est du confort — la vraie
-// barrière est dans firestore.rules.
+// ⚠ CE QUE CE FICHIER NE FAIT PAS : cacher des pages. Le site est
+// statique et le dépôt public — n'importe qui peut télécharger
+// « exterieur/index.html ». Ce code masque des liens et vide des
+// écrans, ce qui est du confort d'interface. Ce qui protège vraiment,
+// ce sont les règles Firestore : sans droit, la page s'affiche mais
+// ne contient aucune donnée.
 // ============================================================
 
 var HUB_CONFIG_OK = (typeof FIREBASE_CONFIG !== 'undefined' && FIREBASE_CONFIG.apiKey.indexOf('A_REMPLACER') === -1);
+
+// État global, rempli par le vigile puis lu par les pages.
+window.HUB = {
+    user: null,          // compte Firebase connecté
+    membre: null,        // sa fiche réelle
+    effectif: null,      // la fiche « vue » (= membre, sauf impersonation)
+    impersonation: ''    // email impersonné, '' sinon
+};
 
 // ------------------------------------------------------------
 // 1. Initialisation Firebase
@@ -21,7 +33,7 @@ var HUB_CONFIG_OK = (typeof FIREBASE_CONFIG !== 'undefined' && FIREBASE_CONFIG.a
 if (typeof firebase === 'undefined') {
     console.error('ERREUR : le SDK Firebase n\'est pas chargé avant auth.js.');
 } else if (!HUB_CONFIG_OK) {
-    console.warn('Firebase non configuré — voir config.js (valeurs A_REMPLACER).');
+    console.warn('Firebase non configuré — voir config.js.');
 } else if (!firebase.apps.length) {
     firebase.initializeApp(FIREBASE_CONFIG);
 }
@@ -34,13 +46,14 @@ function estPageLogin() {
     return (page === 'login.html' || page === 'login');
 }
 
-function emailAutorise(email) {
-    if (!email) return false;
-    var normalise = String(email).trim().toLowerCase();
-    for (var i = 0; i < ALLOWED_EMAILS.length; i++) {
-        if (ALLOWED_EMAILS[i].toLowerCase() === normalise) return true;
-    }
-    return false;
+// Préfixe vers la racine du site : '' à la racine, '../' dans un
+// dossier de sous-projet (déclaré par data-racine sur le <body>).
+function hubRacine() {
+    return (document.body && document.body.getAttribute('data-racine')) || '';
+}
+
+function normaliserEmail(email) {
+    return String(email || '').trim().toLowerCase();
 }
 
 function escapeHtml(texte) {
@@ -62,38 +75,134 @@ function showToast(message, type) {
 }
 
 // ------------------------------------------------------------
-// 3. En-tête (injectée sur les pages protégées)
+// 3. Droits
 // ------------------------------------------------------------
-function injecterHeader(user) {
+// Rôle RÉEL : ce que Firestore autorisera effectivement. L'impersonation
+// ne le change jamais — elle ne modifie que l'affichage.
+function estSuperadminReel() {
+    if (!HUB.user) return false;
+    if (normaliserEmail(HUB.user.email) === normaliserEmail(SUPERADMIN_EMAIL)) return true;
+    return !!(HUB.membre && HUB.membre.role === 'superadmin');
+}
+
+// Rôle VU à l'écran : c'est lui qui pilote le menu et les gardes, pour
+// que l'impersonation montre vraiment ce que l'autre personne voit.
+function estSuperadmin() {
+    return !!(HUB.effectif && HUB.effectif.role === 'superadmin');
+}
+
+function aAcces(slug) {
+    if (!HUB.effectif) return false;
+    if (HUB.effectif.role === 'superadmin') return true;
+    var liste = HUB.effectif.projets || [];
+    return liste.indexOf(slug) !== -1;
+}
+
+function projetsVisibles() {
+    return PROJETS.filter(function(p) { return aAcces(p.slug); });
+}
+
+window.estSuperadminReel = estSuperadminReel;
+window.estSuperadmin = estSuperadmin;
+window.aAcces = aAcces;
+window.projetsVisibles = projetsVisibles;
+
+// ------------------------------------------------------------
+// 4. Impersonation
+// ------------------------------------------------------------
+// Volontairement en sessionStorage : ça meurt avec l'onglet, on ne
+// risque pas de « rester » quelqu'un d'autre pendant des jours.
+//
+// ⚠ C'est un aperçu d'interface, PAS un bac à sable. Les requêtes
+// partent toujours avec le jeton du superadmin : Firestore continue de
+// tout autoriser. On voit ce que l'autre verrait, on ne subit pas ses
+// restrictions.
+function demarrerImpersonation(email) {
+    if (!estSuperadminReel()) return;
+    sessionStorage.setItem('hubImpersonation', normaliserEmail(email));
+    window.location.href = hubRacine() + 'index.html';
+}
+
+function arreterImpersonation() {
+    sessionStorage.removeItem('hubImpersonation');
+    window.location.reload();
+}
+
+window.demarrerImpersonation = demarrerImpersonation;
+window.arreterImpersonation = arreterImpersonation;
+
+function injecterBandeauImpersonation() {
+    if (!HUB.impersonation) return;
+    var barre = document.createElement('div');
+    barre.className = 'impersonation-bar';
+    barre.innerHTML =
+        '<span><i class="fa-solid fa-mask"></i> Vue de <strong>' + escapeHtml(HUB.impersonation) + '</strong>'
+        + ' — affichage seulement, vos droits réels restent inchangés</span>'
+        + '<button type="button" onclick="arreterImpersonation()">Revenir à moi</button>';
+    document.body.insertBefore(barre, document.body.firstChild);
+    document.body.classList.add('a-bandeau');
+}
+
+// ------------------------------------------------------------
+// 5. En-tête
+// ------------------------------------------------------------
+function injecterHeader() {
     var cible = document.getElementById('header-placeholder');
     if (!cible) return;
 
+    var racine = hubRacine();
+    var projetCourant = (document.body && document.body.getAttribute('data-projet')) || '';
     var pageCourante = window.location.pathname.split('/').pop() || 'index.html';
 
-    var liens = NAV_LINKS.map(function(lien) {
-        var actif = (lien.href === pageCourante) ? ' class="active"' : '';
-        return '<a href="' + lien.href + '"' + actif + '><i class="' + lien.icon + '"></i> ' + escapeHtml(lien.label) + '</a>';
+    var liens = projetsVisibles().map(function(p) {
+        var actif = (p.slug === projetCourant) ? ' class="active"' : '';
+        return '<a href="' + racine + p.url + '"' + actif + '><i class="' + p.icone + '"></i> ' + escapeHtml(p.nom) + '</a>';
     }).join('');
+
+    if (estSuperadmin()) {
+        var actifMembres = (pageCourante === 'membres.html') ? ' class="active"' : '';
+        liens += '<a href="' + racine + 'membres.html"' + actifMembres + '><i class="fa-solid fa-users-gear"></i> Membres</a>';
+    }
+
+    var nom = (HUB.effectif && HUB.effectif.nom) ? HUB.effectif.nom : (HUB.user ? HUB.user.email : '');
 
     cible.innerHTML =
         '<header class="hub-header">' +
-            '<a class="hub-brand" href="index.html"><i class="' + SITE_ICON + '"></i> <span>' + escapeHtml(SITE_TITLE) + '</span></a>' +
+            '<a class="hub-brand" href="' + racine + 'index.html"><i class="' + SITE_ICON + '"></i> <span>' + escapeHtml(SITE_TITLE) + '</span></a>' +
             '<nav class="hub-nav">' + liens + '</nav>' +
             '<div class="hub-user">' +
-                '<span class="hub-user-email">' + escapeHtml(user.email) + '</span>' +
+                '<span class="hub-user-email">' + escapeHtml(nom) + '</span>' +
                 '<button type="button" class="hub-logout" onclick="logout()"><i class="fa-solid fa-power-off"></i> Déconnexion</button>' +
             '</div>' +
         '</header>';
 }
 
 // ------------------------------------------------------------
-// 4. Le vigile
+// 6. Lecture de la fiche membre
+// ------------------------------------------------------------
+function lireMembre(email) {
+    return firebase.firestore().collection('membres').doc(normaliserEmail(email)).get()
+        .then(function(doc) {
+            if (!doc.exists) return null;
+            var data = doc.data();
+            data.email = doc.id;
+            return data;
+        });
+}
+
+// Le propriétaire doit pouvoir entrer même si sa fiche n'existe pas
+// encore (première visite, ou fiche supprimée par erreur). On lui en
+// fabrique une en mémoire ; la page Membres proposera de la créer.
+function ficheDeSecours(email) {
+    return { email: normaliserEmail(email), nom: 'Propriétaire', role: 'superadmin', projets: [], actif: true, _virtuelle: true };
+}
+
+// ------------------------------------------------------------
+// 7. Le vigile
 // ------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', function() {
     if (typeof firebase === 'undefined') return;
 
-    // Configuration absente : sur la page de login on l'explique,
-    // ailleurs on renvoie vers le login pour ne pas afficher une page vide.
     if (!HUB_CONFIG_OK) {
         if (estPageLogin()) {
             var avertissement = document.getElementById('config-warning');
@@ -101,7 +210,7 @@ document.addEventListener('DOMContentLoaded', function() {
             var bouton = document.getElementById('btn-google-login');
             if (bouton) bouton.disabled = true;
         } else {
-            window.location.href = 'login.html';
+            window.location.href = hubRacine() + 'login.html';
         }
         return;
     }
@@ -109,48 +218,116 @@ document.addEventListener('DOMContentLoaded', function() {
     firebase.auth().onAuthStateChanged(function(user) {
         var surLogin = estPageLogin();
 
-        // --- Non connecté ---
         if (!user) {
             if (!surLogin) {
-                window.location.href = 'login.html';
+                window.location.href = hubRacine() + 'login.html';
                 return;
             }
             afficherErreurLogin();
             return;
         }
 
-        // --- Connecté mais pas sur la liste ---
-        if (!emailAutorise(user.email)) {
-            console.warn('Accès refusé pour : ' + user.email);
-            firebase.auth().signOut().then(function() {
-                window.location.href = 'login.html?error=unauthorized';
-            });
-            return;
-        }
+        HUB.user = user;
+        var estProprietaire = (normaliserEmail(user.email) === normaliserEmail(SUPERADMIN_EMAIL));
 
-        // --- Autorisé ---
-        if (surLogin) {
-            window.location.href = 'index.html';
-            return;
-        }
-        injecterHeader(user);
-        var contenu = document.getElementById('app-content');
-        if (contenu) contenu.style.display = 'block';
-        if (typeof onHubReady === 'function') onHubReady(user);
+        lireMembre(user.email)
+            .then(function(fiche) {
+                if (!fiche && estProprietaire) fiche = ficheDeSecours(user.email);
+
+                // Ni fiche, ni propriétaire → dehors.
+                if (!fiche) {
+                    console.warn('Accès refusé : ' + user.email + ' n\'est pas membre.');
+                    return refuser('unauthorized');
+                }
+                if (fiche.actif === false && !estProprietaire) {
+                    console.warn('Accès refusé : compte désactivé (' + user.email + ').');
+                    return refuser('disabled');
+                }
+
+                HUB.membre = fiche;
+
+                // Impersonation : réservée au superadmin réel.
+                var impersonne = sessionStorage.getItem('hubImpersonation') || '';
+                if (impersonne && estSuperadminReel() && impersonne !== normaliserEmail(user.email)) {
+                    return lireMembre(impersonne).then(function(autre) {
+                        if (autre) {
+                            HUB.impersonation = impersonne;
+                            HUB.effectif = autre;
+                        } else {
+                            sessionStorage.removeItem('hubImpersonation');
+                            HUB.effectif = fiche;
+                        }
+                        demarrerPage(surLogin);
+                    });
+                }
+                sessionStorage.removeItem('hubImpersonation');
+                HUB.effectif = fiche;
+                demarrerPage(surLogin);
+            })
+            .catch(function(erreur) {
+                console.error('Lecture de la fiche membre impossible :', erreur);
+                afficherErreurTechnique(erreur);
+            });
     });
 });
 
+function refuser(motif) {
+    return firebase.auth().signOut().then(function() {
+        window.location.href = hubRacine() + 'login.html?error=' + motif;
+    });
+}
+
+function demarrerPage(surLogin) {
+    if (surLogin) {
+        window.location.href = 'index.html';
+        return;
+    }
+
+    // Garde du sous-projet : une page qui déclare data-projet n'est
+    // affichée qu'à ceux qui y ont droit.
+    var projet = (document.body && document.body.getAttribute('data-projet')) || '';
+    if (projet && !aAcces(projet)) {
+        window.location.href = hubRacine() + 'index.html';
+        return;
+    }
+    // Pages réservées au superadmin (annuaire des membres).
+    if (document.body && document.body.getAttribute('data-superadmin') === 'true' && !estSuperadmin()) {
+        window.location.href = hubRacine() + 'index.html';
+        return;
+    }
+
+    injecterBandeauImpersonation();
+    injecterHeader();
+    var contenu = document.getElementById('app-content');
+    if (contenu) contenu.style.display = 'block';
+    if (typeof onHubReady === 'function') onHubReady(HUB);
+}
+
+function afficherErreurTechnique(erreur) {
+    var contenu = document.getElementById('app-content');
+    if (!contenu) return;
+    contenu.style.display = 'block';
+    contenu.innerHTML = '<div class="error-block">'
+        + '<i class="fa-solid fa-circle-exclamation"></i>'
+        + '<strong>Connexion au serveur impossible.</strong><br>'
+        + '<span style="color:var(--color-text-muted)">' + escapeHtml(erreur && erreur.message) + '</span>'
+        + '</div>';
+}
+
 function afficherErreurLogin() {
     var params = new URLSearchParams(window.location.search);
-    if (params.get('error') !== 'unauthorized') return;
+    var motif = params.get('error');
+    if (!motif) return;
     var bloc = document.getElementById('login-error');
     if (!bloc) return;
-    bloc.textContent = 'Ce compte Google n\'a pas accès à ce site.';
+    bloc.textContent = (motif === 'disabled')
+        ? 'Ce compte a été désactivé.'
+        : 'Ce compte Google n\'a pas accès à ce site.';
     bloc.style.display = 'block';
 }
 
 // ------------------------------------------------------------
-// 5. Connexion / déconnexion
+// 8. Connexion / déconnexion
 // ------------------------------------------------------------
 function loginWithGoogle() {
     if (typeof firebase === 'undefined' || !HUB_CONFIG_OK) return;
@@ -167,7 +344,8 @@ function loginWithGoogle() {
 
 function logout() {
     if (typeof firebase === 'undefined') return;
+    sessionStorage.removeItem('hubImpersonation');
     firebase.auth().signOut().then(function() {
-        window.location.href = 'login.html';
+        window.location.href = hubRacine() + 'login.html';
     });
 }
