@@ -76,7 +76,7 @@ téléphone apparaît sur le PC sans rechargement.
 
 ```bash
 # le dépôt local est déjà initialisé et committé
-git remote add origin https://github.com/Cyril25/OFilDuDoubsAdmin.git
+git remote add origin https://github.com/Cyril25/Admin.git
 git push -u origin main
 ```
 
