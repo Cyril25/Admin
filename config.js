@@ -11,12 +11,13 @@
 // Console Firebase > Parametres du projet > Vos applications >
 // Application Web > Configuration du SDK. Copier-coller ici.
 var FIREBASE_CONFIG = {
-    apiKey:            "A_REMPLACER",
-    authDomain:        "A_REMPLACER.firebaseapp.com",
-    projectId:         "A_REMPLACER",
-    storageBucket:     "A_REMPLACER.appspot.com",
-    messagingSenderId: "A_REMPLACER",
-    appId:             "A_REMPLACER"
+    apiKey:            "AIzaSyAmzfqfxzqRPwjYtqcMIpx7YoA7WFcztAM",
+    authDomain:        "ofildudoubs-hub.firebaseapp.com",
+    projectId:         "ofildudoubs-hub",
+    storageBucket:     "ofildudoubs-hub.firebasestorage.app",
+    messagingSenderId: "974628508687",
+    appId:             "1:974628508687:web:87dfcb92aa5e0eaec97f7a"
+    // measurementId omis : Analytics n'est pas charge sur ce site.
 };
 
 // --- 2. Qui a le droit d'entrer ------------------------------
