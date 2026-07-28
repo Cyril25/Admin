@@ -97,7 +97,7 @@ function estMoi(email) {
 }
 
 // ------------------------------------------------------------
-// 3. Cases à cocher des sous-projets
+// 3. Cases à cocher des projets
 // ------------------------------------------------------------
 function construireCasesProjets() {
     var wrap = document.getElementById('f-projets');
@@ -138,7 +138,7 @@ function majApercuRole() {
     if (wrap) wrap.classList.toggle('projets-checkboxes--inactif', estSuper);
     if (aide) {
         aide.textContent = estSuper
-            ? 'Un superadmin accède à tous les sous-projets, présents et futurs — ces cases ne s\'appliquent pas.'
+            ? 'Un superadmin accède à tous les projets, présents et futurs — ces cases ne s\'appliquent pas.'
             : 'La personne ne verra que ce qui est coché : ni menu, ni tuile, ni données pour le reste.';
     }
 }
@@ -175,7 +175,7 @@ function renderCarte(m) {
     var moi = estMoi(m.email);
 
     var badgesProjets = estSuper
-        ? '<span class="badge badge-projet"><i class="fa-solid fa-key"></i>Tous les sous-projets</span>'
+        ? '<span class="badge badge-projet"><i class="fa-solid fa-key"></i>Tous les projets</span>'
         : (m.projets && m.projets.length
             ? m.projets.map(function(slug) {
                 var p = getProjet(slug);
@@ -264,7 +264,7 @@ function sauverMembre() {
         nom:       document.getElementById('f-nom').value.trim(),
         role:      role,
         // Un superadmin a tout : on stocke une liste vide plutôt qu'une
-        // liste figée qui deviendrait fausse au prochain sous-projet.
+        // liste figée qui deviendrait fausse au prochain projet.
         projets:   (role === 'superadmin') ? [] : lireCasesProjets(),
         actif:     document.getElementById('f-actif').checked,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()

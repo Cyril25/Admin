@@ -7,7 +7,7 @@
 //   3. connecté               → lecture de sa fiche dans « membres »
 //   4. pas membre / inactif   → déconnexion immédiate
 //   5. membre                 → en-tête filtrée par ses droits, garde
-//                               du sous-projet, puis affichage
+//                               du projet, puis affichage
 //
 // ⚠ CE QUE CE FICHIER NE FAIT PAS : cacher des pages. Le site est
 // statique et le dépôt public — n'importe qui peut télécharger
@@ -47,7 +47,7 @@ function estPageLogin() {
 }
 
 // Préfixe vers la racine du site : '' à la racine, '../' dans un
-// dossier de sous-projet (déclaré par data-racine sur le <body>).
+// dossier de projet (déclaré par data-racine sur le <body>).
 function hubRacine() {
     return (document.body && document.body.getAttribute('data-racine')) || '';
 }
@@ -283,7 +283,7 @@ function demarrerPage(surLogin) {
         return;
     }
 
-    // Garde du sous-projet : une page qui déclare data-projet n'est
+    // Garde du projet : une page qui déclare data-projet n'est
     // affichée qu'à ceux qui y ont droit.
     var projet = (document.body && document.body.getAttribute('data-projet')) || '';
     if (projet && !aAcces(projet)) {

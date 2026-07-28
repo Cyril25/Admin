@@ -1,10 +1,10 @@
 // ============================================================
-// projets.js — Registre des sous-projets du hub
+// projets.js — Registre des projets du hub
 // ============================================================
 // Source unique : le menu, les tuiles de l'accueil et les cases a
 // cocher de la page Membres sont tous construits a partir d'ici.
 //
-// AJOUTER UN SOUS-PROJET — trois gestes, aucun n'est optionnel :
+// AJOUTER UN PROJET — trois gestes, aucun n'est optionnel :
 //   1. une entree dans PROJETS ci-dessous ;
 //   2. un dossier a la racine (ex. « exterieur/ ») avec au moins un
 //      index.html, dont le <body> porte data-projet="<slug>" et

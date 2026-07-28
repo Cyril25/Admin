@@ -1,5 +1,5 @@
 // ============================================================
-// exterieur.js — Sous-projet « Extérieur de la maison »
+// exterieur.js — Projet « Extérieur de la maison »
 // ============================================================
 // Collection Firestore « exterieur », une tâche par document :
 //   titre    string  obligatoire
@@ -10,7 +10,7 @@
 //
 // Volontairement minimal : cette page existe surtout pour éprouver le
 // système de droits de bout en bout. À remplacer par ce que ce
-// sous-projet doit vraiment faire.
+// projet doit vraiment faire.
 // ============================================================
 
 var ETATS = [

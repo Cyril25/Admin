@@ -1,6 +1,6 @@
 # Hub O'Fil du Doubs — `admin.ofildudoubs.fr`
 
-Point d'entrée privé de mes projets, organisé en **sous-projets** dont l'accès se
+Point d'entrée privé de mes projets, organisé en **projets** dont l'accès se
 donne membre par membre.
 
 ## Architecture
@@ -12,24 +12,24 @@ dans Firestore.
 | Fichier | Rôle |
 |---|---|
 | `config.js` | Config Firebase + adresse du propriétaire |
-| `projets.js` | **Registre des sous-projets** — source unique du menu, des tuiles et des droits |
+| `projets.js` | **Registre des projets** — source unique du menu, des tuiles et des droits |
 | `auth.js` | Le vigile : garde des pages, droits, en-tête, impersonation |
 | `login.html` | Page de connexion Google |
 | `index.html` / `accueil.js` | Accueil, construit d'après les droits de la personne |
 | `membres.html` / `membres.js` | Annuaire des membres et attribution des accès (superadmin) |
-| `idees/` | Sous-projet « Idées / Projets » |
-| `exterieur/` | Sous-projet « Extérieur de la maison » |
+| `idees/` | Projet « Idées / Projets » |
+| `exterieur/` | Projet « Extérieur de la maison » |
 | `style.css` | Feuille de styles unique |
 | `firestore.rules` | Règles de sécurité à publier dans la console Firebase |
 | `CNAME` | Domaine custom GitHub Pages |
 
 ### Rôles et accès
 
-- **Superadmin** — voit tout, y compris les sous-projets créés plus tard, et gère les
+- **Superadmin** — voit tout, y compris les projets créés plus tard, et gère les
   membres. Le propriétaire (`SUPERADMIN_EMAIL`) l'est *par son adresse*, indépendamment
   de sa fiche : c'est le filet qui empêche de se verrouiller dehors en supprimant son
   propre document.
-- **Membre** — ne voit que les sous-projets cochés sur sa fiche. Menu, tuiles d'accueil
+- **Membre** — ne voit que les projets cochés sur sa fiche. Menu, tuiles d'accueil
   et accès aux données sont filtrés ensemble.
 
 ### ⚠ Ce que la garde JavaScript ne fait pas
@@ -40,14 +40,14 @@ Le site est **statique** et le dépôt **public**. N'importe qui peut téléchar
 Ce qui protège réellement, ce sont les **règles Firestore**. Sans droit sur la
 collection, la page s'affiche — vide. Autrement dit :
 
-- la **structure** (l'existence d'un sous-projet, ses libellés, son code) est publique ;
+- la **structure** (l'existence d'un projet, ses libellés, son code) est publique ;
 - les **données** sont protégées côté serveur.
 
 Tant que rien de confidentiel n'est écrit en dur dans le HTML, c'est sain. Le jour où
 ce ne serait plus vrai, il faudrait passer le dépôt en privé (GitHub Pro) — ce qui ne
 changerait d'ailleurs rien à la protection des données, seulement à celle du code.
 
-### Ajouter un sous-projet — trois gestes indissociables
+### Ajouter un projet — trois gestes indissociables
 
 1. une entrée dans `PROJETS` (`projets.js`) ;
 2. un dossier à la racine avec un `index.html` dont le `<body>` porte

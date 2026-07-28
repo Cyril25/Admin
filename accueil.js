@@ -2,7 +2,7 @@
 // accueil.js — Tuiles de la page d'accueil
 // ============================================================
 // L'accueil n'est pas le même pour tout le monde : chacun ne voit que
-// les sous-projets qui lui sont attribués, et les blocs « Sites en
+// les projets qui lui sont attribués, et les blocs « Sites en
 // ligne » / « Consoles » sont réservés au superadmin.
 //
 // Sous impersonation, c'est bien la vue de l'autre personne qui est

@@ -11,7 +11,7 @@
 //   2. Firestore Database → onglet « Règles »
 //   3. Copier-coller ce fichier, puis « Publier »
 //
-// ⚠ AJOUTER UN SOUS-PROJET = AJOUTER UN BLOC ICI.
+// ⚠ AJOUTER UN PROJET = AJOUTER UN BLOC ICI.
 // Sans son bloc `match`, une collection tombe dans le catch-all final
 // et reste inaccessible à tout le monde, superadmin compris.
 // ============================================================
@@ -60,7 +60,7 @@ service cloud.firestore {
       return proprietaire() || (membreActif() && docMembre().role == 'superadmin');
     }
 
-    // Un membre accède à un sous-projet si sa fiche le liste.
+    // Un membre accède à un projet si sa fiche le liste.
     function aAcces(projet) {
       return superadmin() || (membreActif() && projet in docMembre().projets);
     }
@@ -70,13 +70,13 @@ service cloud.firestore {
     // l'impersonation) ; un membre ne lit QUE sa propre fiche, ce dont
     // il a besoin pour construire son menu.
     // Écriture : superadmin uniquement — sinon n'importe qui pourrait
-    // s'ajouter des sous-projets ou se promouvoir superadmin.
+    // s'ajouter des projets ou se promouvoir superadmin.
     match /membres/{email} {
       allow read:  if superadmin() || (connecte() && email == idAppelant());
       allow write: if superadmin();
     }
 
-    // --- Sous-projets -------------------------------------------
+    // --- Projets -------------------------------------------
     match /idees/{document} {
       allow read, write: if aAcces('idees');
     }
