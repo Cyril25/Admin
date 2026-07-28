@@ -481,7 +481,61 @@ function confirmerSuppression() {
 }
 
 // ------------------------------------------------------------
-// 10. Raccourcis clavier
+// 10. Export JSON (le filet de sauvegarde)
+// ------------------------------------------------------------
+// Firestore sur le plan gratuit n'offre ni sauvegarde automatique, ni
+// restauration a un instant T, ni export manage (ca demande Blaze).
+// Ce bouton est donc la seule protection contre une suppression
+// malencontreuse. Il exporte TOUT, sans tenir compte des filtres
+// affiches : une sauvegarde partielle serait un faux filet.
+// Meme pattern Blob que l'export CSV de BilletsTouristiques, qui
+// fonctionne sous une CSP identique.
+function exporterJson() {
+    if (!idees.length) {
+        showToast('Aucune idée à exporter.', 'error');
+        return;
+    }
+
+    var triees = idees.slice().sort(function(a, b) {
+        return (a.numero || 0) - (b.numero || 0);
+    });
+
+    var contenu = {
+        exporte_le: new Date().toISOString(),
+        source: window.location.hostname + ' — collection Firestore « idees »',
+        nombre: triees.length,
+        idees: triees.map(function(i) {
+            var d = toDate(i.createdAt), u = toDate(i.updatedAt);
+            return {
+                id:         i.id,
+                numero:     i.numero || null,
+                titre:      i.titre || '',
+                detail:     i.detail || '',
+                projet:     i.projet || '',
+                importance: i.importance || '',
+                complexite: i.complexite || '',
+                etat:       i.etat || '',
+                // Horodatages en ISO : un Timestamp Firestore brut ne
+                // survit pas a JSON.stringify de facon lisible.
+                createdAt:  d ? d.toISOString() : null,
+                updatedAt:  u ? u.toISOString() : null
+            };
+        })
+    };
+
+    var blob = new Blob([JSON.stringify(contenu, null, 2)], { type: 'application/json;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'idees-ofildudoubs-' + new Date().toISOString().slice(0, 10) + '.json';
+    a.click();
+    URL.revokeObjectURL(url);
+
+    showToast(triees.length + ' idée' + (triees.length > 1 ? 's' : '') + ' exportée' + (triees.length > 1 ? 's' : '') + '.', 'success');
+}
+
+// ------------------------------------------------------------
+// 11. Raccourcis clavier
 // ------------------------------------------------------------
 document.addEventListener('keydown', function(evenement) {
     if (evenement.key !== 'Escape') return;

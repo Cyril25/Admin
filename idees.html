@@ -19,9 +19,15 @@
 
         <div class="page-header">
             <h1><i class="fa-solid fa-lightbulb"></i> Idées / Projets</h1>
-            <button type="button" class="btn-add" onclick="ouvrirModale(null)">
-                <i class="fa-solid fa-plus"></i> Nouvelle idée
-            </button>
+            <div class="page-header-actions">
+                <button type="button" class="btn-export" onclick="exporterJson()"
+                        title="Télécharger toutes les idées en JSON (sauvegarde — ignore les filtres)">
+                    <i class="fa-solid fa-download"></i> Exporter
+                </button>
+                <button type="button" class="btn-add" onclick="ouvrirModale(null)">
+                    <i class="fa-solid fa-plus"></i> Nouvelle idée
+                </button>
+            </div>
         </div>
 
         <div class="toolbar">
