@@ -85,6 +85,15 @@ service cloud.firestore {
       allow read, write: if aAcces('exterieur');
     }
 
+    // Suivi des achats de collections.ofildudoubs.fr. Ce site est un
+    // AUTRE dépôt, mais le même projet Firebase : ses collections se
+    // déclarent donc ici, comme celles du hub. Le propriétaire y accède
+    // par son statut de superadmin ; le jour où quelqu'un d'autre doit
+    // y entrer, il faudra lui cocher le projet « achats » sur sa fiche.
+    match /achats/{document} {
+      allow read, write: if aAcces('achats');
+    }
+
     // --- Tout le reste est fermé --------------------------------
     match /{document=**} {
       allow read, write: if false;

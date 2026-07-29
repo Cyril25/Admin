@@ -46,7 +46,7 @@ var SITES = [
         icone: 'fa-solid fa-boxes-stacked',
         url: 'https://collections.ofildudoubs.fr',
         libelleUrl: 'collections.ofildudoubs.fr',
-        description: 'Coquille en place, contenu a definir.'
+        description: 'Suivi des achats de collection : commandes, receptions, doublons.'
     },
     {
         slug: 'lephare',
