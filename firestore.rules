@@ -94,6 +94,17 @@ service cloud.firestore {
       allow read, write: if aAcces('achats');
     }
 
+    // Fournisseurs et comptes du site Collections — un seul tiroir pour
+    // les deux, discriminé par un champ `type`.
+    //
+    // ⚠ CE BLOC PROTÈGE DES MOTS DE PASSE EN CLAIR. C'est la seule
+    // barrière entre eux et le reste d'Internet : ne jamais l'élargir
+    // « pour dépanner ». Un membre à qui on donne le projet `fournisseurs`
+    // reçoit tous les identifiants, il n'y a pas de demi-accès ici.
+    match /fournisseurs/{document} {
+      allow read, write: if aAcces('fournisseurs');
+    }
+
     // --- Tout le reste est fermé --------------------------------
     match /{document=**} {
       allow read, write: if false;
