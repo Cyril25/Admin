@@ -13,6 +13,26 @@ d'étape de build.
 | `test-droits.js` | Le système d'accès : qui voit quels projets et quels sites, et ce que fait l'impersonation |
 | `test-idees.js` | La page Idées : tri, filtres, échappement, export JSON, **droits par auteur et liste fermée des projets** |
 | `test-exterieur.js` | Le pilotage du chantier : analyseur `.eml`, camp et relances, regroupement des devis, recherche, écritures |
+| `test-cueillette.js` | Le calendrier de cueillette : calcul des statuts, **isolation des forçages par saison**, cohérence du référentiel |
+
+### `test-cueillette.js` — une machine à dates
+
+Tout l'intérêt de la page tient dans « quel statut, aujourd'hui ? », et une erreur y est
+**silencieuse** : un calendrier faux reste un calendrier plausible. Le test pilote donc la
+date du jour à la main et vérifie les verdicts, jour d'ouverture et jour de fermeture inclus.
+
+Le cas à ne jamais casser est l'**isolation par saison** : un forçage saisi pour 2026 ne doit
+rien changer en 2027. Sans ce garde-fou, le référentiel dérive d'année en année sans que rien
+ne le signale. Trois assertions le verrouillent, une par mode de forçage.
+
+Deux autres pièges y sont figés. D'abord la distinction **« plus tard » ≠ « terminé »** : le
+30 juillet, le cèpe qui ouvre le 25 août n'est pas une occasion manquée. Ensuite la
+**priorité entre forçages concurrents**, vérifiée dans les deux sens de lecture — l'affichage
+ne doit pas dépendre de l'ordre dans lequel Firestore renvoie les documents.
+
+Le référentiel lui-même est audité : identifiants uniques, dates valides, pics à l'intérieur
+de leur fenêtre, et surtout **aucun champignon sans champ `confusion`** — c'est là que
+l'erreur se paie le plus cher. Ce test a déjà attrapé trois espèces qui en manquaient.
 
 ### `test-idees.js` — les droits par auteur
 

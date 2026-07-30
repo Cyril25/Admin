@@ -21,6 +21,7 @@ dans Firestore.
 | `membres.html` / `membres.js` | Annuaire des membres et attribution des accès (superadmin) |
 | `idees/` | Projet « Idées / Projets » |
 | `exterieur/` | Projet « Extérieur de la maison » |
+| `cueillette/` | Projet « Calendrier de cueillette du Haut-Doubs » |
 | — | [collections.ofildudoubs.fr](https://collections.ofildudoubs.fr) est un **site** à part : seul son droit d'accès se coche ici, dans la liste des sites |
 | `style.css` | Feuille de styles unique |
 | `firestore.rules` | Règles de sécurité à publier dans la console Firebase |
@@ -340,6 +341,116 @@ main. **Un format exotique ne doit jamais faire perdre un mail.**
 Le bloc `match /exterieur/{document}` existe déjà et couvre tous les types du
 tiroir — conséquence directe du choix d'une collection unique. C'est le seul lot du
 hub dans ce cas, autant l'écrire noir sur blanc pour éviter qu'on le cherche.
+
+### Projet `cueillette` — le calendrier du Haut-Doubs
+
+Une seule question : **qu'est-ce que je vais récolter aujourd'hui**, entre 800 et 1200 m,
+sur le secteur Mouthe – Labergement – Vaux-et-Chantegrue – Pontarlier – Frasne – Levier ?
+Le périmètre est affiché en tête de page, pas seulement commenté : une fenêtre calculée
+pour cette tranche d'altitude serait fausse ailleurs, et les fenêtres du référentiel
+**intègrent déjà** le décalage phénologique local (deux à trois semaines de retard sur la
+plaine au printemps, saison d'automne coupée net par la première vraie gelée).
+
+#### Deux sources, et c'est toute l'architecture
+
+| Source | Où | Ce qu'elle porte |
+|---|---|---|
+| **Référentiel** | `cueillette/especes.js`, versionné dans git | Ce qui est vrai bon an mal an : fenêtre théorique, biotope, altitude, effort/rendement, sosies dangereuses |
+| **Forçages** | Collection Firestore `cueillette` | L'aléa de l'année : gelées tardives, canicule, arrêté préfectoral |
+
+Le référentiel est de la **structure**, au même titre que `projets.js` : public, non secret,
+revu en pull request. Une erreur de fenêtre envoie quelqu'un ramasser au mauvais moment —
+autant qu'elle passe par un diff. Le mettre en base ferait perdre cette revue sans rien
+apporter, puisqu'il ne change presque jamais.
+
+#### ⚠ Un forçage porte une année, et c'est la décision centrale
+
+`annee` est **obligatoire** sur chaque forçage, et un forçage de 2026 est ignoré en 2027.
+
+Sans ce champ, on décalerait les morilles de douze jours pour cause de gelées tardives, on
+oublierait, et le calendrier mentirait toutes les années suivantes. C'est la panne
+silencieuse type : un calendrier faux reste un calendrier *plausible*, personne ne s'en
+aperçoit, et l'outil devient pire que pas d'outil du tout. Un forçage périmé reste affiché,
+barré — il documente l'année écoulée sans plus agir.
+
+**Corriger durablement une fenêtre, ce n'est donc pas un forçage : c'est modifier
+`especes.js`.** La page le dit à l'endroit où l'on saisit.
+
+| Mode | Effet | Exemple |
+|---|---|---|
+| `decalage` | Translate début et fin de N jours (négatif = en avance) | Gelées tardives dans le val de Mouthe |
+| `fenetre` | Impose des dates à la place des théoriques | Canicule : une seule poussée, du 1er au 20 août |
+| `suspension` | Rien à récolter, ou récolte interdite | Arrêté préfectoral, massif fermé |
+
+En cas de forçages concurrents sur la même espèce et la même saison, l'ordre est explicite —
+`suspension` > `fenetre` > `decalage` — pour que l'affichage ne dépende pas de l'ordre de
+lecture de Firestore. **Une interdiction ne se laisse pas écraser par un ajustement de
+dates.** Le motif est obligatoire : dans six mois, un décalage de douze jours sans raison
+écrite est inexploitable.
+
+Lecture partagée, écriture personnelle, comme le carnet d'idées : « les gelées ont tout
+décalé à Mouthe » n'a aucune valeur si chacun le garde pour soi, mais chacun ne défait que
+ses propres observations.
+
+#### Quatre statuts, pas trois
+
+Les trois demandés — **En cours**, **Bientôt**, **Terminé** — plus un quatrième, **Plus
+tard**, sans lequel le classement mentirait : fin juillet, le cèpe qui ouvre le 25 août
+n'est ni en cours, ni bientôt (le seuil est de 21 jours), et le ranger dans « Terminé »
+ferait passer la meilleure récolte de l'année pour une occasion manquée.
+
+« Terminé » veut dire *fini pour cette saison*, et la saison est l'année civile : si la
+prochaine occurrence tombe l'an prochain, c'est fini ; si elle tombe encore cette année,
+c'est que ça n'a pas commencé.
+
+#### Modèle de données — collection `cueillette`
+
+Un document = **un forçage**, jamais une espèce.
+
+| Champ | Type | Détail |
+|---|---|---|
+| `espece` | string | `id` du référentiel — ne pas renommer un `id` sans migrer |
+| `annee` | int | **La saison visée.** Un forçage ne déborde jamais dessus |
+| `mode` | string | `decalage` / `fenetre` / `suspension` |
+| `jours` | int | Mode `decalage` uniquement, négatif si la saison est en avance |
+| `debut`, `fin` | map | Mode `fenetre` uniquement — `{ mois, jour }`, sans année |
+| `motif` | string | Obligatoire |
+| `creePar` | string | Email de l'auteur **réel** — titre de propriété |
+| `createdAt`, `updatedAt` | timestamp | Horodatage serveur |
+
+Les périodes sont stockées en **mois/jour**, jamais en date absolue : une fenêtre se répète
+d'une année sur l'autre, et c'est le code qui la projette sur une année concrète au moment
+de la comparer à aujourd'hui. Les `<input type="date">` de la saisie portent une année
+factice, qui est jetée.
+
+#### Sécurité : ce que la page ne fait pas
+
+Elle dit **quand** chercher, jamais si ce qu'on a dans le panier est comestible. Chaque
+champignon du référentiel porte donc un champ `confusion` — le test le vérifie et refuse un
+champignon qui n'en aurait pas — et un rappel réglementaire permanent figure en pied de
+page (accord du propriétaire, plafond de quantité, horaires).
+
+#### Et le « flux public » : il n'y en a pas, vérification faite
+
+Le doute méritait d'être levé plutôt que supposé. Ce qui existe et pourquoi ça ne convient
+pas :
+
+- **[TEMPO / Observatoire des saisons](https://tempo.pheno.fr/donnees/portail-de-donnees)** —
+  de vraies données phénologiques françaises, mais sur des *plantes* (débourrement,
+  floraison), pas sur les champignons ; portail de téléchargement pour la recherche, pas API
+  temps réel ; et aucune résolution au micro-climat du Haut-Doubs.
+- **[GBIF](https://techdocs.gbif.org/en/openapi/)** — des millions d'occurrences datées,
+  d'où l'on *pourrait* dériver une courbe de fructification. Mais ces dates mesurent d'abord
+  l'effort d'observation (les gens sortent le week-end et en octobre), l'altitude n'y est pas
+  filtrable de façon fiable, et c'est un traitement par lots, pas un flux. **Piste réelle
+  pour calibrer le référentiel un jour ; pas une dépendance d'exécution.**
+- **Arrêtés préfectoraux** — publiés en PDF, sans API. C'est précisément à ça que sert le
+  mode `suspension`.
+- Les calendriers grand public — corrects pour la France, faux de plusieurs semaines à 1000 m.
+
+**Conclusion : référentiel interne, comme prévu.** Aucune dépendance réseau au-delà de
+Firebase, et si Firestore tombe, la page affiche quand même les fenêtres théoriques en le
+disant.
 
 ## Mise en place
 

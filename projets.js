@@ -39,6 +39,13 @@ var PROJETS = [
         icone: 'fa-solid fa-seedling',
         url: 'exterieur/',
         description: "Le chantier au meme endroit : devis, mails archives, photos, taches, contacts. La vue d'accueil repond a une seule question — la balle est dans quel camp ?"
+    },
+    {
+        slug: 'cueillette',
+        nom: 'Calendrier de cueillette',
+        icone: 'fa-solid fa-basket-shopping',
+        url: 'cueillette/',
+        description: "Quoi recolter aujourd'hui dans le Haut-Doubs, entre 800 et 1200 m : champignons, baies, fruits a coque, ail des ours. Le decalage d'altitude est integre aux fenetres, et les aleas de l'annee se forcent a la main."
     }
 ];
 

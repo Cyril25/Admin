@@ -125,6 +125,38 @@ service cloud.firestore {
       allow read, write: if aAcces('exterieur');
     }
 
+    // Calendrier de cueillette du Haut-Doubs — LES FORÇAGES SEULEMENT.
+    //
+    // ⚠ Le référentiel des espèces n'est PAS ici : il vit dans
+    // `cueillette/especes.js`, versionné dans git. Cette collection ne
+    // contient que les corrections ponctuelles d'une saison — gelées
+    // tardives, canicule, arrêté préfectoral. Un document est un forçage,
+    // pas une espèce.
+    //
+    // Même modèle que le carnet d'idées : LECTURE PARTAGÉE, ÉCRITURE
+    // PERSONNELLE. « Les gelées ont tout décalé à Mouthe » n'a aucune
+    // valeur si chacun le garde pour soi — cloisonner la lecture viderait
+    // le mécanisme de son intérêt. En écriture, chacun ne défait que ses
+    // propres observations.
+    match /cueillette/{document} {
+      allow read: if aAcces('cueillette');
+
+      // Comparé au jeton RÉEL : un forçage saisi sous impersonation est
+      // enregistré au nom de qui le saisit vraiment.
+      allow create: if aAcces('cueillette')
+                    && request.resource.data.creePar == idAppelant();
+
+      // `creePar` est immuable — sans cette clause on pourrait
+      // s'attribuer l'observation d'un autre, ou lui refiler la sienne.
+      allow update: if superadmin()
+                    || (aAcces('cueillette')
+                        && resource.data.creePar == idAppelant()
+                        && request.resource.data.creePar == resource.data.creePar);
+
+      allow delete: if superadmin()
+                    || (aAcces('cueillette') && resource.data.creePar == idAppelant());
+    }
+
     // Suivi des achats de collections.ofildudoubs.fr. Ce site est un
     // AUTRE dépôt, mais le même projet Firebase : ses collections se
     // déclarent donc ici, comme celles du hub. Le propriétaire y accède

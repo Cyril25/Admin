@@ -1582,3 +1582,166 @@ body.login-page {
     .mail-champs { grid-template-columns: 1fr; }
     .mail-champs dt { margin-top: 4px; }
 }
+
+/* =========================================================
+   13. Projet « Cueillette » — calendrier du Haut-Doubs
+   Aucune couleur nouvelle en dehors des cinq teintes de statut,
+   qui doivent se distinguer d'un coup d'œil sur un téléphone en
+   plein soleil : c'est la seule raison d'y déroger.
+   ========================================================= */
+
+/* ---------- 13.1 En-tête du jour ---------- */
+.jour-entete {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm) var(--spacing-md);
+    margin-bottom: var(--spacing-lg);
+}
+
+.jour-date {
+    font-size: 1.05rem;
+    font-weight: 500;
+    color: var(--color-primary);
+    text-transform: capitalize;
+}
+
+/* ---------- 13.2 Grille des espèces ---------- */
+.grille-especes {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: var(--spacing-md);
+}
+
+.carte-espece {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    background: #fff;
+    border: 1px solid var(--color-border-light);
+    border-left: 4px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-md);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+/* Le liseré gauche porte le statut : c'est ce qu'on lit en premier
+   en balayant la page, avant même le nom de l'espèce. */
+.carte-espece--en_cours  { border-left-color: #2E7D32; }
+.carte-espece--suspendu  { border-left-color: #CC4444; background: #FFFBFB; }
+.carte-espece--bientot   { border-left-color: #EF6C00; }
+.carte-espece--plus_tard { border-left-color: #3D6485; }
+.carte-espece--termine   { border-left-color: #CBD2D9; opacity: 0.68; }
+
+.espece-entete { display: flex; align-items: flex-start; gap: var(--spacing-sm); }
+.espece-icone { color: var(--color-accent); font-size: 1.1rem; padding-top: 3px; }
+.espece-titres { min-width: 0; }
+
+.espece-nom {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--color-text);
+    line-height: 1.3;
+}
+
+.espece-latin {
+    font-size: 0.78rem;
+    font-style: italic;
+    color: var(--color-text-muted);
+}
+
+.espece-fenetre {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--color-primary);
+}
+.espece-fenetre i { color: var(--color-text-muted); margin-right: 4px; }
+
+/* Une fenêtre déplacée par un forçage affiche aussi l'originale :
+   une correction invisible est une correction qu'on ne saura pas
+   défaire six mois plus tard. */
+.espece-theorique {
+    font-size: 0.78rem;
+    font-weight: 400;
+    color: var(--color-text-muted);
+    text-decoration: line-through;
+}
+
+.espece-badges { display: flex; flex-wrap: wrap; gap: var(--spacing-xs); }
+
+.badge-pic       { background: #E4F5F2; color: #0B6B60; font-weight: 700; }
+.badge-restant   { background: #E8F5E9; color: #2E7D32; font-weight: 700; }
+.badge-bientot   { background: #FFF3C4; color: #8D6708; font-weight: 700; }
+.badge-plustard  { background: #E3EDF5; color: #2C4A63; }
+.badge-effort    { background: var(--color-surface); color: var(--color-text-secondary); }
+.badge-rendement { background: var(--color-surface); color: var(--color-text-secondary); }
+.badge-saison    { background: #E3EDF5; color: #2C4A63; }
+
+.badge-mode--decalage   { background: #E3EDF5; color: #2C4A63; font-weight: 700; }
+.badge-mode--fenetre    { background: #E4F5F2; color: #0B6B60; font-weight: 700; }
+.badge-mode--suspension { background: #FDECEA; color: #A63030; font-weight: 700; }
+
+.espece-biotope,
+.espece-altitude,
+.espece-note {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+    line-height: 1.45;
+}
+.espece-biotope i,
+.espece-altitude i { color: var(--color-text-muted); margin-right: 4px; }
+.espece-note { color: var(--color-text-muted); font-size: 0.82rem; }
+
+/* Confusion et réglementation ne sont pas de la décoration : c'est
+   la partie de la fiche qui évite une erreur grave. Elles sortent
+   du flux gris du reste. */
+.espece-confusion,
+.espece-reglementation {
+    margin: 0;
+    padding: var(--spacing-sm);
+    border-radius: var(--radius-sm);
+    font-size: 0.82rem;
+    line-height: 1.45;
+}
+.espece-confusion {
+    background: #FDECEA;
+    color: #7A2020;
+    border-left: 3px solid #CC4444;
+}
+.espece-reglementation {
+    background: #FFF7E6;
+    color: #7A5200;
+    border-left: 3px solid #E0A030;
+}
+.espece-confusion i,
+.espece-reglementation i { margin-right: 4px; }
+
+.espece-forcage {
+    padding: var(--spacing-sm);
+    background: var(--color-surface);
+    border-radius: var(--radius-sm);
+    font-size: 0.82rem;
+    color: var(--color-text-secondary);
+}
+.espece-forcage i { color: var(--color-accent); margin-right: 4px; }
+.espece-forcage-meta { color: var(--color-text-muted); }
+
+.espece-actions { margin-top: auto; padding-top: var(--spacing-xs); }
+
+/* ---------- 13.3 Forçages ---------- */
+/* Un forçage périmé reste visible plutôt que d'être masqué : il
+   documente ce qui s'est passé cette année-là, et le barrer dit
+   mieux qu'un filtre qu'il n'agit plus. */
+.carte-forcage--perime { opacity: 0.55; }
+.carte-forcage--perime .carte-titre { text-decoration: line-through; }
+
+/* ---------- 13.4 Mobile ---------- */
+/* La page se consulte au bord d'un chemin, sur un téléphone : c'est
+   son usage principal, pas une variante. */
+@media (max-width: 620px) {
+    .grille-especes { grid-template-columns: 1fr; }
+    .jour-entete { flex-direction: column; gap: var(--spacing-xs); }
+    .carte-espece { padding: var(--spacing-sm) var(--spacing-md); }
+}

@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://cdnjs.cloudflare.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; img-src 'self' data: https://lh3.googleusercontent.com; connect-src 'self' https://www.gstatic.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://www.googleapis.com https://accounts.google.com; frame-src 'self' https://ofildudoubs-hub.firebaseapp.com https://apis.google.com https://accounts.google.com;">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="description" content="Calendrier de cueillette du Haut-Doubs — hub O'Fil du Doubs.">
+    <title>Calendrier de cueillette du Haut-Doubs — Hub O'Fil du Doubs</title>
+    <link rel="icon" href="../icon.svg" type="image/svg+xml">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous">
+    <link rel="stylesheet" href="../style.css">
+</head>
+<body data-projet="cueillette" data-racine="../">
+    <div id="header-placeholder"></div>
+
+    <div id="app-content" class="page" style="display:none">
+
+        <div class="page-header">
+            <h1><i class="fa-solid fa-basket-shopping"></i> Calendrier de cueillette</h1>
+            <div class="page-header-actions">
+                <button type="button" class="btn-export" onclick="exporterJson()"
+                        title="Télécharger le référentiel, les forçages et l'évaluation du jour en JSON">
+                    <i class="fa-solid fa-download"></i> Exporter
+                </button>
+                <button type="button" class="btn-add" onclick="ouvrirModale(null)">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> Forcer une fenêtre
+                </button>
+            </div>
+        </div>
+
+        <!-- Le périmètre est affiché, pas seulement commenté : une
+             fenêtre calculée pour 800–1200 m serait fausse ailleurs, et
+             qui consulte la page depuis la plaine doit le savoir. -->
+        <p class="page-subtitle" id="perimetre"></p>
+
+        <div class="selecteur-vues">
+            <button type="button" class="vue-btn active" data-vue="aujourdhui" onclick="changerVue('aujourdhui')">
+                <i class="fa-solid fa-calendar-day"></i> Aujourd'hui
+            </button>
+            <button type="button" class="vue-btn" data-vue="annee" onclick="changerVue('annee')">
+                <i class="fa-solid fa-table-list"></i> Toute l'année
+            </button>
+            <button type="button" class="vue-btn" data-vue="forcages" onclick="changerVue('forcages')">
+                <i class="fa-solid fa-wand-magic-sparkles"></i> Forçages
+            </button>
+        </div>
+
+        <div class="avertissement avertissement--info" id="forcages-hs" style="display:none"></div>
+
+        <div id="categorie-filter" class="filter-row"></div>
+
+        <!-- ---------- Vue : aujourd'hui ---------- -->
+        <div id="vue-aujourdhui">
+            <div class="jour-entete">
+                <span class="jour-date" id="date-du-jour"></span>
+                <span class="mouvement-phrase" id="resume-jour"></span>
+            </div>
+            <div id="blocs-statuts"></div>
+        </div>
+
+        <!-- ---------- Vue : toute l'année ---------- -->
+        <div id="vue-annee" style="display:none">
+            <p class="notice">
+                Les fenêtres <strong>théoriques</strong> du référentiel, dans l'ordre du calendrier —
+                forçages de l'année exclus, sauf la colonne « Aujourd'hui » qui, elle, en tient compte.
+                C'est la vue pour préparer une saison ; pour décider d'une sortie, voir « Aujourd'hui ».
+            </p>
+            <div id="table-annee" class="idees-list"></div>
+        </div>
+
+        <!-- ---------- Vue : forçages ---------- -->
+        <div id="vue-forcages" style="display:none">
+            <p class="notice notice-warning">
+                Un forçage vaut pour <strong>une seule saison</strong>. Celui de l'an dernier n'agit plus :
+                il reste affiché, barré, comme mémoire de ce qui s'est passé cette année-là.
+                Pour corriger <em>durablement</em> une fenêtre, ce n'est pas ici — c'est dans
+                <code>cueillette/especes.js</code>.
+            </p>
+            <div id="liste-forcages" class="bloc-corps"></div>
+        </div>
+
+        <!-- Rappel réglementaire permanent : c'est le genre de chose
+             qu'on n'ira jamais chercher volontairement. -->
+        <div class="notice notice-warning" id="rappel-legal">
+            <strong>Avant de partir.</strong> La cueillette suppose l'accord du propriétaire du terrain,
+            se pratique entre le lever et le coucher du soleil, et reste plafonnée en quantité —
+            dans le Doubs, la limite couramment citée est de <strong>2 kg de champignons par personne
+            et par jour</strong> (à vérifier auprès de la préfecture, les arrêtés évoluent).
+            Certaines communes et forêts domaniales sont plus restrictives.
+            <br>
+            <strong>Et surtout :</strong> ce référentiel indique <em>quand</em> chercher, jamais si ce que
+            vous avez dans le panier est comestible. Au moindre doute, pharmacie ou société mycologique.
+        </div>
+
+    </div>
+
+    <!-- Modale : ajout / édition d'un forçage -->
+    <div id="modal-overlay" class="modal-overlay" style="display:none">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+            <h2 class="modal-title" id="modal-title">Forcer une fenêtre</h2>
+            <div class="modal-form">
+                <div class="field">
+                    <label for="f-espece">Espèce</label>
+                    <select id="f-espece"></select>
+                </div>
+                <div class="field">
+                    <label for="f-annee">Saison</label>
+                    <!-- Le champ qui empêche le calendrier de dériver :
+                         un forçage ne déborde jamais sur l'année suivante. -->
+                    <select id="f-annee"></select>
+                    <span class="field-hint">Le forçage ne s'applique qu'à cette année-là.</span>
+                </div>
+                <div class="field field--full">
+                    <label for="f-mode">Type de forçage</label>
+                    <select id="f-mode" onchange="majChampsMode()"></select>
+                    <span class="field-hint" id="f-mode-aide"></span>
+                </div>
+
+                <div class="modal-form" id="bloc-decalage" style="display:grid;grid-column:1 / -1">
+                    <div class="field field--full">
+                        <label for="f-jours">Décalage en jours</label>
+                        <input type="number" id="f-jours" min="-120" max="120" step="1"
+                               placeholder="ex. 12 si la saison est en retard, -8 si elle est en avance">
+                    </div>
+                </div>
+
+                <div class="modal-form" id="bloc-fenetre" style="display:none;grid-column:1 / -1">
+                    <div class="field">
+                        <label for="f-debut">Début imposé</label>
+                        <!-- L'année saisie ici est ignorée : la récurrence
+                             est mois/jour, la saison est le champ ci-dessus. -->
+                        <input type="date" id="f-debut">
+                    </div>
+                    <div class="field">
+                        <label for="f-fin">Fin imposée</label>
+                        <input type="date" id="f-fin">
+                    </div>
+                    <span class="field-hint field--full">Seuls le jour et le mois sont retenus.</span>
+                </div>
+
+                <div class="field field--full">
+                    <label for="f-motif">Motif *</label>
+                    <textarea id="f-motif" rows="3"
+                              placeholder="ex. Gelées tardives dans le val de Mouthe, tout est décalé de deux semaines"></textarea>
+                    <span class="field-hint">Obligatoire : dans six mois, un forçage sans raison est inexploitable.</span>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" id="btn-delete" class="modal-btn modal-btn-danger" style="display:none" onclick="ouvrirModaleSuppression()">Supprimer</button>
+                <button type="button" class="modal-btn" onclick="fermerModale()">Fermer</button>
+                <button type="button" class="modal-btn modal-btn-primary" onclick="sauverForcage()">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modale de confirmation de suppression -->
+    <div id="delete-overlay" class="modal-overlay" style="display:none">
+        <div class="modal" role="alertdialog" aria-modal="true" style="max-width:460px">
+            <h2 class="modal-title">Supprimer ce forçage ?</h2>
+            <p class="modal-desc">
+                L'espèce reprendra ses dates théoriques. Un forçage d'une saison passée n'a de toute
+                façon plus d'effet : le garder documente l'année écoulée.
+            </p>
+            <div class="modal-actions">
+                <button type="button" class="modal-btn" onclick="fermerModaleSuppression()">Annuler</button>
+                <button type="button" class="modal-btn modal-btn-danger" style="margin-right:0" onclick="confirmerSuppression()">Confirmer</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js" integrity="sha384-v3Z/Xdw1sCeo6M/geW7sn1Lt9obIm7MhAk8laVV+rvYFmzuWDELOiygx7dVte2dX" crossorigin="anonymous"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js" integrity="sha384-p62xBRve8PdqGDGASZtZMuHgPsyPcT5VsFwgmz2p4zaFdEtt5ZzNqxK+CLzQS7xP" crossorigin="anonymous"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js" integrity="sha384-3LctmFHtNDZwkVOSZ0fvJZJD9XR5Og5ol/MVEfNt36gUUnSYBRJN0iFjIMbFecOg" crossorigin="anonymous"></script>
+    <script src="../config.js"></script>
+    <script src="../projets.js"></script>
+    <script src="../auth.js"></script>
+    <script src="../hub-utils.js"></script>
+    <script src="especes.js"></script>
+    <script src="cueillette.js"></script>
+    <script>
+        // Le périmètre est une donnée du référentiel : l'écrire en dur
+        // dans le HTML le ferait mentir au premier secteur ajouté.
+        document.addEventListener('DOMContentLoaded', function() {
+            var bloc = document.getElementById('perimetre');
+            if (bloc) {
+                bloc.textContent = 'Haut-Doubs, ' + ALTITUDE_MIN + ' à ' + ALTITUDE_MAX + ' m — '
+                    + SECTEURS.join(', ') + '. Le décalage phénologique de la tranche est déjà intégré aux fenêtres.';
+            }
+        });
+    </script>
+</body>
+</html>
