@@ -48,6 +48,9 @@ var PROJETS = [
         icone: 'fa-solid fa-cart-shopping',
         url: 'https://collections.ofildudoubs.fr/index.html',
         externe: true,
+        // ⚠ A CLOISONNER PAR PROPRIETAIRE (decide le 30/07/2026, pas fait) :
+        // chacun doit gerer ses propres achats. En l'etat, cocher cette
+        // case donne acces aux lignes de tout le monde.
         description: "Commandes passees, colis attendus, montant depense, exemplaires en trop. Heberge sur collections.ofildudoubs.fr."
     },
     {

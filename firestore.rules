@@ -90,6 +90,12 @@ service cloud.firestore {
     // déclarent donc ici, comme celles du hub. Le propriétaire y accède
     // par son statut de superadmin ; le jour où quelqu'un d'autre doit
     // y entrer, il faudra lui cocher le projet « achats » sur sa fiche.
+    // ⚠ À CLOISONNER PAR PROPRIÉTAIRE — décidé le 30/07/2026, pas fait.
+    // Les achats ne sont pas communs : chacun gère les siens, et chaque
+    // ligne doit être rattachée au membre qui l'a créée. Le patron est
+    // celui du bloc `fournisseurs` juste en dessous, à copier tel quel.
+    // En l'état, toute personne ayant le droit `achats` voit et modifie
+    // les lignes de tout le monde.
     match /achats/{document} {
       allow read, write: if aAcces('achats');
     }
