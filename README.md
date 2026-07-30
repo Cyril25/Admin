@@ -133,7 +133,8 @@ l'appelant en une lecture, sans requête.
 | `numero` | int | Numéro lisible (#7), attribué à la création (max + 1) |
 | `titre` | string | Obligatoire |
 | `detail` | string | Texte libre |
-| `projet` | string | Texte libre, suggestions via datalist |
+| `projet` | string | **Liste fermée** — libellé issu de `PROJETS` ou de `SITES`, filtré par les droits |
+| `creePar` | string | Email de l'auteur — sert de titre de propriété |
 | `importance` | string | `haute` / `normale` / `basse` |
 | `complexite` | string | `''` / `S` / `M` / `L` |
 | `etat` | string | `idee` / `a_creuser` / `a_faire` / `en_cours` / `faite` / `abandonnee` |
@@ -144,6 +145,48 @@ complexité croissante. Une idée `haute` + `S` est signalée par un badge ⚡.
 
 La page écoute Firestore en temps réel (`onSnapshot`) : une idée saisie sur le
 téléphone apparaît sur le PC sans rechargement.
+
+#### Carnet commun, écriture personnelle
+
+**Tout le monde lit tout** — c'est le but d'un carnet d'idées, et c'est le propriétaire
+qui lit celles des autres pour les mettre en place. La lecture n'étant pas cloisonnée,
+aucun `where` n'est nécessaire côté client, contrairement à la page Comptes du site
+Collections.
+
+**En écriture, chacun ne touche qu'aux siennes.** `creePar` porte l'email de l'auteur et
+sert de titre de propriété ; le superadmin, lui, corrige tout, puisque c'est lui qui trie
+et met en œuvre.
+
+À l'écran, ça donne : une colonne « Par », un sélecteur d'état grisé sur les idées des
+autres, une icône œil au lieu du crayon, et une modale qui s'ouvre quand même — la lire
+est utile — mais en lecture seule, sans bouton Enregistrer ni Supprimer. Un filtre
+« Les miennes » apparaît dès qu'il y a plus d'un auteur.
+
+`creePar` est écrit avec l'utilisateur **réel**, jamais l'impersonné : la règle Firestore
+compare ce champ au jeton de l'appelant, une idée saisie sous impersonation serait donc
+refusée à la création. Le *droit de modifier*, lui, suit le rôle vu à l'écran, comme le
+menu et les gardes.
+
+#### Le champ `projet` : une liste fermée, filtrée par les droits
+
+Ce n'est plus du texte libre. Le menu déroulant réunit **les deux registres** — les
+projets de `projets.js` et les sites de `sites.js` — chacun filtré par le tableau de droits
+correspondant de la fiche membre. On ne note une idée que sur ce à quoi on a accès.
+
+Effet de bord accepté : les droits « sites », jusqu'ici du pur confort d'affichage, se
+mettent à conditionner une saisie.
+
+C'est le **libellé** qui est stocké, pas le slug. Les idées d'avant portaient déjà
+« O'Fil du Doubs » ou « Collections », qui sont exactement des noms de sites : stocker le
+slug aurait orphelinné toutes ces valeurs d'un coup. Revers de la médaille — **renommer un
+`nom` dans un registre orpheline les idées qui s'y rattachaient**. Elles réapparaissent
+alors dans un groupe « Hérité » du menu déroulant, sélectionné par défaut, pour ne jamais
+perdre la valeur en silence au premier enregistrement.
+
+> **Les idées d'avant `creePar` n'ont pas d'auteur.** Elles restent visibles — la lecture
+> n'est pas cloisonnée — mais seul le superadmin peut les modifier, et la colonne affiche
+> « — ». Comme il était seul à écrire jusque-là, un bandeau lui propose de se les
+> attribuer en un clic.
 
 ### Modèle de données — collection `exterieur`
 

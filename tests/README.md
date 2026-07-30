@@ -11,8 +11,28 @@ d'étape de build.
 | Fichier | Ce qu'il protège |
 |---|---|
 | `test-droits.js` | Le système d'accès : qui voit quels projets et quels sites, et ce que fait l'impersonation |
-| `test-idees.js` | La page Idées : tri, filtres, échappement, export JSON |
+| `test-idees.js` | La page Idées : tri, filtres, échappement, export JSON, **droits par auteur et liste fermée des projets** |
 | `test-exterieur.js` | Le pilotage du chantier : analyseur `.eml`, camp et relances, regroupement des devis, recherche, écritures |
+
+### `test-idees.js` — les droits par auteur
+
+Le carnet est **lu par tous et écrit par chacun** : la moitié des assertions porte sur cette
+asymétrie, parce qu'elle se casse en silence. Un sélecteur d'état qu'on oublie de griser
+propose une action que Firestore refusera ; un `creePar` réécrit à la modification change
+l'auteur d'une idée sans que personne le voie.
+
+Un faux Firestore capture les écritures : on vérifie que la création pose bien l'auteur,
+que la modification n'y touche pas, et qu'écrire sur l'idée d'un autre **n'envoie rien** —
+le refus doit tomber avant l'aller-retour réseau, un message clair valant mieux qu'une
+erreur de permissions.
+
+Les registres `projets.js` et `sites.js` sont chargés pour de vrai : si un libellé change,
+le test le voit. Le cas à ne pas casser est la valeur **héritée** — une idée d'avant la
+liste fermée porte un `projet` qui n'y figure plus (« stock-watch »), et l'enregistrer ne
+doit pas l'effacer.
+
+Cinq assertions relisent enfin `firestore.rules` pour s'assurer que les règles disent la
+même chose que le client suppose.
 
 ### `test-exterieur.js` — où porte l'effort
 

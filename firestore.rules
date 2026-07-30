@@ -77,8 +77,35 @@ service cloud.firestore {
     }
 
     // --- Projets -------------------------------------------
+
+    // Carnet d'idées : LECTURE PARTAGÉE, ÉCRITURE PERSONNELLE.
+    //
+    // Tout le monde lit tout — c'est le but d'un carnet commun, et c'est
+    // le propriétaire qui lit les idées des autres pour les mettre en
+    // place. Pas de cloisonnement en lecture, donc pas de `where`
+    // obligatoire côté client, contrairement à `fournisseurs`.
+    //
+    // En écriture, chacun ne touche qu'à ses propres idées. `creePar`
+    // porte l'email de l'auteur et sert de titre de propriété.
     match /idees/{document} {
-      allow read, write: if aAcces('idees');
+      allow read: if aAcces('idees');
+
+      // On ne crée que sous son propre nom. Comparé au jeton réel, donc
+      // une idée saisie pendant une impersonation est enregistrée au nom
+      // de qui la saisit vraiment.
+      allow create: if aAcces('idees')
+                    && request.resource.data.creePar == idAppelant();
+
+      // Le superadmin corrige tout : c'est lui qui trie et met en œuvre.
+      // Les autres ne modifient que les leurs, et ne peuvent pas changer
+      // l'auteur — sans cette clause on pourrait refiler une idée.
+      allow update: if superadmin()
+                    || (aAcces('idees')
+                        && resource.data.creePar == idAppelant()
+                        && request.resource.data.creePar == resource.data.creePar);
+
+      allow delete: if superadmin()
+                    || (aAcces('idees') && resource.data.creePar == idAppelant());
     }
 
     match /exterieur/{document} {

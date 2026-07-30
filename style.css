@@ -522,6 +522,61 @@ body.login-page {
     font-size: 0.8rem;
 }
 
+/* Auteur d'une idee : la partie avant l'arobase, l'adresse complete en
+   infobulle. Lire le nom demanderait l'annuaire des membres, que les
+   regles n'ouvrent qu'au superadmin. */
+.idee-auteur-cell {
+    color: var(--color-text-secondary);
+    font-size: 0.82rem;
+    max-width: 130px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: help;
+}
+.idee-moi { color: var(--color-accent); font-size: 0.75em; }
+
+/* Idee de quelqu'un d'autre : le select grise dit « pas a vous » sans
+   qu'on ait a l'ecrire, et sans laisser cliquer pour rien. */
+.idee-etat-select:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+    background: var(--color-surface);
+}
+
+/* Bandeau d'information — reprise des idees sans auteur. Bleu et non
+   ambre : c'est une chose a traiter, pas une mise en garde permanente. */
+.avertissement {
+    display: flex;
+    gap: var(--spacing-md);
+    align-items: flex-start;
+    border-radius: var(--radius-md);
+    padding: 12px 16px;
+    margin-bottom: var(--spacing-md);
+    font-size: 0.86rem;
+    line-height: 1.5;
+}
+.avertissement--info {
+    background: #EBF3FA;
+    border: 1px solid #A9CBEA;
+    border-left: 3px solid #1976D2;
+    color: #1B4E7E;
+}
+.avertissement--info i { font-size: 1.1rem; color: #1976D2; margin-top: 2px; }
+
+.btn-ajout-auteur {
+    margin-left: var(--spacing-sm);
+    padding: 4px 12px;
+    background: #fff;
+    color: #1B4E7E;
+    border: 1px solid #A9CBEA;
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.btn-ajout-auteur:hover { background: #DCEAF7; }
+
 .idee-etat-cell { min-width: 124px; }
 
 .idee-etat-select {

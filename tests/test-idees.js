@@ -50,12 +50,65 @@ const FakeURL = {
   revokeObjectURL() {},
 };
 
+// Faux Firestore : le carnet ecrit desormais un auteur, et c'est ce qui
+// PART EN BASE qui compte, pas ce que l'ecran affiche.
+const ecritures = [];
+const fauxDb = {
+  batch() {
+    const operations = [];
+    return {
+      update(ref, data) { operations.push({ type: 'update', id: ref.id, data }); },
+      commit() { operations.forEach((o) => ecritures.push(o)); return Promise.resolve(); },
+    };
+  },
+  collection() {
+    return {
+      doc(id) {
+        const reference = id || 'nouveau-doc';
+        return {
+          id: reference,
+          update(data) { ecritures.push({ type: 'update', id: reference, data }); return Promise.resolve(); },
+        };
+      },
+      add(data) { ecritures.push({ type: 'add', data }); return Promise.resolve({ id: 'nouveau-doc' }); },
+      onSnapshot() {},
+    };
+  },
+};
+
 const sandbox = {
-  document, console, Blob: FakeBlob, URL: FakeURL, JSON, Date,
+  document, console, Blob: FakeBlob, URL: FakeURL, JSON, Date, Promise,
+  Object, Array, String, Number,
+  firebase: { firestore: Object.assign(() => fauxDb, {
+    FieldValue: { serverTimestamp: () => ({ __serveur: true }) },
+  }) },
   window: { location: { pathname: '/idees.html', search: '', hostname: 'admin.ofildudoubs.fr' } },
 };
 sandbox.window.document = document;
 vm.createContext(sandbox);
+
+// Les registres reels : si un slug ou un libelle change, ce test le voit.
+vm.runInContext(fs.readFileSync(path.join(REPO, '..', 'projets.js'), 'utf8'), sandbox);
+vm.runInContext(fs.readFileSync(path.join(REPO, '..', 'sites.js'), 'utf8'), sandbox);
+
+// Ce que auth.js fournit en vrai. On le simule plutot que de le charger :
+// auth.js branche un vigile Firebase complet dont on n'a pas besoin ici.
+vm.runInContext(`
+  var HUB = { user: null, membre: null, effectif: null, impersonation: '' };
+  function normaliserEmail(e) { return String(e || '').trim().toLowerCase(); }
+  function estSuperadmin() { return !!(HUB.effectif && HUB.effectif.role === 'superadmin'); }
+  function estSuperadminReel() { return !!(HUB.membre && HUB.membre.role === 'superadmin'); }
+  function aAcces(slug) {
+    if (!HUB.effectif) return false;
+    if (HUB.effectif.role === 'superadmin') return true;
+    return (HUB.effectif.projets || []).indexOf(slug) !== -1;
+  }
+  function aAccesSite(slug) {
+    if (!HUB.effectif) return false;
+    if (HUB.effectif.role === 'superadmin') return true;
+    return (HUB.effectif.sites || []).indexOf(slug) !== -1;
+  }
+`, sandbox);
 
 // escapeHtml / showToast viennent de auth.js : on ne charge que ce qu'il faut
 vm.runInContext(`
@@ -69,15 +122,37 @@ vm.runInContext(fs.readFileSync(path.join(REPO, '..', 'hub-utils.js'), 'utf8'), 
 vm.runInContext(fs.readFileSync(path.join(REPO, 'idees.js'), 'utf8'), sandbox);
 
 // --- Donnees factices --------------------------------------------
+const PROPRIO = 'cyril.samson41@gmail.com';
+const MARIE = 'marie@gmail.com';
+
 const jour = (n) => ({ toDate: () => new Date(2026, 6, n) });
 sandbox.idees = [
-  { id: 'a1', numero: 1, titre: 'Cron pour les randos', projet: "O'Fil du Doubs", importance: 'normale', complexite: 'M', etat: 'idee',      createdAt: jour(1) },
-  { id: 'a2', numero: 2, titre: 'Quick win evident',    projet: "O'Fil du Doubs", importance: 'haute',   complexite: 'S', etat: 'a_faire',   createdAt: jour(2) },
-  { id: 'a3', numero: 3, titre: 'Gros chantier',        projet: 'Collections',    importance: 'haute',   complexite: 'L', etat: 'a_creuser', createdAt: jour(3) },
-  { id: 'a4', numero: 4, titre: 'Deja faite',           projet: 'Le Fuverat',     importance: 'basse',   complexite: 'S', etat: 'faite',     createdAt: jour(4) },
+  { id: 'a1', numero: 1, titre: 'Cron pour les randos', projet: "O'Fil du Doubs", importance: 'normale', complexite: 'M', etat: 'idee',      createdAt: jour(1), creePar: PROPRIO },
+  { id: 'a2', numero: 2, titre: 'Quick win evident',    projet: "O'Fil du Doubs", importance: 'haute',   complexite: 'S', etat: 'a_faire',   createdAt: jour(2), creePar: MARIE },
+  { id: 'a3', numero: 3, titre: 'Gros chantier',        projet: 'Collections',    importance: 'haute',   complexite: 'L', etat: 'a_creuser', createdAt: jour(3), creePar: PROPRIO },
+  { id: 'a4', numero: 4, titre: 'Deja faite',           projet: 'Le Fuverat',     importance: 'basse',   complexite: 'S', etat: 'faite',     createdAt: jour(4), creePar: MARIE },
+  // Sans auteur ET avec un projet hors registre : l'idee d'avant le champ
+  // libre ferme. Les deux cas de reprise dans une seule ligne.
   { id: 'a5', numero: 5, titre: 'Sans projet ni cplx',  projet: '',               importance: 'normale', complexite: '',  etat: 'en_cours',  createdAt: jour(5) },
 ];
 sandbox.premierChargement = false;
+
+// Par defaut : le proprietaire, superadmin, voit et modifie tout.
+function connecte(email, fiche) {
+  sandbox.HUB.user = { email };
+  sandbox.HUB.membre = fiche;
+  sandbox.HUB.effectif = fiche;
+  sandbox.HUB.impersonation = '';
+}
+const ficheProprio = { email: PROPRIO, nom: 'Cyril', role: 'superadmin', projets: [], sites: [] };
+const ficheMarie = {
+  email: MARIE, nom: 'Marie', role: 'membre',
+  projets: ['idees', 'exterieur'], sites: ['ofildudoubs'],
+};
+connecte(PROPRIO, ficheProprio);
+// onHubReady() n'est pas appele hors navigateur : on branche le faux
+// Firestore a la main.
+sandbox.db = fauxDb;
 
 let echecs = 0;
 function verifie(nom, condition, detail) {
@@ -181,8 +256,170 @@ sandbox.idees = gardees;
 // --- 5. Numerotation ----------------------------------------------
 console.log('\n5. Numerotation');
 verifie('prochainNumero = max + 1', sandbox.prochainNumero() === 6, String(sandbox.prochainNumero()));
+const avantNum = sandbox.idees;
 sandbox.idees = [];
 verifie('Premiere idee = #1', sandbox.prochainNumero() === 1);
+sandbox.idees = avantNum;
+
+// --- 6. Liste fermee des projets ----------------------------------
+console.log('\n6. Liste fermee des projets');
+const valeurs = (l) => l.map((s) => s.valeur).join(',');
+
+connecte(PROPRIO, ficheProprio);
+const tousSujets = sandbox.sujetsAutorises();
+verifie('Le superadmin peut viser tous les projets et tous les sites',
+  tousSujets.length === sandbox.PROJETS.length + sandbox.SITES.length,
+  tousSujets.length + ' pour ' + (sandbox.PROJETS.length + sandbox.SITES.length));
+verifie('Les deux registres sont distingues',
+  tousSujets.some((s) => s.groupe === 'Projets du hub') && tousSujets.some((s) => s.groupe === 'Sites'));
+
+// Le cas qui compte : un membre ne peut noter une idee que sur ce a quoi
+// il a acces. Sinon la liste deroulante ne sert a rien.
+connecte(MARIE, ficheMarie);
+const sujetsMarie = sandbox.sujetsAutorises();
+verifie('Un membre ne voit que ses projets et ses sites',
+  valeurs(sujetsMarie) === 'Idees / Projets,Exterieur de la maison,O\'Fil du Doubs',
+  valeurs(sujetsMarie));
+verifie('...pas les projets qu\'elle n\'a pas',
+  !valeurs(sujetsMarie).includes('Comptes fournisseurs'));
+verifie('...ni les sites qu\'elle n\'a pas',
+  !valeurs(sujetsMarie).includes('Le Fuverat'));
+
+// C'est le LIBELLE qui est stocke, et il doit correspondre aux valeurs
+// deja en base : « O'Fil du Doubs » et « Collections » sont des noms de
+// sites, les idees existantes s'y rattachent sans migration.
+verifie('Les libelles collent aux valeurs deja saisies',
+  sandbox.SITES.some((s) => s.nom === "O'Fil du Doubs")
+  && sandbox.SITES.some((s) => s.nom === 'Collections'));
+
+// Une idee d'avant la liste fermee porte un libelle qui n'y est plus.
+// L'enregistrer ne doit pas l'effacer en silence.
+connecte(PROPRIO, ficheProprio);
+sandbox.remplirSelectProjet('stock-watch');
+verifie('Un projet hors registre est conserve comme « herite »',
+  elements['f-projet'].innerHTML.includes('Hérité')
+  && elements['f-projet'].innerHTML.includes('stock-watch'),
+  elements['f-projet'].innerHTML.slice(-160));
+verifie('...et reste la valeur selectionnee', elements['f-projet'].value === 'stock-watch');
+
+sandbox.remplirSelectProjet('');
+verifie('Sans projet, l\'option « aucun » est proposee',
+  elements['f-projet'].innerHTML.includes('— aucun —'));
+
+// --- 7. Qui peut modifier quoi ------------------------------------
+console.log('\n7. Qui peut modifier quoi');
+connecte(MARIE, ficheMarie);
+verifie('Un membre modifie ses propres idees', sandbox.peutModifier(sandbox.idees[1]));
+verifie('...mais pas celles des autres', !sandbox.peutModifier(sandbox.idees[0]));
+// Les idees d'avant le suivi des auteurs n'appartiennent a personne :
+// personne d'autre que le superadmin ne doit y toucher.
+verifie('...ni celles sans auteur', !sandbox.peutModifier(sandbox.idees[4]));
+
+connecte(PROPRIO, ficheProprio);
+verifie('Le superadmin modifie tout',
+  sandbox.idees.every((i) => sandbox.peutModifier(i)));
+
+// Le filtre « les miennes » repose sur la meme fonction.
+connecte(MARIE, ficheMarie);
+sandbox.filtreEtat = 'toutes';
+sandbox.filtreProjet = 'tous';
+sandbox.filtreAuteur = 'miennes';
+verifie('Le filtre « les miennes » ne garde que ses idees',
+  sandbox.getIdeesFiltrees().map((i) => i.id).join(',') === 'a2,a4',
+  sandbox.getIdeesFiltrees().map((i) => i.id).join(','));
+sandbox.filtreAuteur = 'toutes';
+
+// --- 8. Le tableau dit qui, et verrouille le reste ----------------
+console.log('\n8. Rendu selon les droits');
+connecte(MARIE, ficheMarie);
+sandbox.renderIdees();
+const tableau = elements['idees-list'].innerHTML;
+verifie('La colonne « Par » existe', tableau.includes('>Par'));
+// Ses propres idees portent en plus une pastille : on cherche donc
+// « >marie » et non « >marie< ».
+verifie('L\'auteur est affiche sans son domaine',
+  tableau.includes('>marie ') && tableau.includes('>cyril.samson41<'),
+  'auteur absent ou affiche en entier');
+verifie('Ses propres idees portent une pastille', tableau.includes('idee-moi'));
+verifie('L\'adresse complete reste en infobulle', tableau.includes(MARIE));
+verifie('Une idee sans auteur affiche un tiret', tableau.includes('>—<'));
+// Le select d'etat d'une idee d'autrui doit etre inerte : sans « disabled »
+// on proposerait une action que Firestore refusera.
+verifie('Les etats des idees d\'autrui sont verrouilles',
+  (tableau.match(/idee-etat-select[^>]*disabled/g) || []).length === 3,
+  (tableau.match(/idee-etat-select[^>]*disabled/g) || []).length + ' verrouilles sur 5');
+verifie('Les siennes restent modifiables',
+  (tableau.match(/idee-etat-select(?![^>]*disabled)/g) || []).length === 2);
+verifie('L\'icone d\'action distingue consulter et modifier',
+  tableau.includes('fa-eye') && tableau.includes('fa-pen'));
+
+// La modale s'ouvre quand meme sur l'idee d'un autre — la lire est utile.
+sandbox.ouvrirModale('a1');
+verifie('La modale d\'une idee d\'autrui s\'ouvre en lecture seule',
+  elements['f-titre'].disabled === true && elements['f-projet'].disabled === true);
+verifie('...sans bouton Enregistrer', elements['btn-enregistrer'].style.display === 'none');
+verifie('...sans bouton Supprimer', elements['btn-delete'].style.display === 'none');
+verifie('...et le dit', /Lecture seule/.test(elements['f-lecture-seule'].textContent));
+
+sandbox.ouvrirModale('a2');
+verifie('La modale de sa propre idee est modifiable',
+  elements['f-titre'].disabled === false
+  && elements['btn-enregistrer'].style.display === ''
+  && elements['btn-delete'].style.display === '');
+
+// --- 9. Ce qui part en base ---------------------------------------
+console.log('\n9. Ecritures');
+connecte(MARIE, ficheMarie);
+ecritures.length = 0;
+sandbox.idEnEdition = null;
+elements['f-titre'].value = 'Nouvelle idee de Marie';
+elements['f-detail'].value = '';
+elements['f-projet'].value = "O'Fil du Doubs";
+elements['f-importance'].value = 'normale';
+elements['f-complexite'].value = '';
+elements['f-etat'].value = 'idee';
+sandbox.sauverIdee();
+const creation = ecritures.find((e) => e.type === 'add');
+verifie('Une idee creee porte son auteur',
+  !!creation && creation.data.creePar === MARIE, creation && creation.data.creePar);
+
+// Modifier ne doit jamais reecrire l'auteur : les regles l'interdisent, et
+// une idee qui change de main en silence serait pire qu'une idee mal rangee.
+ecritures.length = 0;
+sandbox.idEnEdition = 'a2';
+sandbox.sauverIdee();
+const maj = ecritures.find((e) => e.type === 'update');
+verifie('Une modification ne touche pas a l\'auteur',
+  !!maj && !('creePar' in maj.data), maj && Object.keys(maj.data).join(','));
+
+// Ecrire sur l'idee d'un autre doit etre refuse AVANT l'aller-retour
+// reseau : le message est plus clair qu'une erreur de permissions.
+ecritures.length = 0;
+sandbox.idEnEdition = 'a1';
+sandbox.sauverIdee();
+verifie('Enregistrer l\'idee d\'un autre n\'ecrit rien', ecritures.length === 0);
+ecritures.length = 0;
+sandbox.changerEtat('a1', 'faite');
+verifie('Changer l\'etat de l\'idee d\'un autre n\'ecrit rien', ecritures.length === 0);
+sandbox.idEnEdition = null;
+
+// --- 10. Coherence avec les regles Firestore ----------------------
+console.log('\n10. Coherence avec les regles');
+const bloc = fs.readFileSync(path.join(REPO, '..', 'firestore.rules'), 'utf8')
+  .split('match /idees/')[1].split('match /')[0];
+verifie('La lecture reste ouverte a tous ceux qui ont le droit',
+  /allow read: if aAcces\('idees'\)/.test(bloc));
+verifie('La creation exige un auteur egal a l\'appelant',
+  /request\.resource\.data\.creePar == idAppelant\(\)/.test(bloc));
+verifie('La modification est reservee a l\'auteur ou au superadmin',
+  /allow update: if superadmin\(\)/.test(bloc)
+  && /resource\.data\.creePar == idAppelant\(\)/.test(bloc));
+verifie('L\'auteur ne peut pas etre change',
+  /request\.resource\.data\.creePar == resource\.data\.creePar/.test(bloc));
+// La lecture n'etant PAS cloisonnee, aucun `where` n'est necessaire —
+// contrairement a la page Comptes du site Collections.
+verifie('Aucune requete filtree n\'est requise ici',
+  fs.readFileSync(path.join(REPO, 'idees.js'), 'utf8').indexOf(".where('creePar'") === -1);
 
 console.log('\n' + (echecs === 0 ? 'Tous les tests passent.' : echecs + ' test(s) en echec.'));
 process.exit(echecs === 0 ? 0 : 1);
