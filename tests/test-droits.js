@@ -70,12 +70,6 @@ situation(PROPRIO, ficheProprio);
 // faire echouer ce test-la, seulement ceux qui verifient sa coherence.
 verifie('voit tous les sous-projets',
   slugs(sandbox.projetsVisibles()) === slugs(sandbox.PROJETS), slugs(sandbox.projetsVisibles()));
-// Le menu, lui, laisse de cote les projets herbergés ailleurs : un lien
-// de navigation qui quitte le site n'est pas un lien de navigation.
-verifie('le menu ne retient que les projets herberges ici',
-  sandbox.projetsDuMenu().every((p) => !p.externe)
-  && sandbox.projetsDuMenu().length === sandbox.PROJETS.filter((p) => !p.externe).length,
-  slugs(sandbox.projetsDuMenu()));
 verifie('a acces a idees', sandbox.aAcces('idees'));
 verifie('a acces a exterieur', sandbox.aAcces('exterieur'));
 verifie('aura acces a un sous-projet futur non liste', sandbox.aAcces('projet-invente-demain'));
@@ -129,28 +123,55 @@ verifie('le superadmin peut, et l\'email est normalise',
 console.log('\n7. Coherence registre <-> regles Firestore');
 const regles = fs.readFileSync(path.join(REPO, 'firestore.rules'), 'utf8');
 for (const p of sandbox.PROJETS) {
-  // Vrai pour TOUS les projets, y compris ceux herberges ailleurs : les
-  // regles couvrent le projet Firebase entier, pas un domaine.
   verifie('la collection « ' + p.slug + ' » a un bloc match dans les regles',
     new RegExp('match /' + p.slug + '/\\{').test(regles));
-
-  if (p.externe) {
-    // Pas de dossier local a verifier : les pages vivent dans un autre
-    // depot. On verifie ce qui est verifiable d'ici — une URL absolue en
-    // https, sans quoi la tuile d'accueil partirait en lien relatif.
-    verifie('le projet externe « ' + p.slug + ' » pointe une URL absolue https',
-      /^https:\/\//.test(p.url), p.url);
-  } else {
-    verifie('le dossier « ' + p.url + ' » existe avec un index.html',
-      fs.existsSync(path.join(REPO, p.url, 'index.html')));
-  }
+  verifie('le dossier « ' + p.url + ' » existe avec un index.html',
+    fs.existsSync(path.join(REPO, p.url, 'index.html')));
 }
+
+// --- 8. Les sites ne sont plus seulement decoratifs -------------------
+console.log('\n8. Sites : le cas de « collections »');
+// A l'origine, membres.sites ne servait qu'a choisir des raccourcis et
+// AUCUNE regle ne le lisait. Le site Collections a change ca : sa case a
+// cocher ouvre de vraies donnees. Si cette bascule se defait quelque part,
+// on donne un acces en croyant ranger un lien.
+const siteProtege = sandbox.SITES.find((s) => s.protege);
+verifie('un site est marque comme porteur de donnees', !!siteProtege,
+  'aucun site ne porte protege: true');
+verifie('c\'est « collections »', siteProtege && siteProtege.slug === 'collections',
+  siteProtege && siteProtege.slug);
+verifie('les regles ont une fonction aAccesSite', /function aAccesSite\(site\)/.test(regles));
+verifie('...qui lit membres.sites, pas membres.projets',
+  /site in docMembre\(\)\.get\('sites', \[\]\)/.test(regles));
+verifie('les collections du site sont gardees par ce droit',
+  (regles.match(/aAccesSite\('collections'\)/g) || []).length >= 8,
+  (regles.match(/aAccesSite\('collections'\)/g) || []).length + ' occurrences');
+
+// L'ancien modele — un droit par page dans membres.projets — ne doit plus
+// laisser de trace, ni dans les regles ni dans le registre.
+['achats', 'fournisseurs'].forEach((ancien) => {
+  verifie('« ' + ancien + ' » n\'est plus un projet du hub',
+    !sandbox.PROJETS.some((p) => p.slug === ancien));
+  verifie('...et les regles ne le gardent plus par aAcces()',
+    !new RegExp("aAcces\\('" + ancien + "'\\)").test(regles));
+});
+verifie('plus aucun projet marque « externe »',
+  !sandbox.PROJETS.some((p) => p.externe));
+
+// Le texte d'aide de la page Membres disait « les masquer ne protege
+// rien ». Le laisser serait un contresens dangereux a l'endroit exact ou
+// l'on coche.
+const membresJs = fs.readFileSync(path.join(REPO, 'membres.js'), 'utf8');
+verifie('la page Membres ne dit plus que masquer un site ne protege rien',
+  membresJs.indexOf('Les masquer ne protège rien') === -1);
+verifie('...et signale la case qui ouvre de vraies donnees',
+  /vrai accès aux données/.test(membresJs));
 verifie('les regles referencent la meme adresse proprietaire que config.js',
   regles.indexOf("'" + sandbox.SUPERADMIN_EMAIL + "'") !== -1);
 verifie('un catch-all ferme le reste', /match \/\{document=\*\*\}[\s\S]*?if false/.test(regles));
 
-// --- 8. Sites (raccourcis, pas des droits sur des donnees) -------------
-console.log('\n8. Sites');
+// --- 9. Sites : le filtrage de l'affichage -----------------------------
+console.log('\n9. Sites : filtrage de l\'affichage');
 const slugsSites = (l) => l.map((s) => s.slug).join(',');
 
 situation(PROPRIO, ficheProprio);
@@ -172,8 +193,20 @@ situation(PROPRIO, ficheProprio, ficheCopine);
 verifie('sous impersonation, la vue des sites suit aussi',
   slugsSites(sandbox.sitesVisibles()) === 'ofildudoubs', slugsSites(sandbox.sitesVisibles()));
 
-verifie('aucun site n\'a de bloc match dans les regles (ce sont des liens)',
+// Ce test affirmait « aucun site n'a de bloc match, ce sont des liens ».
+// Il passait pour la mauvaise raison : les collections du site Collections
+// s'appellent `achats` et `fournisseurs`, pas `collections`. On verifie
+// donc ce qui est vrai — un slug de site n'est jamais un nom de
+// collection — et, separement, que le site marque `protege` est bien celui
+// dont un droit garde des donnees.
+verifie('aucun slug de site ne sert de nom de collection',
   sandbox.SITES.every((s) => !new RegExp('match /' + s.slug + '/\\{').test(regles)));
+verifie('un site non protege ne garde aucune collection',
+  sandbox.SITES.filter((s) => !s.protege)
+    .every((s) => !new RegExp("aAccesSite\\('" + s.slug + "'\\)").test(regles)),
+  'un site suppose decoratif garde des donnees');
+verifie('le site protege, lui, en garde',
+  new RegExp("aAccesSite\\('" + siteProtege.slug + "'\\)").test(regles));
 
 console.log('\n' + (echecs === 0 ? 'Tous les tests passent.' : echecs + ' test(s) en echec.'));
 process.exit(echecs === 0 ? 0 : 1);

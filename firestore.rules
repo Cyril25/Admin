@@ -65,6 +65,19 @@ service cloud.firestore {
       return superadmin() || (membreActif() && projet in docMembre().projets);
     }
 
+    // ⚠ LES SITES NE SONT PLUS SEULEMENT DÉCORATIFS.
+    // À l'origine, `membres.sites` ne servait qu'à choisir les raccourcis
+    // affichés sur l'accueil : aucune règle ne le lisait. Depuis que le
+    // site Collections a ses propres collections Firestore, cocher
+    // `collections` sur une fiche ouvre de VRAIES DONNÉES.
+    //
+    // `get('sites', [])` et pas `docMembre().sites` : une fiche créée
+    // avant l'existence de ce tableau n'a pas le champ, et y accéder
+    // directement ferait échouer la règle au lieu de refuser proprement.
+    function aAccesSite(site) {
+      return superadmin() || (membreActif() && site in docMembre().get('sites', []));
+    }
+
     // --- Annuaire des membres -----------------------------------
     // Lecture : le superadmin voit tout le monde (il gère les droits et
     // l'impersonation) ; un membre ne lit QUE sa propre fiche, ce dont
@@ -117,31 +130,36 @@ service cloud.firestore {
     // déclarent donc ici, comme celles du hub. Le propriétaire y accède
     // par son statut de superadmin ; le jour où quelqu'un d'autre doit
     // y entrer, il faudra lui cocher le projet « achats » sur sa fiche.
-    // Suivi des achats de collection. CHACUN CHEZ SOI, comme les
-    // fournisseurs juste en dessous : le champ `proprietaire` porte
-    // l'email du détenteur et un membre ne voit que ses propres lignes.
+    // --- Site Collections ---------------------------------------
+    // Les deux collections de collections.ofildudoubs.fr. L'accès se donne
+    // AU NIVEAU DU SITE : une seule case à cocher, `collections` dans
+    // `membres.sites`, et non un droit par page. Le découpage fin serait
+    // sans objet ici, puisque le cloisonnement par `proprietaire` fait que
+    // chacun n'y voit que ses propres données de toute façon.
     //
-    // ⚠ Une règle n'est PAS un filtre : la page doit interroger
+    // ⚠ Une règle n'est PAS un filtre : les pages doivent interroger
     // `where('proprietaire', '==', <son email>)`, sinon Firestore rejette
     // la requête en bloc et l'écran est entièrement vide.
+
+    // Suivi des achats. Chacun chez soi.
     match /achats/{document} {
       allow read: if superadmin()
-                  || (aAcces('achats')
+                  || (aAccesSite('collections')
                       && resource.data.proprietaire == idAppelant());
 
       allow create: if superadmin()
-                    || (aAcces('achats')
+                    || (aAccesSite('collections')
                         && request.resource.data.proprietaire == idAppelant());
 
       // `proprietaire` est immuable : sans cette clause, un membre
       // pourrait pousser une de ses lignes chez quelqu'un d'autre.
       allow update: if superadmin()
-                    || (aAcces('achats')
+                    || (aAccesSite('collections')
                         && resource.data.proprietaire == idAppelant()
                         && request.resource.data.proprietaire == resource.data.proprietaire);
 
       allow delete: if superadmin()
-                    || (aAcces('achats')
+                    || (aAccesSite('collections')
                         && resource.data.proprietaire == idAppelant());
     }
 
@@ -152,16 +170,8 @@ service cloud.firestore {
     // barrière entre eux et le reste d'Internet : ne jamais l'élargir
     // « pour dépanner ».
     //
-    // CHACUN CHEZ SOI. Le champ `proprietaire` porte l'email du détenteur,
-    // et un membre ne voit que ses propres fiches. Le droit `fournisseurs`
-    // ouvre donc la page, pas les identifiants des autres.
-    //
-    // ⚠ CONSÉQUENCE CÔTÉ CLIENT : une règle n'est PAS un filtre. Firestore
-    // rejette en bloc toute requête qui pourrait ramener un document
-    // interdit — la page doit donc interroger
-    // `where('proprietaire', '==', <son email>)`. Sans ce `where`, elle
-    // n'est pas partiellement vide : elle est totalement vide, avec une
-    // erreur de permissions.
+    // Chacun chez soi, là encore : cocher `collections` sur une fiche
+    // n'ouvre que les identifiants de la personne elle-même.
     //
     // Le superadmin lit tout, et c'est assumé : sans ça l'impersonation
     // n'afficherait rien, et il lit de toute façon la base depuis la
@@ -169,22 +179,20 @@ service cloud.firestore {
     // fiches d'un autre sans que ça se voie.
     match /fournisseurs/{document} {
       allow read: if superadmin()
-                  || (aAcces('fournisseurs')
+                  || (aAccesSite('collections')
                       && resource.data.proprietaire == idAppelant());
 
       allow create: if superadmin()
-                    || (aAcces('fournisseurs')
+                    || (aAccesSite('collections')
                         && request.resource.data.proprietaire == idAppelant());
 
-      // `proprietaire` est immuable : sans cette clause, un membre
-      // pourrait pousser une de ses fiches chez quelqu'un d'autre.
       allow update: if superadmin()
-                    || (aAcces('fournisseurs')
+                    || (aAccesSite('collections')
                         && resource.data.proprietaire == idAppelant()
                         && request.resource.data.proprietaire == resource.data.proprietaire);
 
       allow delete: if superadmin()
-                    || (aAcces('fournisseurs')
+                    || (aAccesSite('collections')
                         && resource.data.proprietaire == idAppelant());
     }
 

@@ -5,11 +5,19 @@
 // Membres sortent d'ici. Un membre ne voit que les sites coches sur sa
 // fiche ; un superadmin les voit tous, y compris ceux ajoutes plus tard.
 //
-// DIFFERENCE IMPORTANTE AVEC projets.js : ce ne sont que des LIENS
-// externes. Les masquer releve du confort d'affichage, pas de la
-// securite — il n'y a aucune donnee derriere, et ces sites ont leur
-// propre protection (ou sont publics). Aucune regle Firestore n'est
-// donc necessaire pour un site, contrairement a un projet.
+// ⚠ CE REGISTRE N'EST PLUS PUREMENT DECORATIF.
+// A l'origine, ce n'etaient que des LIENS externes : les masquer relevait
+// du confort d'affichage, aucune regle Firestore ne lisait membres.sites.
+//
+// Ce n'est plus vrai de « collections ». Ce site partage ce projet
+// Firebase et possede ses propres collections Firestore, dont l'acces se
+// donne AU NIVEAU DU SITE : cocher cette case ouvre de vraies donnees, et
+// les blocs match /achats et match /fournisseurs de firestore.rules
+// interrogent bel et bien ce tableau.
+//
+// Les autres entrees restent de simples raccourcis. Le champ `protege`
+// ci-dessous marque la difference, pour que l'interface puisse la dire au
+// lieu de laisser croire que toutes les cases se valent.
 //
 // Le slug est stocke dans membres.sites : ne pas le renommer sans
 // migrer les fiches.
@@ -46,7 +54,9 @@ var SITES = [
         icone: 'fa-solid fa-boxes-stacked',
         url: 'https://collections.ofildudoubs.fr',
         libelleUrl: 'collections.ofildudoubs.fr',
-        description: 'Suivi des achats de collection : commandes, receptions, doublons.'
+        // Le seul site dont la case a cocher ouvre de vraies donnees.
+        protege: true,
+        description: 'Suivi des achats et carnet de comptes fournisseurs. Chacun n\'y voit que ses propres donnees.'
     },
     {
         slug: 'lephare',

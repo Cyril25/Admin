@@ -102,14 +102,6 @@ function projetsVisibles() {
     return PROJETS.filter(function(p) { return aAcces(p.slug); });
 }
 
-// Le menu ne prend que les projets hébergés ICI. Un projet externe
-// (Collections) reste un droit à part entière et une tuile d'accueil,
-// mais un lien de navigation qui quitte le site n'est pas un lien de
-// navigation : on ne le met pas dans la barre du haut.
-function projetsDuMenu() {
-    return projetsVisibles().filter(function(p) { return !p.externe; });
-}
-
 // Les sites sont de simples liens externes : les masquer relève de la
 // pertinence du menu, pas de la sécurité. D'où une liste séparée de
 // celle des projets, et aucune règle Firestore associée.
@@ -130,7 +122,6 @@ window.estSuperadminReel = estSuperadminReel;
 window.estSuperadmin = estSuperadmin;
 window.aAcces = aAcces;
 window.projetsVisibles = projetsVisibles;
-window.projetsDuMenu = projetsDuMenu;
 window.aAccesSite = aAccesSite;
 window.sitesVisibles = sitesVisibles;
 
@@ -181,7 +172,7 @@ function injecterHeader() {
     var projetCourant = (document.body && document.body.getAttribute('data-projet')) || '';
     var pageCourante = window.location.pathname.split('/').pop() || 'index.html';
 
-    var liens = projetsDuMenu().map(function(p) {
+    var liens = projetsVisibles().map(function(p) {
         var actif = (p.slug === projetCourant) ? ' class="active"' : '';
         return '<a href="' + racine + p.url + '"' + actif + '><i class="' + p.icone + '"></i> ' + escapeHtml(p.nom) + '</a>';
     }).join('');

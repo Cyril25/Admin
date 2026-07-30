@@ -17,14 +17,12 @@
 // stockee dans membres.projets, et identifiant du droit d'acces. Ne
 // jamais le renommer sans migrer les fiches membres.
 //
-// PROJETS HEBERGES AILLEURS (externe: true)
-// Un projet peut vivre sur un autre sous-domaine tout en partageant ce
-// projet Firebase et cet annuaire — c'est le cas de Collections. Son
-// droit se donne ICI, puisque la page Membres est le seul endroit qui
-// ecrit dans membres.projets, mais :
-//   - il n'entre PAS dans le menu du hub : un lien de navigation qui
-//     quitte le site n'est pas un lien de navigation ;
-//   - il apparait dans les tuiles de l'accueil, avec son URL complete.
+// ⚠ CE REGISTRE NE CONTIENT QUE LES PAGES DU HUB LUI-MEME.
+// Un site heberge ailleurs — collections.ofildudoubs.fr — n'entre PAS
+// ici, meme s'il partage ce projet Firebase et cet annuaire : son acces
+// se donne au niveau du SITE, dans sites.js et membres.sites. Ses pages
+// ne sont pas des projets du hub, et son autorisation est unique pour
+// tout le site plutot que decoupee par ecran.
 // ============================================================
 
 var PROJETS = [
@@ -41,24 +39,6 @@ var PROJETS = [
         icone: 'fa-solid fa-seedling',
         url: 'exterieur/',
         description: "Le chantier au meme endroit : devis, mails archives, photos, taches, contacts. La vue d'accueil repond a une seule question — la balle est dans quel camp ?"
-    },
-    {
-        slug: 'achats',
-        nom: 'Achats de collection',
-        icone: 'fa-solid fa-cart-shopping',
-        url: 'https://collections.ofildudoubs.fr/index.html',
-        externe: true,
-        description: "Commandes passees, colis attendus, montant depense, exemplaires en trop. Chacun ne voit QUE ses propres lignes : cocher cette case ouvre la page, pas les achats des autres."
-    },
-    {
-        slug: 'fournisseurs',
-        nom: 'Comptes fournisseurs',
-        icone: 'fa-solid fa-key',
-        url: 'https://collections.ofildudoubs.fr/comptes.html',
-        externe: true,
-        // Ecrit ici parce que c'est ici qu'on coche la case : le droit et
-        // sa portee doivent se lire au meme endroit.
-        description: "Carnet de fournisseurs et d'identifiants du site Collections. Chacun ne voit QUE ses propres fiches : cocher cette case ouvre la page, pas les comptes des autres."
     }
 ];
 

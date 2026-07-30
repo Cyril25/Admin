@@ -105,9 +105,15 @@ function construireCases(idConteneur, classe, entrees) {
     var wrap = document.getElementById(idConteneur);
     if (!wrap) return;
     wrap.innerHTML = entrees.map(function(e) {
+        // Un site marqué `protege` ouvre de vraies données, contrairement
+        // aux autres qui ne sont que des raccourcis : le cadenas le dit à
+        // l'endroit exact où on coche.
+        var cadenas = e.protege
+            ? ' <i class="fa-solid fa-lock case-protegee" title="Ouvre un accès aux données de ce site"></i>'
+            : '';
         return '<label class="checkbox-inline">'
             + '<input type="checkbox" class="' + classe + '" value="' + escapeAttr(e.slug) + '"> '
-            + '<i class="' + e.icone + '"></i> ' + escapeHtml(e.nom)
+            + '<i class="' + e.icone + '"></i> ' + escapeHtml(e.nom) + cadenas
             + '</label>';
     }).join('');
 }
@@ -150,9 +156,12 @@ function majApercuRole() {
     }
     var aideSites = document.getElementById('f-sites-hint');
     if (aideSites) {
+        // ⚠ Ce texte disait « les masquer ne protège rien ». Ce n'est plus
+        // vrai depuis que Collections a ses propres collections Firestore :
+        // cocher cette case-là ouvre de vraies données.
         aideSites.textContent = estSuper
             ? 'Un superadmin voit tous les sites, présents et futurs.'
-            : 'Simples raccourcis sur son accueil. Les masquer ne protège rien : ces sites ont leur propre accès.';
+            : 'Raccourcis sur son accueil — sauf « Collections », dont la case ouvre un vrai accès aux données du site (chacun n\'y voit que les siennes).';
     }
 }
 

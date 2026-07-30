@@ -21,7 +21,7 @@ dans Firestore.
 | `membres.html` / `membres.js` | Annuaire des membres et attribution des accès (superadmin) |
 | `idees/` | Projet « Idées / Projets » |
 | `exterieur/` | Projet « Extérieur de la maison » |
-| — | Les projets `achats` et `fournisseurs` sont hébergés sur [collections.ofildudoubs.fr](https://collections.ofildudoubs.fr) ; seuls leurs droits se gèrent ici |
+| — | [collections.ofildudoubs.fr](https://collections.ofildudoubs.fr) est un **site** à part : seul son droit d'accès se coche ici, dans la liste des sites |
 | `style.css` | Feuille de styles unique |
 | `firestore.rules` | Règles de sécurité à publier dans la console Firebase |
 | `tests/` | Tests hors navigateur — `node tests/run-tests.js` |
@@ -36,44 +36,46 @@ dans Firestore.
 - **Membre** — ne voit que les projets cochés sur sa fiche. Menu, tuiles d'accueil
   et accès aux données sont filtrés ensemble.
 
-**Projets et sites sont deux choses différentes.** Un *projet* est une page adossée à une
-collection Firestore : le droit y protège de vraies données. Un *site* n'est qu'un lien
-externe posé sur l'accueil : le cocher ou non ne relève que du confort d'affichage, ces
-sites ayant leur propre protection. D'où deux listes séparées sur la fiche membre — et
-aucune règle Firestore à écrire pour un site.
+**Projets et sites sont deux choses différentes.** Un *projet* est une page **du hub**
+adossée à une collection Firestore : le droit se donne écran par écran. Un *site* est un
+autre sous-domaine, autorisé **en un seul bloc** : une case, tout le site. D'où deux listes
+séparées sur la fiche membre.
 
-### Projets hébergés ailleurs (`externe: true`)
+### ⚠ Un site n'est plus forcément décoratif
 
-Un projet peut vivre sur un autre sous-domaine tout en partageant ce projet Firebase et
-cet annuaire. C'est le cas des deux projets du site
-[Collections](https://github.com/Cyril25/Collections) : `achats` et `fournisseurs`.
+Historiquement, `membres.sites` ne servait qu'à choisir les raccourcis affichés sur
+l'accueil : aucune règle Firestore ne le lisait, et masquer un site ne protégeait rien.
 
-Son droit se donne **ici**, puisque la page Membres est le seul endroit qui écrit dans
-`membres.projets`. Mais l'entrée porte `externe: true`, ce qui change deux choses :
+**Ce n'est plus vrai de `collections`.** Le site
+[Collections](https://github.com/Cyril25/Collections) partage ce projet Firebase et possède
+ses propres collections Firestore (`achats`, `fournisseurs`) : cocher sa case ouvre de
+vraies données. Les règles interrogent bel et bien `membres.sites`, via une fonction
+`aAccesSite()` ajoutée pour ça.
 
-- **elle n'entre pas dans le menu du hub** — un lien de navigation qui quitte le site
-  n'est pas un lien de navigation ;
-- **elle apparaît dans les tuiles de l'accueil**, avec son URL absolue, une flèche et
-  `target="_blank"`, pour qu'on sache qu'on part ailleurs.
+L'entrée porte `protege: true` dans `sites.js`, et la page Membres affiche un cadenas sur
+la case — à l'endroit exact où on la coche. Le texte d'aide, qui disait « les masquer ne
+protège rien », a été corrigé : un contresens y aurait été dangereux. `test-droits.js`
+verrouille les deux, le marqueur et le texte.
 
-Le site distant, lui, ne gère aucun droit : il lit `membres` et obéit. `test-droits.js`
-vérifie que chaque projet a son bloc `match`, et que les externes pointent bien une URL
-absolue en `https` — un chemin relatif enverrait la tuile sur une page du hub.
+**Pourquoi au niveau du site et pas par page :** parce que les deux collections de
+Collections sont **cloisonnées par `proprietaire`** — chacun n'y voit que ses propres
+données. Un découpage plus fin n'aurait rien protégé de plus, et aurait multiplié les cases
+à cocher pour un même site.
 
-**Les deux droits du site Collections sont cloisonnés par propriétaire** : chaque personne
-ne voit que ses propres achats et ses propres fiches fournisseurs. Cocher une case ouvre
-**une page**, pas les données des autres — c'est le champ `proprietaire` et les règles qui
-l'imposent, pas le JavaScript. Le superadmin garde une lecture complète, sans quoi
-l'impersonation n'afficherait rien.
+Le site distant ne gère aucun droit : il lit `membres`, vérifie une fois qu'il a la case,
+et obéit. Un membre du hub sans cette case est renvoyé à son écran de connexion avec
+l'explication — pas devant une page vide qu'il prendrait pour une panne.
 
-Ce sont les premiers droits du hub qui **ne donnent pas le même contenu à tout le monde**.
-Le patron à copier pour un futur projet de ce type : un champ `proprietaire` immuable sur
-chaque document, un `where` obligatoire côté client (sans lui la page est *entièrement*
-vide, pas partielle), et quatre règles séparées par opération.
+### Deux modèles de partage coexistent
 
-Le carnet d'`idees`, lui, fonctionne autrement : **lecture partagée, écriture personnelle**.
-Les deux modèles coexistent, et le choix dépend de la donnée — un carnet d'idées se lit à
-plusieurs, un mot de passe non.
+| Donnée | Modèle | Pourquoi |
+|---|---|---|
+| `idees` | Lecture partagée, écriture personnelle | Un carnet d'idées se lit à plusieurs ; c'est le propriétaire qui les met en œuvre |
+| `achats`, `fournisseurs` | Cloisonnées par `proprietaire` | Des achats et des mots de passe ne se lisent pas à plusieurs |
+
+Le patron à copier pour une future collection cloisonnée : un champ `proprietaire` immuable
+sur chaque document, un `where` **obligatoire** côté client (sans lui la page est
+*entièrement* vide, pas partielle), et quatre règles séparées par opération.
 
 ### ⚠ Ce que la garde JavaScript ne fait pas
 
@@ -94,16 +96,15 @@ changerait d'ailleurs rien à la protection des données, seulement à celle du 
 
 1. une entrée dans `PROJETS` (`projets.js`) ;
 2. un dossier à la racine avec un `index.html` dont le `<body>` porte
-   `data-projet="<slug>"` et `data-racine="../"` — ou, pour un projet hébergé ailleurs,
-   `externe: true` et une URL absolue au lieu du dossier ;
+   `data-projet="<slug>"` et `data-racine="../"` ;
 3. **un bloc `match` dans `firestore.rules`** pour sa collection.
 
 Sauter le point 3 donne une page qui s'affiche et ne charge rien : c'est le catch-all
 `allow read, write: if false` qui ferme toute collection non déclarée.
 
-Sauter le point 1 pour un projet hébergé ailleurs est le piège inverse : la page existe,
-la règle existe, mais **aucune case à cocher n'existe** — donc personne ne peut recevoir
-le droit, et le seul à entrer est le propriétaire, superadmin par son adresse.
+`PROJETS` ne contient que **les pages du hub lui-même**. Un site hébergé ailleurs n'y entre
+pas, même s'il partage ce projet Firebase : son accès se donne dans `sites.js`, en un bloc
+pour tout le site.
 
 ### Impersonation
 
@@ -177,8 +178,9 @@ Ce n'est plus du texte libre. Le menu déroulant réunit **les deux registres** 
 projets de `projets.js` et les sites de `sites.js` — chacun filtré par le tableau de droits
 correspondant de la fiche membre. On ne note une idée que sur ce à quoi on a accès.
 
-Effet de bord accepté : les droits « sites », jusqu'ici du pur confort d'affichage, se
-mettent à conditionner une saisie.
+Effet de bord accepté : les droits « sites » se mettent à conditionner une saisie, en plus
+de l'affichage — une raison de plus de ne pas les traiter comme de simples cases de
+présentation (voir « Un site n'est plus forcément décoratif »).
 
 C'est le **libellé** qui est stocké, pas le slug. Les idées d'avant portaient déjà
 « O'Fil du Doubs » ou « Collections », qui sont exactement des noms de sites : stocker le
