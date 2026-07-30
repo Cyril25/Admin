@@ -60,9 +60,16 @@ Le site distant, lui, ne gère aucun droit : il lit `membres` et obéit. `test-d
 vérifie que chaque projet a son bloc `match`, et que les externes pointent bien une URL
 absolue en `https` — un chemin relatif enverrait la tuile sur une page du hub.
 
-> ⚠ Le droit `fournisseurs` donne accès à **tous les mots de passe** enregistrés sur le
-> site Collections, en clair. C'est écrit dans la description du projet, donc visible à
-> l'endroit exact où on coche la case.
+Le droit `fournisseurs` est **cloisonné par propriétaire** : chaque personne ne voit que
+ses propres fiches et ses propres mots de passe. Cocher la case ouvre la page, pas les
+comptes des autres — c'est le champ `proprietaire` et les règles qui l'imposent, pas le
+JavaScript. Le superadmin garde une lecture complète, sans quoi l'impersonation
+n'afficherait rien.
+
+C'est le premier droit du hub qui **ne donne pas le même contenu à tout le monde**. Si un
+autre projet doit fonctionner ainsi, le patron à copier est là : un champ `proprietaire`
+sur chaque document, un `where` obligatoire côté client, et l'immuabilité du champ dans les
+règles.
 
 ### ⚠ Ce que la garde JavaScript ne fait pas
 

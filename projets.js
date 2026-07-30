@@ -57,8 +57,8 @@ var PROJETS = [
         url: 'https://collections.ofildudoubs.fr/comptes.html',
         externe: true,
         // Ecrit ici parce que c'est ici qu'on coche la case : le droit et
-        // sa consequence doivent se lire au meme endroit.
-        description: "Fournisseurs et identifiants du site Collections. ⚠ Ce droit donne acces a TOUS les mots de passe enregistres, en clair."
+        // sa portee doivent se lire au meme endroit.
+        description: "Carnet de fournisseurs et d'identifiants du site Collections. Chacun ne voit QUE ses propres fiches : cocher cette case ouvre la page, pas les comptes des autres."
     }
 ];
 

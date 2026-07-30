@@ -99,10 +99,42 @@ service cloud.firestore {
     //
     // ⚠ CE BLOC PROTÈGE DES MOTS DE PASSE EN CLAIR. C'est la seule
     // barrière entre eux et le reste d'Internet : ne jamais l'élargir
-    // « pour dépanner ». Un membre à qui on donne le projet `fournisseurs`
-    // reçoit tous les identifiants, il n'y a pas de demi-accès ici.
+    // « pour dépanner ».
+    //
+    // CHACUN CHEZ SOI. Le champ `proprietaire` porte l'email du détenteur,
+    // et un membre ne voit que ses propres fiches. Le droit `fournisseurs`
+    // ouvre donc la page, pas les identifiants des autres.
+    //
+    // ⚠ CONSÉQUENCE CÔTÉ CLIENT : une règle n'est PAS un filtre. Firestore
+    // rejette en bloc toute requête qui pourrait ramener un document
+    // interdit — la page doit donc interroger
+    // `where('proprietaire', '==', <son email>)`. Sans ce `where`, elle
+    // n'est pas partiellement vide : elle est totalement vide, avec une
+    // erreur de permissions.
+    //
+    // Le superadmin lit tout, et c'est assumé : sans ça l'impersonation
+    // n'afficherait rien, et il lit de toute façon la base depuis la
+    // console Firebase. Ce qu'il ne peut pas faire, c'est s'attribuer les
+    // fiches d'un autre sans que ça se voie.
     match /fournisseurs/{document} {
-      allow read, write: if aAcces('fournisseurs');
+      allow read: if superadmin()
+                  || (aAcces('fournisseurs')
+                      && resource.data.proprietaire == idAppelant());
+
+      allow create: if superadmin()
+                    || (aAcces('fournisseurs')
+                        && request.resource.data.proprietaire == idAppelant());
+
+      // `proprietaire` est immuable : sans cette clause, un membre
+      // pourrait pousser une de ses fiches chez quelqu'un d'autre.
+      allow update: if superadmin()
+                    || (aAcces('fournisseurs')
+                        && resource.data.proprietaire == idAppelant()
+                        && request.resource.data.proprietaire == resource.data.proprietaire);
+
+      allow delete: if superadmin()
+                    || (aAcces('fournisseurs')
+                        && resource.data.proprietaire == idAppelant());
     }
 
     // --- Tout le reste est fermé --------------------------------
