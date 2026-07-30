@@ -21,6 +21,7 @@ dans Firestore.
 | `membres.html` / `membres.js` | Annuaire des membres et attribution des accès (superadmin) |
 | `idees/` | Projet « Idées / Projets » |
 | `exterieur/` | Projet « Extérieur de la maison » |
+| — | Les projets `achats` et `fournisseurs` sont hébergés sur [collections.ofildudoubs.fr](https://collections.ofildudoubs.fr) ; seuls leurs droits se gèrent ici |
 | `style.css` | Feuille de styles unique |
 | `firestore.rules` | Règles de sécurité à publier dans la console Firebase |
 | `tests/` | Tests hors navigateur — `node tests/run-tests.js` |
@@ -35,11 +36,33 @@ dans Firestore.
 - **Membre** — ne voit que les projets cochés sur sa fiche. Menu, tuiles d'accueil
   et accès aux données sont filtrés ensemble.
 
-**Projets et sites sont deux choses différentes.** Un *projet* est une page du hub
-adossée à une collection Firestore : le droit y protège de vraies données. Un *site*
-n'est qu'un lien externe posé sur l'accueil : le cocher ou non ne relève que du confort
-d'affichage, ces sites ayant leur propre protection. D'où deux listes séparées sur la
-fiche membre — et aucune règle Firestore à écrire pour un site.
+**Projets et sites sont deux choses différentes.** Un *projet* est une page adossée à une
+collection Firestore : le droit y protège de vraies données. Un *site* n'est qu'un lien
+externe posé sur l'accueil : le cocher ou non ne relève que du confort d'affichage, ces
+sites ayant leur propre protection. D'où deux listes séparées sur la fiche membre — et
+aucune règle Firestore à écrire pour un site.
+
+### Projets hébergés ailleurs (`externe: true`)
+
+Un projet peut vivre sur un autre sous-domaine tout en partageant ce projet Firebase et
+cet annuaire. C'est le cas des deux projets du site
+[Collections](https://github.com/Cyril25/Collections) : `achats` et `fournisseurs`.
+
+Son droit se donne **ici**, puisque la page Membres est le seul endroit qui écrit dans
+`membres.projets`. Mais l'entrée porte `externe: true`, ce qui change deux choses :
+
+- **elle n'entre pas dans le menu du hub** — un lien de navigation qui quitte le site
+  n'est pas un lien de navigation ;
+- **elle apparaît dans les tuiles de l'accueil**, avec son URL absolue, une flèche et
+  `target="_blank"`, pour qu'on sache qu'on part ailleurs.
+
+Le site distant, lui, ne gère aucun droit : il lit `membres` et obéit. `test-droits.js`
+vérifie que chaque projet a son bloc `match`, et que les externes pointent bien une URL
+absolue en `https` — un chemin relatif enverrait la tuile sur une page du hub.
+
+> ⚠ Le droit `fournisseurs` donne accès à **tous les mots de passe** enregistrés sur le
+> site Collections, en clair. C'est écrit dans la description du projet, donc visible à
+> l'endroit exact où on coche la case.
 
 ### ⚠ Ce que la garde JavaScript ne fait pas
 
@@ -60,11 +83,16 @@ changerait d'ailleurs rien à la protection des données, seulement à celle du 
 
 1. une entrée dans `PROJETS` (`projets.js`) ;
 2. un dossier à la racine avec un `index.html` dont le `<body>` porte
-   `data-projet="<slug>"` et `data-racine="../"` ;
+   `data-projet="<slug>"` et `data-racine="../"` — ou, pour un projet hébergé ailleurs,
+   `externe: true` et une URL absolue au lieu du dossier ;
 3. **un bloc `match` dans `firestore.rules`** pour sa collection.
 
 Sauter le point 3 donne une page qui s'affiche et ne charge rien : c'est le catch-all
 `allow read, write: if false` qui ferme toute collection non déclarée.
+
+Sauter le point 1 pour un projet hébergé ailleurs est le piège inverse : la page existe,
+la règle existe, mais **aucune case à cocher n'existe** — donc personne ne peut recevoir
+le droit, et le seul à entrer est le propriétaire, superadmin par son adresse.
 
 ### Impersonation
 

@@ -33,9 +33,17 @@ function rendreProjets() {
 
     if (conteneur) {
         conteneur.innerHTML = visibles.map(function(p) {
-            return '<a class="tile" href="' + p.url + '">'
+            // Un projet hébergé ailleurs s'ouvre dans un onglet à part et
+            // le dit : sans ça, on croit rester dans le hub et on cherche
+            // le bouton retour.
+            var externe = p.externe
+                ? ' target="_blank" rel="noopener"'
+                : '';
+            return '<a class="tile" href="' + p.url + '"' + externe + '>'
                 + '<div class="tile-icon"><i class="' + p.icone + '"></i></div>'
-                + '<h2>' + escapeHtml(p.nom) + '</h2>'
+                + '<h2>' + escapeHtml(p.nom)
+                +   (p.externe ? ' <i class="fa-solid fa-arrow-up-right-from-square tile-externe"></i>' : '')
+                + '</h2>'
                 + '<p>' + escapeHtml(p.description) + '</p>'
                 + '</a>';
         }).join('');

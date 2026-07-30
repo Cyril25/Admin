@@ -66,7 +66,16 @@ const slugs = (l) => l.map((p) => p.slug).join(',');
 // --- 1. Superadmin -------------------------------------------------
 console.log('\n1. Superadmin');
 situation(PROPRIO, ficheProprio);
-verifie('voit tous les sous-projets', slugs(sandbox.projetsVisibles()) === 'idees,exterieur', slugs(sandbox.projetsVisibles()));
+// La liste attendue vient du registre : ajouter un projet ne doit pas
+// faire echouer ce test-la, seulement ceux qui verifient sa coherence.
+verifie('voit tous les sous-projets',
+  slugs(sandbox.projetsVisibles()) === slugs(sandbox.PROJETS), slugs(sandbox.projetsVisibles()));
+// Le menu, lui, laisse de cote les projets herbergés ailleurs : un lien
+// de navigation qui quitte le site n'est pas un lien de navigation.
+verifie('le menu ne retient que les projets herberges ici',
+  sandbox.projetsDuMenu().every((p) => !p.externe)
+  && sandbox.projetsDuMenu().length === sandbox.PROJETS.filter((p) => !p.externe).length,
+  slugs(sandbox.projetsDuMenu()));
 verifie('a acces a idees', sandbox.aAcces('idees'));
 verifie('a acces a exterieur', sandbox.aAcces('exterieur'));
 verifie('aura acces a un sous-projet futur non liste', sandbox.aAcces('projet-invente-demain'));
@@ -120,10 +129,21 @@ verifie('le superadmin peut, et l\'email est normalise',
 console.log('\n7. Coherence registre <-> regles Firestore');
 const regles = fs.readFileSync(path.join(REPO, 'firestore.rules'), 'utf8');
 for (const p of sandbox.PROJETS) {
+  // Vrai pour TOUS les projets, y compris ceux herberges ailleurs : les
+  // regles couvrent le projet Firebase entier, pas un domaine.
   verifie('la collection « ' + p.slug + ' » a un bloc match dans les regles',
     new RegExp('match /' + p.slug + '/\\{').test(regles));
-  verifie('le dossier « ' + p.url + ' » existe avec un index.html',
-    fs.existsSync(path.join(REPO, p.url, 'index.html')));
+
+  if (p.externe) {
+    // Pas de dossier local a verifier : les pages vivent dans un autre
+    // depot. On verifie ce qui est verifiable d'ici — une URL absolue en
+    // https, sans quoi la tuile d'accueil partirait en lien relatif.
+    verifie('le projet externe « ' + p.slug + ' » pointe une URL absolue https',
+      /^https:\/\//.test(p.url), p.url);
+  } else {
+    verifie('le dossier « ' + p.url + ' » existe avec un index.html',
+      fs.existsSync(path.join(REPO, p.url, 'index.html')));
+  }
 }
 verifie('les regles referencent la meme adresse proprietaire que config.js',
   regles.indexOf("'" + sandbox.SUPERADMIN_EMAIL + "'") !== -1);

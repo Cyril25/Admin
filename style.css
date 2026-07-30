@@ -332,6 +332,14 @@ body.login-page {
     line-height: 1.45;
 }
 
+/* Projet herberge sur un autre sous-domaine : la fleche previent qu'on
+   quitte le hub, ce que la tuile ne laisse pas deviner autrement. */
+.tile-externe {
+    font-size: 0.7em;
+    color: var(--color-text-disabled);
+    vertical-align: super;
+}
+
 .tile-url {
     display: inline-block;
     margin-top: var(--spacing-sm);
