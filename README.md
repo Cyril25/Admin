@@ -60,16 +60,20 @@ Le site distant, lui, ne gère aucun droit : il lit `membres` et obéit. `test-d
 vérifie que chaque projet a son bloc `match`, et que les externes pointent bien une URL
 absolue en `https` — un chemin relatif enverrait la tuile sur une page du hub.
 
-Le droit `fournisseurs` est **cloisonné par propriétaire** : chaque personne ne voit que
-ses propres fiches et ses propres mots de passe. Cocher la case ouvre la page, pas les
-comptes des autres — c'est le champ `proprietaire` et les règles qui l'imposent, pas le
-JavaScript. Le superadmin garde une lecture complète, sans quoi l'impersonation
-n'afficherait rien.
+**Les deux droits du site Collections sont cloisonnés par propriétaire** : chaque personne
+ne voit que ses propres achats et ses propres fiches fournisseurs. Cocher une case ouvre
+**une page**, pas les données des autres — c'est le champ `proprietaire` et les règles qui
+l'imposent, pas le JavaScript. Le superadmin garde une lecture complète, sans quoi
+l'impersonation n'afficherait rien.
 
-C'est le premier droit du hub qui **ne donne pas le même contenu à tout le monde**. Si un
-autre projet doit fonctionner ainsi, le patron à copier est là : un champ `proprietaire`
-sur chaque document, un `where` obligatoire côté client, et l'immuabilité du champ dans les
-règles.
+Ce sont les premiers droits du hub qui **ne donnent pas le même contenu à tout le monde**.
+Le patron à copier pour un futur projet de ce type : un champ `proprietaire` immuable sur
+chaque document, un `where` obligatoire côté client (sans lui la page est *entièrement*
+vide, pas partielle), et quatre règles séparées par opération.
+
+Le carnet d'`idees`, lui, fonctionne autrement : **lecture partagée, écriture personnelle**.
+Les deux modèles coexistent, et le choix dépend de la donnée — un carnet d'idées se lit à
+plusieurs, un mot de passe non.
 
 ### ⚠ Ce que la garde JavaScript ne fait pas
 
