@@ -18,10 +18,6 @@
 // permet pas de télécharger un .eml.
 // ============================================================
 
-// Retenue le temps du dépôt : « Prendre une photo » depuis la vue
-// Projections doit ranger la photo dans les projections.
-var categorieDepot = 'actuelle';
-
 function renderImages(categorie) {
     var cible = document.getElementById('vue-images-' + categorie);
     if (!cible) return;
@@ -54,8 +50,11 @@ function barreImages(categorie) {
         + '</div>';
 }
 
+// Deux champs de fichier propres à cette vue, mais la même intention
+// que partout ailleurs : « Prendre une photo » depuis les Projections y
+// range bien la photo. Voir intentionDepot dans exterieur-upload.js.
 function declencherPhoto(source, categorie) {
-    categorieDepot = categorie || 'actuelle';
+    intentionDepot = { type: 'image', categorie: categorie || 'actuelle' };
     var champ = document.getElementById(source === 'camera' ? 'photo-camera' : 'photo-galerie');
     if (champ) champ.click();
 }
@@ -65,7 +64,9 @@ function initImages() {
         var champ = document.getElementById(id);
         if (!champ) return;
         champ.addEventListener('change', function() {
-            if (champ.files && champ.files.length) deposerFichier(champ.files[0], categorieDepot);
+            var intention = intentionDepot || { type: 'image', categorie: 'actuelle' };
+            intentionDepot = null;
+            if (champ.files && champ.files.length) deposerFichier(champ.files[0], intention);
             champ.value = '';
         });
     });

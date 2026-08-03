@@ -1338,8 +1338,12 @@ body.login-page {
 }
 
 /* ---------- 12.10 Images ---------- */
+/* La barre « déposer ici » des vues Images, Documents et Emails. Le
+   align-items sert à la phrase d'aide qui accompagne parfois les
+   boutons, sinon elle se colle en haut de la rangée. */
 .images-actions {
     display: flex;
+    align-items: center;
     gap: var(--spacing-sm);
     flex-wrap: wrap;
     margin-bottom: var(--spacing-md);

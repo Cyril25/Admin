@@ -240,7 +240,7 @@ Champs propres à chaque type :
 |---|---|
 | `image` | `url`, `categorie` (`actuelle` / `projection`), `imageSourceId` |
 | `document` | `url`, `nomFichier`, `titre` **obligatoire** |
-| `email` | `url`, `de`, `a`, `objet`, `dateEnvoi`, `corps`, `corpsTronque`, `sens`, `parseOk` |
+| `email` | `url` (absent si collé), `de`, `a`, `objet`, `dateEnvoi`, `corps`, `corpsTronque`, `emlBrut`, `sens`, `parseOk` |
 | `contact` | `nom`, `prenom`, `entreprise`, `telephone`, `email`, `commentaire`, `categorie` |
 | `lien` | `url`, `titre`, `commentaire` |
 | `projet` | Singleton d'id `_projet` : `budgetNotes`, `ceQuonVeut`, `ceQuonNeVeutPas`, `intervenants`, `nosAdresses` |
@@ -381,18 +381,59 @@ bloquent les fichiers `raw` en mode non signé. Repli prévu — stocker le text
 dans un champ `emlBrut` du document Firestore. Le fichier est de toute façon lu et
 analysé côté navigateur ; on ne perdrait que le fichier retéléchargeable.
 
-### Archiver un mail
+### Déposer : la devinette ne décide que par défaut
+
+Le type d'un fichier déposé est déduit de son extension — `.eml` → mail, image →
+photo, tout le reste → document. C'est ce qui permet de déposer sans rien saisir, et
+ça se trompe forcément un jour : **un plan scanné en PNG est un document, pas une
+photo du terrain**, et aucune extension ne le dira jamais.
+
+D'où trois chemins, du moins cher au plus explicite :
+
+| Geste | Ce qui décide |
+|---|---|
+| Zone « Déposer un fichier », ou glisser-déposer | L'extension |
+| « Un document » / « Une photo » / « Un mail » dans la modale Ajouter | **Vous** |
+| « Déposer un document » depuis la vue Documents, « Déposer un .eml » depuis Emails | **Vous** — ranger *ici* range ici |
+
+Quand l'intention est exprimée, le filtre du sélecteur de fichiers s'ouvre en
+conséquence : « Un document » accepte **n'importe quel** fichier (`.dwg`, `.xlsx`…),
+sinon la promesse ne serait pas tenue.
+
+Et si la devinette est déjà passée à côté, un sélecteur **« Ranger comme »** dans la
+fiche corrige document ↔ image sans retéléverser — supprimer puis redéposer
+laisserait le fichier chez Cloudinary, qu'on ne sait pas effacer. Le couple s'arrête
+là : un mail a une structure (`de`, `a`, `objet`, `corps`) qu'un devis n'a pas, une
+tâche n'a pas de fichier du tout, et convertir perdrait quelque chose en silence.
+Reclasser vers un type non actionnable **vide le `camp`** — sans quoi l'élément
+resterait sur le tableau de bord sans plus aucun bouton pour l'en sortir.
+
+### Archiver un mail : le fichier ou le presse-papier
 
 Depuis Gmail **sur ordinateur** : ⋮ → *Télécharger le message*, puis déposer le
-`.eml` sur la zone Ajouter. Expéditeur, destinataires, objet, date et corps sont
-extraits automatiquement, et le sens (envoyé / reçu) est déduit de `nosAdresses`.
+`.eml`. Expéditeur, destinataires, objet, date et corps sont extraits
+automatiquement, et le sens (envoyé / reçu) est déduit de `nosAdresses`.
 
-L'application Gmail **mobile** ne permet pas de télécharger un `.eml` : c'est une
-opération de bureau. Le mobile sert aux photos.
+L'application Gmail **mobile** ne sait pas télécharger un `.eml`. D'où **« Coller un
+mail »**, qui accepte deux formes sans rien demander :
 
-Si le format n'est pas compris, `parseOk` passe à `false` : le fichier est conservé
-quand même, un avertissement s'affiche et tous les champs restent saisissables à la
-main. **Un format exotique ne doit jamais faire perdre un mail.**
+- la **source complète** (⋮ → *Afficher l'original*) : de vraies en-têtes RFC, que
+  l'analyseur `.eml` comprend entièrement — même pré-remplissage qu'un fichier ;
+- le **message copié à la souris** : aucune en-tête exploitable, le texte entier
+  devient le corps et l'expéditeur et l'objet restent à compléter. `parseOk` reste
+  **vrai** — ce drapeau dit « le pré-remplissage est fiable », pas « tous les champs
+  sont remplis ». Rien n'a échoué : il n'y avait pas d'en-tête à lire.
+
+⚠ **Un mail collé n'a pas de fichier d'origine à relire.** Le corps est abrégé à
+`MAX_CORPS` pour ne pas alourdir un snapshot qui retélécharge tout le tiroir ; le
+texte intégral part donc dans `emlBrut`, ce champ retiré du snapshot et lu à la
+demande. `corpsComplet()` se replie sur le brut lui-même quand l'analyseur `.eml`
+n'en tire rien — sans quoi « Copier le corps » collerait une version tronquée dans
+Gmail, en silence.
+
+Si le format d'un `.eml` n'est pas compris, `parseOk` passe à `false` : le fichier est
+conservé quand même, un avertissement s'affiche et tous les champs restent
+saisissables à la main. **Un format exotique ne doit jamais faire perdre un mail.**
 
 ### Aucune règle Firestore à publier pour ce projet
 

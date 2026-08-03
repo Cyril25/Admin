@@ -270,12 +270,9 @@ function ouvrirModaleElement(id, prerempli) {
 
     elementEnEdition = id || null;
     var type = element.type || 'note';
-    var def = getTypeDef(type);
 
     document.getElementById('e-type').value = type;
-    document.getElementById('element-modal-titre').innerHTML =
-        '<i class="' + escapeAttr(def.icone) + '"></i> '
-        + escapeHtml((id ? 'Modifier ' : 'Nouvel élément — ') + def.label.toLowerCase());
+    remplirSelectType(type);
 
     document.getElementById('e-titre').value = element.titre || element.objet || '';
     document.getElementById('e-notes').value = element.notes || '';
@@ -296,23 +293,7 @@ function ouvrirModaleElement(id, prerempli) {
     document.getElementById('e-corps').value = element.corps || '';
     document.getElementById('e-sens').value = element.sens || 'recu';
 
-    // Visibilité par type — une seule modale, plusieurs formulaires.
-    var actionnable = (TYPES_ACTIONNABLES.indexOf(type) !== -1);
-    afficherLigne('ligne-camp', actionnable);
-    afficherLigne('ligne-echeance', type === 'tache');
-    afficherLigne('ligne-assigne', type === 'tache');
-    afficherLigne('ligne-sujet', type === 'document' || type === 'tache' || type === 'email');
-    afficherLigne('ligne-contact', type !== 'contact' && type !== 'lien');
-    afficherLigne('ligne-categorie', type === 'image');
-    afficherLigne('ligne-notes', type !== 'email');
-    afficherLigne('bloc-email', type === 'email');
-    surChangementCategorieImage();
-
-    // Le journal n'existe qu'une fois l'élément créé : il s'écrit tout
-    // de suite, il lui faut donc un document où atterrir.
-    afficherLigne('bloc-journal', !!id && TYPES_ACTIONNABLES.indexOf(type) !== -1);
-    var journal = document.getElementById('e-journal');
-    if (journal) journal.innerHTML = id ? htmlJournal(element) : '';
+    appliquerTypeModale(type, element);
 
     // Le fichier n'est jamais remplacé depuis cette modale : le lien
     // est là pour vérifier, pas pour rééditer.
@@ -357,6 +338,64 @@ function fermerModaleElement() {
     document.getElementById('element-overlay').style.display = 'none';
     elementEnEdition = null;
     elementModaleContexte = {};
+}
+
+// Les deux types entre lesquels on peut se tromper, et le seul couple
+// qu'il soit honnête de laisser rebasculer : un fichier avec un titre.
+// Un mail a une structure (de, à, objet, corps) qu'un devis n'a pas ;
+// une tâche n'a pas de fichier du tout. Les convertir perdrait quelque
+// chose, et le silence sur cette perte serait pire que l'absence du
+// bouton.
+var TYPES_RECLASSABLES = ['document', 'image'];
+
+// Toute la modale suit le type, y compris quand il change en cours de
+// route. Extrait de ouvrirModaleElement pour être rejoué à la volée :
+// c'est ce qui permet de corriger « c'est un plan, pas une photo » sans
+// refermer, ni retéléverser.
+function appliquerTypeModale(type, element) {
+    var def = getTypeDef(type);
+    document.getElementById('element-modal-titre').innerHTML =
+        '<i class="' + escapeAttr(def.icone) + '"></i> '
+        + escapeHtml((elementEnEdition ? 'Modifier ' : 'Nouvel élément — ') + def.label.toLowerCase());
+
+    var actionnable = (TYPES_ACTIONNABLES.indexOf(type) !== -1);
+    afficherLigne('ligne-type', TYPES_RECLASSABLES.indexOf(type) !== -1);
+    afficherLigne('ligne-camp', actionnable);
+    afficherLigne('ligne-echeance', type === 'tache');
+    afficherLigne('ligne-assigne', type === 'tache');
+    afficherLigne('ligne-sujet', type === 'document' || type === 'tache' || type === 'email');
+    afficherLigne('ligne-contact', type !== 'contact' && type !== 'lien');
+    afficherLigne('ligne-categorie', type === 'image');
+    afficherLigne('ligne-notes', type !== 'email');
+    afficherLigne('bloc-email', type === 'email');
+    surChangementCategorieImage();
+
+    // Le journal n'existe qu'une fois l'élément créé : il s'écrit tout
+    // de suite, il lui faut donc un document où atterrir.
+    afficherLigne('bloc-journal', !!elementEnEdition && actionnable);
+    var journal = document.getElementById('e-journal');
+    if (journal) journal.innerHTML = elementEnEdition ? htmlJournal(element || {}) : '';
+}
+
+function remplirSelectType(type) {
+    var select = document.getElementById('e-type-choix');
+    if (!select) return;
+    select.innerHTML = TYPES_RECLASSABLES.map(function(valeur) {
+        return '<option value="' + escapeAttr(valeur) + '">'
+            + escapeHtml(getTypeDef(valeur).label) + '</option>';
+    }).join('');
+    // Un mail ou une tâche n'est pas dans la liste : la ligne est de
+    // toute façon masquée, on ne force pas une valeur qui n'existe pas.
+    if (TYPES_RECLASSABLES.indexOf(type) !== -1) select.value = type;
+}
+
+// Le champ caché e-type reste la source de vérité — sauverElement et la
+// moitié de la modale le lisent. Le sélecteur ne fait que l'écrire.
+function surChangementTypeElement() {
+    var select = document.getElementById('e-type-choix');
+    if (!select || !select.value) return;
+    document.getElementById('e-type').value = select.value;
+    appliquerTypeModale(select.value, elementEnEdition ? trouverElement(elementEnEdition) : null);
 }
 
 function remplirSelectCamp(valeur) {
@@ -530,6 +569,13 @@ function sauverElement() {
     }
     if (TYPES_ACTIONNABLES.indexOf(type) !== -1) {
         donnees.camp = document.getElementById('e-camp').value;
+    } else if (elementEnEdition) {
+        // Reclassé en type non actionnable — un devis devenu photo. Le
+        // camp doit partir, sinon l'élément resterait sur le tableau de
+        // bord sans plus aucun bouton pour l'en sortir. Vidé et non
+        // supprimé : le journal, lui, garde toute l'histoire.
+        var precedent = trouverElement(elementEnEdition);
+        if (precedent && precedent.camp) donnees.camp = '';
     }
     if (type === 'tache') {
         var echeance = depuisInputDate(document.getElementById('e-echeance').value);
@@ -572,6 +618,14 @@ function sauverElement() {
     }
     if (contexte.dateEvenement && !elementEnEdition) {
         donnees.dateEvenement = contexte.dateEvenement;
+    }
+    // Le texte intégral d'un mail collé trop long pour tenir dans
+    // « corps ». Il n'y a pas de fichier d'origine à relire pour un mail
+    // collé : sans cette ligne, la fin serait perdue à l'enregistrement.
+    // Jamais en modification — le snapshot ne renvoie pas emlBrut, on
+    // écrirait donc une version vide par-dessus l'originale.
+    if (contexte.emlBrut && !elementEnEdition) {
+        donnees.emlBrut = contexte.emlBrut;
     }
 
     var operation;
@@ -694,14 +748,23 @@ function validerJournal(sansNote) {
         });
 }
 
-// Ctrl+Entrée valide : la souris n'a rien à faire au bout d'une phrase
-// qu'on vient de taper.
+// Ctrl+Entrée valide : la souris n'a rien à faire au bout d'un texte
+// qu'on vient de taper ou de coller. Les deux seules modales où l'on
+// écrit d'abord et où l'on valide ensuite.
+var VALIDATION_CLAVIER = [
+    { overlay: 'journal-overlay', valider: function() { validerJournal(false); } },
+    { overlay: 'coller-overlay',  valider: function() { validerCollage(); } }
+];
+
 document.addEventListener('keydown', function(evenement) {
     if (evenement.key !== 'Enter' || !(evenement.ctrlKey || evenement.metaKey)) return;
-    var overlay = document.getElementById('journal-overlay');
-    if (overlay && overlay.style.display === 'flex') {
-        evenement.preventDefault();
-        validerJournal(false);
+    for (var i = 0; i < VALIDATION_CLAVIER.length; i++) {
+        var overlay = document.getElementById(VALIDATION_CLAVIER[i].overlay);
+        if (overlay && overlay.style.display === 'flex') {
+            evenement.preventDefault();
+            VALIDATION_CLAVIER[i].valider();
+            return;
+        }
     }
 });
 
@@ -753,8 +816,9 @@ function confirmerSuppression() {
 // ------------------------------------------------------------
 // Dans l'ordre d'empilement : la modale journal se ferme avant la
 // modale élément, qui peut être ouverte dessous.
-var OVERLAYS = ['suppression-overlay', 'journal-overlay', 'visionneuse-overlay',
-                'contact-overlay', 'lien-overlay', 'element-overlay', 'ajout-overlay'];
+var OVERLAYS = ['suppression-overlay', 'journal-overlay', 'coller-overlay',
+                'visionneuse-overlay', 'contact-overlay', 'lien-overlay',
+                'element-overlay', 'ajout-overlay'];
 
 document.addEventListener('keydown', function(evenement) {
     if (evenement.key !== 'Escape') return;

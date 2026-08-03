@@ -7,11 +7,17 @@
 // deviné de l'extension, le titre déduit du nom, et un formulaire déjà
 // rempli qu'il suffit de valider.
 //
-// Deux entrées seulement derrière le bouton Ajouter :
-//   Déposer un fichier — le chemin principal
-//   Écrire            — une tâche ou une note, sans fichier
+// Trois entrées derrière le bouton Ajouter :
+//   Déposer un fichier — le chemin principal, le type est deviné
+//   Ranger dans…      — on dit où, l'extension ne décide plus
+//   Écrire            — une tâche, une note, ou un mail collé
 // Les contacts et les liens ne passent pas par là : on les crée depuis
 // la vue Carnet, là où on les cherche.
+//
+// ⚠ LA DEVINETTE NE DÉCIDE QUE PAR DÉFAUT. Un plan scanné en PNG est un
+// document, pas une photo du terrain : quand on a dit où l'on range,
+// l'extension n'a plus voix au chapitre. C'est le sens de « intention »
+// dans tout ce fichier.
 //
 // ⚠ Aucun document Firestore n'est créé avant que l'upload ait réussi.
 // Un échec réseau laisse la base propre, sans élément orphelin pointant
@@ -19,6 +25,18 @@
 // ============================================================
 
 var EXTENSIONS_IMAGE = ['jpg', 'jpeg', 'png', 'heic', 'heif', 'webp', 'gif'];
+
+// Ce que le sélecteur de fichiers propose selon l'intention. Chaîne vide
+// = tout accepter : « ranger dans les documents » doit marcher pour un
+// .dwg comme pour un .xlsx, sinon la promesse n'est pas tenue.
+var ACCEPT_PAR_TYPE = {
+    document: '',
+    image: 'image/*',
+    email: '.eml'
+};
+
+// Le dépôt par défaut, quand on n'a rien précisé.
+var ACCEPT_DEVINETTE = '.eml,.pdf,.doc,.docx,image/*';
 
 // ------------------------------------------------------------
 // 1. Déductions à partir du fichier
@@ -176,12 +194,15 @@ function masquerProgression() {
     if (zone) zone.style.display = 'none';
 }
 
-// categorieImage : passée par la vue Images pour que « Prendre une
-// photo » depuis les Projections y range bien la photo.
-function deposerFichier(file, categorieImage) {
+// intention : { type, categorie } — ce qu'on a demandé en cliquant.
+// Absente, on devine ; présente, elle gagne. « Ranger dans les
+// documents » doit ranger dans les documents, même si le fichier est un
+// PNG : un plan scanné n'est pas une photo du terrain.
+function deposerFichier(file, intention) {
     if (!file) return Promise.resolve();
 
-    var type = typeDepuisFichier(file);
+    var choix = intention || {};
+    var type = choix.type || typeDepuisFichier(file);
     var nom = nomDeFichier(file);
     afficherProgression(nom);
 
@@ -194,7 +215,7 @@ function deposerFichier(file, categorieImage) {
         .then(function(resultat) {
             masquerProgression();
             fermerModaleAjout();
-            ouvrirFormulaireDepot(nom, type, resultat.url, resultat.analyse, categorieImage);
+            ouvrirFormulaireDepot(nom, type, resultat.url, resultat.analyse, choix.categorie);
         })
         .catch(function(erreur) {
             masquerProgression();
@@ -267,12 +288,34 @@ function ajouterEnEcrivant(type) {
     ouvrirModaleElement(null, { type: type, camp: campParDefaut(type) });
 }
 
+// ------------------------------------------------------------
+// 6. Dire où l'on range, plutôt que de laisser deviner
+// ------------------------------------------------------------
+// Retenue le temps du dépôt : un <input type="file"> ne transporte rien,
+// et son événement « change » arrive bien après le clic qui l'a ouvert.
+// Même mécanique que la catégorie d'image, dont elle prend la place.
+var intentionDepot = null;
+
+// Appelée depuis la modale Ajouter et depuis les vues Documents et
+// Emails : « déposer ICI » range ici, quelle que soit l'extension.
+function declencherDepot(type, categorie) {
+    intentionDepot = type ? { type: type, categorie: categorie || '' } : null;
+
+    var champ = document.getElementById('depot-fichier');
+    if (!champ) return;
+    var accept = type ? ACCEPT_PAR_TYPE[type] : ACCEPT_DEVINETTE;
+    champ.accept = (accept === undefined) ? ACCEPT_DEVINETTE : accept;
+    champ.click();
+}
+
 function initAjout() {
     var zone = document.getElementById('depot-zone');
     var champ = document.getElementById('depot-fichier');
     if (!zone || !champ) return;
 
-    zone.addEventListener('click', function() { champ.click(); });
+    // La zone de dépôt, elle, ne dit rien : c'est le chemin où l'on
+    // laisse deviner. On remet donc l'intention à zéro en l'ouvrant.
+    zone.addEventListener('click', function() { declencherDepot(''); });
 
     zone.addEventListener('dragover', function(evenement) {
         evenement.preventDefault();
@@ -285,11 +328,118 @@ function initAjout() {
         evenement.preventDefault();
         zone.classList.remove('dragover');
         var fichiers = evenement.dataTransfer && evenement.dataTransfer.files;
-        if (fichiers && fichiers.length) deposerFichier(fichiers[0]);
+        if (fichiers && fichiers.length) deposerFichier(fichiers[0], null);
     });
 
     champ.addEventListener('change', function() {
-        if (champ.files && champ.files.length) deposerFichier(champ.files[0]);
+        var intention = intentionDepot;
+        intentionDepot = null;
+        if (champ.files && champ.files.length) deposerFichier(champ.files[0], intention);
         champ.value = '';   // sinon redéposer le même fichier ne déclenche rien
     });
+}
+
+// ------------------------------------------------------------
+// 7. Coller un mail
+// ------------------------------------------------------------
+// Le .eml demande un ordinateur : l'application Gmail mobile ne sait pas
+// télécharger un message. Coller du texte, elle sait — et c'est souvent
+// le seul geste possible sur le terrain.
+//
+// Deux formes arrivent par ce chemin, et il faut les traiter
+// différemment sans rien demander :
+//   la source complète (« Afficher l'original » de Gmail) — de vraies
+//     en-têtes RFC, l'analyseur .eml la comprend entièrement ;
+//   le message tel qu'on le lit, copié à la souris — aucune en-tête
+//     exploitable, mais le TEXTE ne doit surtout pas être perdu.
+function analyserMailColle(texte) {
+    var brut = String(texte == null ? '' : texte);
+    var analyse = analyserEml(brut);
+
+    // L'analyseur a reconnu un mail : on garde tout ce qu'il a compris.
+    if (analyse.parseOk || analyse.de || analyse.objet || analyse.dateEnvoi) return analyse;
+
+    // Sinon, ce sont des lignes copiées à la main. Rendre des champs
+    // vides ET un corps vide reviendrait à jeter ce qu'on vient de
+    // coller : le texte entier devient le corps, à charge de compléter
+    // l'expéditeur et l'objet — ou pas.
+    //
+    // parseOk reste VRAI, et ce n'est pas une négligence : ce drapeau dit
+    // « le pré-remplissage est fiable », pas « tous les champs sont
+    // remplis ». Rien n'a échoué ici — il n'y avait pas d'en-tête à lire,
+    // et le corps est exactement ce qu'on a collé. Le passer à faux
+    // collerait un bandeau « mal compris » sur un mail parfaitement
+    // volontaire, dans la vue Emails comme dans le fil.
+    return {
+        de: '', a: '', objet: '', dateEnvoi: null,
+        corps: nettoyerCorps(brut),
+        parseOk: true,
+        sansEntetes: true
+    };
+}
+
+function ouvrirModaleCollage() {
+    fermerModaleAjout();
+    var champ = document.getElementById('coller-texte');
+    if (champ) champ.value = '';
+    var overlay = document.getElementById('coller-overlay');
+    if (overlay) overlay.style.display = 'flex';
+    if (champ) champ.focus();
+}
+
+function fermerModaleCollage() {
+    var overlay = document.getElementById('coller-overlay');
+    if (overlay) overlay.style.display = 'none';
+}
+
+// Aucun fichier ne part sur Cloudinary : un mail collé n'a pas
+// d'original. Le formulaire s'ouvre pré-rempli comme après un dépôt, et
+// c'est sa validation — pas celle-ci — qui écrit en base.
+function validerCollage() {
+    var champ = document.getElementById('coller-texte');
+    var texte = champ ? String(champ.value) : '';
+    if (!texte.trim()) {
+        showToast('Collez le mail, ou annulez.', 'error');
+        if (champ) champ.focus();
+        return;
+    }
+
+    var lu = analyserMailColle(texte);
+    var sens = sensDepuisDe(lu.de || '', nosAdresses());
+    var corps = tronquerCorps(lu.corps || '');
+
+    var prerempli = {
+        type: 'email',
+        de: lu.de || '',
+        a: lu.a || '',
+        objet: lu.objet || '',
+        corps: corps.corps,
+        corpsTronque: corps.corpsTronque,
+        sens: sens,
+        parseOk: !!lu.parseOk,
+        camp: campParDefaut('email', sens),
+        titre: lu.objet || ''
+    };
+
+    // R5 : la date d'envoi si on a su la lire, sinon celle du jour —
+    // sans quoi un vieux mail collé remonterait en tête du fil.
+    if (lu.dateEnvoi) {
+        prerempli.dateEnvoi = lu.dateEnvoi;
+        prerempli.dateEvenement = lu.dateEnvoi;
+    }
+
+    // ⚠ RIEN NE DOIT SE PERDRE. Le corps est abrégé à MAX_CORPS pour ne
+    // pas alourdir un snapshot qui retélécharge tout le tiroir — mais
+    // ici, contrairement à un .eml déposé, il n'existe AUCUN fichier
+    // d'origine à relire. Le texte entier va donc dans emlBrut, ce champ
+    // volontairement retiré du snapshot et lu à la demande. Sans cette
+    // ligne, coller un long fil de discussion en perdrait la fin.
+    if (corps.corpsTronque) prerempli.emlBrut = texte;
+
+    fermerModaleCollage();
+    ouvrirModaleElement(null, prerempli);
+
+    if (lu.sansEntetes) {
+        showToast('Texte collé dans le corps. Complétez l\'expéditeur et l\'objet si besoin.', 'info');
+    }
 }

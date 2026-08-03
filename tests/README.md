@@ -83,6 +83,21 @@ affiche quand même sa création (déduite de `creeLe`), et un aller-retour dans
 formulaire d'une projection ne doit pas effacer son `imageSourceId` — même quand la photo
 d'origine a disparu, le piège classique du `<select>` qui retombe sur « Aucune ».
 
+Le **mail collé** ajoute le seul endroit du projet où un texte pourrait disparaître pour
+de bon. Un `.eml` déposé se relit depuis Cloudinary ; un mail collé n'a pas de fichier, et
+son corps est pourtant abrégé à `MAX_CORPS` pour l'affichage. Deux assertions verrouillent
+l'aller-retour : le texte intégral part bien dans `emlBrut` à l'enregistrement, et
+`corpsComplet()` le rend **entier** à la copie — l'analyseur `.eml` n'en tire rien
+puisqu'il n'y a pas d'en-tête, d'où le repli sur le brut lui-même. Une troisième vérifie
+qu'une simple modification n'écrase pas ce texte : le snapshot ne renvoie pas `emlBrut`,
+le réécrire mettrait du vide à la place.
+
+Le **rangement** est vérifié là où il se décide : l'intention (« déposer un document »)
+doit battre l'extension, y compris pour un `.png` — c'est le bug signalé. Et une assertion
+relit `index.html` pour que la liste `accept` du champ de dépôt ne diverge pas de la
+constante JavaScript qui la réécrit, faute de quoi le filtre du sélecteur dépendrait du
+bouton cliqué juste avant.
+
 ## Comment ça marche
 
 Il n'y a pas de navigateur. Chaque test charge les vrais fichiers du site dans un contexte

@@ -91,6 +91,23 @@
                 <div class="upload-progress-piste"><div id="upload-progress-bar" class="upload-progress-bar"></div></div>
             </div>
 
+            <!-- La devinette se trompe forcément un jour : un plan scanné
+                 en PNG est un document, l'extension ne le dira jamais.
+                 Ici on choisit, et l'extension n'a plus voix au chapitre. -->
+            <p class="ajout-separateur">ou, en disant où le ranger</p>
+
+            <div class="ajout-choix">
+                <button type="button" class="btn-export" onclick="declencherDepot('document')">
+                    <i class="fa-solid fa-file-pdf"></i> Un document
+                </button>
+                <button type="button" class="btn-export" onclick="declencherDepot('image', 'actuelle')">
+                    <i class="fa-solid fa-image"></i> Une photo
+                </button>
+                <button type="button" class="btn-export" onclick="declencherDepot('email')">
+                    <i class="fa-solid fa-envelope"></i> Un mail (.eml)
+                </button>
+            </div>
+
             <p class="ajout-separateur">ou, sans fichier</p>
 
             <div class="ajout-choix">
@@ -99,6 +116,9 @@
                 </button>
                 <button type="button" class="btn-export" onclick="ajouterEnEcrivant('note')">
                     <i class="fa-solid fa-note-sticky"></i> Une note
+                </button>
+                <button type="button" class="btn-export" onclick="ouvrirModaleCollage()">
+                    <i class="fa-solid fa-paste"></i> Un mail collé
                 </button>
             </div>
 
@@ -126,6 +146,15 @@
                 <div class="field field--full">
                     <label for="e-titre">Titre *</label>
                     <input type="text" id="e-titre" maxlength="180" placeholder="En une phrase : quoi ?">
+                </div>
+
+                <!-- Corriger la devinette sans retéléverser : un plan
+                     scanné en PNG arrive en photo, il se range ici en
+                     document. Limité à ce couple — voir
+                     TYPES_RECLASSABLES dans exterieur.js. -->
+                <div class="field" id="ligne-type">
+                    <label for="e-type-choix">Ranger comme</label>
+                    <select id="e-type-choix" onchange="surChangementTypeElement()"></select>
                 </div>
 
                 <div id="bloc-email" class="field--full" style="display:none">
@@ -226,6 +255,34 @@
                         onclick="demanderSuppression(elementEnEdition, '')">Supprimer</button>
                 <button type="button" class="modal-btn" onclick="fermerModaleElement()">Annuler</button>
                 <button type="button" class="modal-btn modal-btn-primary" onclick="sauverElement()">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ Modale « coller un mail » ============ -->
+    <!-- Le .eml demande un ordinateur : l'application Gmail mobile ne
+         sait pas télécharger un message. Coller, elle sait. Deux formes
+         passent par ici — la source complète (« Afficher l'original »),
+         que l'analyseur .eml comprend entièrement, et le message copié à
+         la souris, dont on garde au moins le texte intégral. -->
+    <div id="coller-overlay" class="modal-overlay" style="display:none">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="coller-titre" style="max-width:640px">
+            <h2 class="modal-title" id="coller-titre"><i class="fa-solid fa-paste"></i> Coller un mail</h2>
+            <p class="modal-desc">
+                Collez le mail entier. Si vous collez la source complète
+                (Gmail : ⋮ → « Afficher l’original »), l’expéditeur, l’objet et la date
+                sont lus tout seuls. Sinon le texte devient le corps du mail.
+            </p>
+            <div class="modal-form">
+                <div class="field field--full">
+                    <label for="coller-texte">Le mail</label>
+                    <textarea id="coller-texte" rows="12" placeholder="Ctrl + V"></textarea>
+                    <span class="field-hint">Ctrl + Entrée pour continuer.</span>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="modal-btn" onclick="fermerModaleCollage()">Annuler</button>
+                <button type="button" class="modal-btn modal-btn-primary" onclick="validerCollage()">Continuer</button>
             </div>
         </div>
     </div>

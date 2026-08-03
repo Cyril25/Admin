@@ -1096,6 +1096,207 @@ verifie('Une image ne peut pas etre sa propre origine',
   elements['e-image-source'].innerHTML);
 
 // ================================================================
+// 12 quater. Dire ou l'on range : l'intention bat l'extension
+// ================================================================
+// Le cas signale : un plan scanne en PNG partait dans les photos du
+// terrain parce que l'extension decidait seule. Un plan est un
+// document, et l'extension ne le saura jamais.
+console.log('\n12 quater. Ranger ou l\'on veut');
+
+// La devinette reste la devinette quand personne n'a rien dit.
+verifie('Sans intention, .png reste devine comme une image',
+  sandbox.typeDepuisFichier('plan-terrasse.png') === 'image');
+
+// declencherDepot memorise l'intention ET ouvre le bon selecteur.
+sandbox.declencherDepot('document');
+verifie('« Deposer un document » retient l\'intention',
+  sandbox.intentionDepot && sandbox.intentionDepot.type === 'document',
+  JSON.stringify(sandbox.intentionDepot));
+verifie('… et accepte N\'IMPORTE QUEL fichier (accept vide)',
+  elements['depot-fichier'].accept === '', JSON.stringify(elements['depot-fichier'].accept));
+
+sandbox.declencherDepot('image', 'projection');
+verifie('« Une photo » retient aussi la categorie visee',
+  sandbox.intentionDepot.type === 'image' && sandbox.intentionDepot.categorie === 'projection',
+  JSON.stringify(sandbox.intentionDepot));
+verifie('… et filtre sur les images pour le selecteur du telephone',
+  elements['depot-fichier'].accept === 'image/*');
+
+sandbox.declencherDepot('');
+verifie('La zone de depot, elle, ne dit rien : l\'intention repart a zero',
+  sandbox.intentionDepot === null);
+verifie('… et le selecteur revient a la liste devinable',
+  elements['depot-fichier'].accept === sandbox.ACCEPT_DEVINETTE);
+
+// Le coeur du signalement : le formulaire s'ouvre sur le type DEMANDE.
+sandbox.elements = [];
+sandbox.ouvrirFormulaireDepot('plan-terrasse.png', 'document',
+  'https://res.cloudinary.com/x/upload/plan.png', null, '');
+verifie('Un PNG depose comme document ouvre le formulaire en DOCUMENT',
+  elements['e-type'].value === 'document', elements['e-type'].value);
+verifie('… avec le camp d\'un document, pas rien',
+  elements['e-camp'].value === 'a_nous', elements['e-camp'].value);
+
+ecritures.length = 0;
+sandbox.sauverElement();
+verifie('… et c\'est bien un document qui part en base',
+  derniere().doc.type === 'document', JSON.stringify(derniere().doc));
+verifie('… avec l\'URL du fichier, image ou pas',
+  derniere().doc.url === 'https://res.cloudinary.com/x/upload/plan.png');
+
+// ================================================================
+// 12 quinquies. Corriger le rangement sans reteleverser
+// ================================================================
+// Le plan deja parti dans les photos doit pouvoir rejoindre les
+// documents : le supprimer et le redeposer laisserait le fichier chez
+// Cloudinary, qu'on ne sait pas effacer.
+console.log('\n12 quinquies. Reclasser un element');
+
+sandbox.elements = [
+  { id: 'r1', type: 'image', titre: 'Plan terrasse', categorie: 'actuelle',
+    url: 'https://res.cloudinary.com/x/upload/plan.png', creeLe: ilYA(3), dateEvenement: ilYA(3) },
+  { id: 'r2', type: 'document', titre: 'Devis Dupont', camp: 'a_nous', sujet: 'terrasse',
+    url: 'https://res.cloudinary.com/x/upload/d.pdf', creeLe: ilYA(4), dateEvenement: ilYA(4) },
+  { id: 'r3', type: 'tache', titre: 'Mesurer', camp: 'a_nous', creeLe: ilYA(2) },
+];
+
+sandbox.ouvrirModaleElement('r1');
+verifie('Le selecteur « Ranger comme » est propose sur une image',
+  elements['ligne-type'].style.display !== 'none');
+verifie('Il ne propose que document et image',
+  (elements['e-type-choix'].innerHTML.match(/<option/g) || []).length === 2,
+  elements['e-type-choix'].innerHTML);
+
+sandbox.ouvrirModaleElement('r3');
+verifie('Il n\'est PAS propose sur une tache : la conversion perdrait quelque chose',
+  elements['ligne-type'].style.display === 'none');
+
+// Image -> document : le camp apparait, l'URL ne bouge pas.
+sandbox.ouvrirModaleElement('r1');
+elements['e-type-choix'].value = 'document';
+sandbox.surChangementTypeElement();
+verifie('Changer le selecteur change le type reellement pris en compte',
+  elements['e-type'].value === 'document', elements['e-type'].value);
+verifie('… et fait apparaitre le camp, qu\'une image n\'avait pas',
+  elements['ligne-camp'].style.display !== 'none');
+
+ecritures.length = 0;
+sandbox.sauverElement();
+ecrit = derniere();
+verifie('Le plan devient un document', ecrit.doc.type === 'document', JSON.stringify(ecrit.doc));
+verifie('Aucun re-upload : l\'URL n\'est pas retouchee', ecrit.doc.url === undefined);
+verifie('Rien n\'est perdu : la categorie d\'image reste en base',
+  ecrit.doc.categorie === undefined, JSON.stringify(ecrit.doc));
+
+// Document -> image : le camp doit PARTIR, sinon l'element resterait
+// sur le tableau de bord sans plus aucun bouton pour l'en sortir.
+sandbox.ouvrirModaleElement('r2');
+elements['e-type-choix'].value = 'image';
+sandbox.surChangementTypeElement();
+ecritures.length = 0;
+sandbox.sauverElement();
+ecrit = derniere();
+verifie('Un devis reclasse en photo devient une image', ecrit.doc.type === 'image');
+verifie('… et son camp est vide, sinon il squatterait « A nous »',
+  ecrit.doc.camp === '', JSON.stringify(ecrit.doc.camp));
+
+// ================================================================
+// 12 sexies. Coller un mail
+// ================================================================
+// Le .eml demande un ordinateur : Gmail mobile ne sait pas telecharger
+// un message. Deux formes arrivent par le collage, et aucune des deux
+// ne doit perdre de texte.
+console.log('\n12 sexies. Mail colle');
+
+// --- 1. La source complete : l'analyseur .eml fait tout le travail ---
+let colle = sandbox.analyserMailColle(crlf([
+  'From: Jean Dupont <jean@paysage-dupont.fr>',
+  'To: cyril.samson41@gmail.com',
+  'Subject: Devis terrasse',
+  'Date: Fri, 3 Jul 2026 09:12:00 +0200',
+  'Content-Type: text/plain; charset=UTF-8',
+  '',
+  'Bonjour, voici le devis.',
+]));
+verifie('Source complete collee : l\'expediteur est lu',
+  colle.de === 'Jean Dupont <jean@paysage-dupont.fr>', colle.de);
+verifie('Source complete collee : l\'objet est lu', colle.objet === 'Devis terrasse');
+verifie('Source complete collee : la date d\'envoi est lue', colle.dateEnvoi instanceof Date);
+verifie('Source complete collee : pas de repli texte brut', colle.sansEntetes === undefined);
+
+// --- 2. Le message copie a la souris : AUCUNE en-tete exploitable ---
+const COPIE_ECRAN = 'Bonjour Cyril,\n\nNous ne sommes pas disponibles avant mars.\n\nCordialement,\nJean';
+colle = sandbox.analyserMailColle(COPIE_ECRAN);
+verifie('Texte sans en-tete : le corps garde TOUT le texte colle',
+  colle.corps === COPIE_ECRAN, JSON.stringify(colle.corps));
+verifie('Texte sans en-tete : les champs restent vides plutot qu\'inventes',
+  colle.de === '' && colle.objet === '');
+verifie('Texte sans en-tete : c\'est signale comme tel', colle.sansEntetes === true);
+
+// parseOk reste VRAI : rien n'a echoue, il n'y avait pas d'en-tete a
+// lire. Le passer a faux collerait un bandeau « mal compris » sur un
+// mail parfaitement volontaire, dans le fil comme dans la vue Emails.
+verifie('Texte sans en-tete : parseOk reste vrai, ce n\'est pas un echec',
+  colle.parseOk === true);
+
+// --- 3. De bout en bout : la modale de collage remplit le formulaire ---
+sandbox.elements = [];
+sandbox.ficheProjet = { intervenants: ['Cyril', 'Alisson'], nosAdresses: NOS };
+
+sandbox.ouvrirModaleCollage();
+ecritures.length = 0;
+sandbox.validerCollage();
+verifie('Coller du vide n\'ouvre rien et n\'ecrit rien', ecritures.length === 0);
+
+elements['coller-texte'].value = COPIE_ECRAN;
+sandbox.validerCollage();
+verifie('Le collage ouvre le formulaire en EMAIL', elements['e-type'].value === 'email');
+verifie('… avec le texte colle dans le corps',
+  elements['e-corps'].value === COPIE_ECRAN, JSON.stringify(elements['e-corps'].value));
+
+ecritures.length = 0;
+elements['e-objet'].value = 'Reponse Dupont';
+sandbox.sauverElement();
+ecrit = derniere();
+verifie('Un mail colle s\'enregistre comme un mail', ecrit.doc.type === 'email');
+verifie('… sans aucun fichier : il n\'y a pas d\'original a stocker',
+  ecrit.doc.url === undefined, JSON.stringify(ecrit.doc.url));
+verifie('… et le corps colle part bien en base', ecrit.doc.corps === COPIE_ECRAN);
+
+// --- 4. RIEN NE SE PERD : un long collage garde sa fin ---
+// Le corps est abrege a MAX_CORPS pour ne pas alourdir le snapshot,
+// mais un mail colle n'a PAS de fichier d'origine a relire. Sans
+// emlBrut, la fin serait perdue pour de bon.
+const LONG = 'Ligne de discussion. '.repeat(400);   // ~8000 caracteres
+verifie('Le jeu de test depasse bien le seuil d\'abregement',
+  LONG.length > sandbox.MAX_CORPS);
+
+elements['coller-texte'].value = LONG;
+sandbox.validerCollage();
+verifie('Un long collage est abrege a l\'affichage',
+  elements['e-corps'].value.length === sandbox.MAX_CORPS,
+  String(elements['e-corps'].value.length));
+
+ecritures.length = 0;
+elements['e-objet'].value = 'Long fil';
+sandbox.sauverElement();
+ecrit = derniere();
+verifie('… mais le texte INTEGRAL part en base dans emlBrut',
+  ecrit.doc.emlBrut === LONG, String(ecrit.doc.emlBrut && ecrit.doc.emlBrut.length));
+verifie('… et le drapeau d\'abregement est pose',
+  ecrit.doc.corpsTronque === true);
+
+// Modifier un mail colle ne doit PAS ecraser son texte integral : le
+// snapshot ne renvoie pas emlBrut, on ecrirait une version vide.
+sandbox.elements = [{ id: 'mc9', type: 'email', objet: 'Long fil', sens: 'recu', camp: 'a_nous',
+  corps: LONG.slice(0, sandbox.MAX_CORPS), corpsTronque: true, aEmlBrut: true, parseOk: true }];
+ecritures.length = 0;
+sandbox.ouvrirModaleElement('mc9');
+sandbox.sauverElement();
+verifie('Modifier un mail colle ne touche pas a son texte integral',
+  derniere().doc.emlBrut === undefined, JSON.stringify(derniere().doc.emlBrut));
+
+// ================================================================
 // 13. Toutes les vues s'affichent sans planter
 // ================================================================
 // Un ID de champ mal orthographie ou une concatenation ratee ne se
@@ -1181,6 +1382,23 @@ verifie('AC15 : deux entrees distinctes pour les photos (capture ET sans)',
   /id="photo-camera"[^>]*capture="environment"/.test(htmlIndex.replace(/\s+/g, ' '))
   && /id="photo-galerie"[^>]*accept="image\/\*"/.test(htmlIndex.replace(/\s+/g, ' ')));
 
+// La liste devinable est ecrite a deux endroits : l'attribut du champ et
+// la constante qui le reecrit apres un depot cible. Les laisser diverger
+// donnerait un selecteur dont le filtre depend du bouton precedemment
+// clique — introuvable a la main.
+verifie('La liste accept du champ de depot est la meme dans index.html et en JS',
+  htmlIndex.replace(/\s+/g, ' ')
+    .indexOf('id="depot-fichier" style="display:none" accept="' + sandbox.ACCEPT_DEVINETTE + '"') !== -1,
+  sandbox.ACCEPT_DEVINETTE);
+
+// Chaque bouton « ranger dans » doit avoir son entree dans la table des
+// filtres, sinon accept vaudrait undefined et le selecteur n'accepterait
+// plus rien du tout.
+['document', 'image', 'email'].forEach((type) => {
+  verifie('ACCEPT_PAR_TYPE couvre « ' + type + ' »',
+    sandbox.ACCEPT_PAR_TYPE[type] !== undefined);
+});
+
 // ================================================================
 // 15. Garanties de bout en bout
 // ================================================================
@@ -1253,9 +1471,35 @@ setTimeout(() => {
       verifie('AC16 : AUCUN document Firestore orphelin n\'a ete cree',
         ecritures.length === 0, JSON.stringify(ecritures));
       verifie('AC16 : aucune exception ne remonte au-dela de la promesse', !leve);
-      finir();
+      verifierRelectureMailColle().then(finir);
     });
 }, 0);
+
+// --- Le retour du long mail colle : « Copier le corps » doit rendre le
+//     texte ENTIER, pas la version abregee affichee a l'ecran ---
+// Un .eml depose se relit depuis Cloudinary. Un mail colle n'a pas de
+// fichier : son original vit dans emlBrut, et l'analyseur .eml n'en
+// tirera rien puisqu'il n'y a pas d'en-tete. Sans le repli sur le brut
+// lui-meme, on collerait une version tronquee dans Gmail sans le voir.
+function verifierRelectureMailColle() {
+  // .trim() : le texte rendu passe par nettoyerCorps, qui rogne les
+  // blancs de fin. C'est voulu — on colle ca dans Gmail.
+  const INTEGRAL = 'Ligne de discussion. '.repeat(400).trim();
+  sandbox.lireEmlBrut = () => Promise.resolve(INTEGRAL);
+
+  const mailColle = {
+    id: 'mc9', type: 'email', objet: 'Long fil', sens: 'recu',
+    corps: INTEGRAL.slice(0, sandbox.MAX_CORPS), corpsTronque: true, aEmlBrut: true,
+  };
+  sandbox.elements = [mailColle];
+
+  return sandbox.corpsComplet(mailColle).then((texte) => {
+    verifie('Un mail colle abrege rend son texte INTEGRAL a la copie',
+      texte === INTEGRAL, String(texte && texte.length) + ' vs ' + INTEGRAL.length);
+    verifie('… et pas la version tronquee affichee',
+      texte.length > sandbox.MAX_CORPS, String(texte.length));
+  });
+}
 
 function finir() {
   console.log('\n' + (echecs === 0 ? 'Tous les tests passent.' : echecs + ' test(s) en echec.'));

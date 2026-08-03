@@ -19,14 +19,26 @@ function renderDocuments() {
 
     var docs = elementsDeType('document');
     if (!docs.length) {
-        cible.innerHTML = '<p class="bloc-vide">'
-            + escapeHtml(premierChargement ? 'Chargement…' : 'Aucun document. Déposez un devis avec le bouton Ajouter.')
+        cible.innerHTML = barreDocuments()
+            + '<p class="bloc-vide">'
+            + escapeHtml(premierChargement ? 'Chargement…' : 'Aucun document. Déposez un devis, un plan, un cahier des charges.')
             + '</p>';
         return;
     }
 
     var groupes = grouperDocumentsParSujet(docs);
-    cible.innerHTML = groupes.map(groupeDocuments).join('');
+    cible.innerHTML = barreDocuments() + groupes.map(groupeDocuments).join('');
+}
+
+// Déposer DEPUIS cette vue range dans cette vue : un plan scanné en PNG
+// est un document, pas une photo du terrain. C'est le seul moyen de le
+// dire, l'extension ne sait pas faire la différence.
+function barreDocuments() {
+    return '<div class="images-actions">'
+        + '<button type="button" class="btn-add" onclick="declencherDepot(\'document\')">'
+        +   '<i class="fa-solid fa-file-arrow-up"></i> Déposer un document</button>'
+        + '<span class="field-hint">Devis, plan, photo d’un plan — n’importe quel fichier.</span>'
+        + '</div>';
 }
 
 // Rend les groupes triés : les sujets à comparer d'abord (ceux qui ont

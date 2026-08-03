@@ -27,13 +27,27 @@ function renderEmails() {
             return (db2 ? db2.getTime() : 0) - (da ? da.getTime() : 0);
         });
 
-    cible.innerHTML = barreEmails()
+    cible.innerHTML = actionsEmails()
+        + barreEmails()
         + (mails.length
             ? '<div class="fil">' + mails.map(carteEmail).join('') + '</div>'
             : '<p class="bloc-vide">' + escapeHtml(premierChargement
                 ? 'Chargement…'
-                : 'Aucun mail archivé. Depuis Gmail sur ordinateur : ⋮ → Télécharger le message, puis déposez le .eml ici.')
+                : 'Aucun mail archivé. Sur ordinateur : ⋮ → Télécharger le message, puis déposez le .eml. '
+                  + 'Depuis un téléphone, où Gmail ne sait pas le faire : copiez le mail et collez-le.')
               + '</p>');
+}
+
+// Le .eml demande un ordinateur — l'application Gmail mobile ne sait pas
+// télécharger un message. Coller, elle sait : c'est souvent le seul
+// geste possible sur le terrain, d'où les deux boutons côte à côte.
+function actionsEmails() {
+    return '<div class="images-actions">'
+        + '<button type="button" class="btn-add" onclick="declencherDepot(\'email\')">'
+        +   '<i class="fa-solid fa-file-arrow-up"></i> Déposer un .eml</button>'
+        + '<button type="button" class="btn-export" onclick="ouvrirModaleCollage()">'
+        +   '<i class="fa-solid fa-paste"></i> Coller un mail</button>'
+        + '</div>';
 }
 
 function barreEmails() {
@@ -153,10 +167,16 @@ function corpsComplet(mail) {
 
     // Repli emlBrut : le mail entier est dans le document Firestore,
     // volontairement retiré du snapshot. Une lecture ciblée suffit.
+    //
+    // Deux natures d'original y cohabitent : la source d'un .eml, que
+    // l'analyseur sait relire, et le TEXTE d'un mail collé à la main,
+    // dont il ne tirera rien — il n'y a pas d'en-tête. D'où le repli sur
+    // le brut lui-même : sans lui, coller un long fil de discussion puis
+    // le copier en rendrait la version abrégée, en silence.
     if (mail.aEmlBrut) {
         return lireEmlBrut(mail.id).then(function(brut) {
             var analyse = analyserEml(brut);
-            return analyse.corps || mail.corps || '';
+            return analyse.corps || nettoyerCorps(brut) || mail.corps || '';
         });
     }
 
