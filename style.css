@@ -1515,6 +1515,14 @@ body.login-page {
 .miniature-liee .icon-btn { color: rgba(255, 255, 255, 0.7); padding: 2px 5px; }
 .miniature-liee .icon-btn:hover { color: #fff; background: rgba(255, 255, 255, 0.16); }
 
+/* Ce qui remplace le menu déroulant quand il n'y a rien à proposer. */
+.visionneuse-note {
+    margin: 0;
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.66);
+    font-style: italic;
+}
+
 .visionneuse-select {
     max-width: 100%;
     padding: 6px 10px;

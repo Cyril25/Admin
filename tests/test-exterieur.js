@@ -1041,6 +1041,61 @@ verifie('Elle liste les projections etablies avec cette photo',
 verifie('Elle propose de rattacher les projections qui ne le sont pas encore',
   elements['visionneuse-liens'].innerHTML.indexOf('Rattacher une projection') !== -1);
 
+// --- Une projection decoule d'UNE photo, et d'une seule ---
+// Celles qui sont deja rattachees ailleurs ne doivent pas etre
+// proposees : un clic les volerait a l'autre photo sans rien dire.
+// L'inverse n'est pas vrai, une photo en porte autant qu'on veut.
+sandbox.ouvrirVisionneuse('p2');
+let offre = elements['visionneuse-liens'].innerHTML;
+verifie('Une projection deja rattachee ailleurs n\'est PAS proposee',
+  offre.indexOf('value="v1"') === -1 && offre.indexOf('value="v2"') === -1, offre);
+verifie('Une projection libre, elle, est proposee',
+  offre.indexOf('value="v3"') !== -1, offre);
+// v4 pointe vers une photo supprimee : son lien est mort, elle est donc
+// libre a nouveau. « Deja rattachee » se lit sur la source vivante.
+verifie('Une projection dont la photo d\'origine a disparu redevient proposable',
+  offre.indexOf('value="v4"') !== -1, offre);
+
+// Quand tout est pris, on le DIT — un menu absent sans explication
+// laisserait chercher ce qui ne s'affiche pas.
+sandbox.elements = [
+  { id: 'q1', type: 'image', titre: 'Le talus', categorie: 'actuelle',
+    url: 'https://res.cloudinary.com/x/upload/q1.jpg', creeLe: ilYA(9), dateEvenement: ilYA(9) },
+  { id: 'q2', type: 'image', titre: 'L\'entree', categorie: 'actuelle',
+    url: 'https://res.cloudinary.com/x/upload/q2.jpg', creeLe: ilYA(8), dateEvenement: ilYA(8) },
+  { id: 'w1', type: 'image', titre: 'Talus revisite', categorie: 'projection', imageSourceId: 'q1',
+    url: 'https://res.cloudinary.com/x/upload/w1.jpg', creeLe: ilYA(7), dateEvenement: ilYA(7) },
+];
+sandbox.ouvrirVisionneuse('q2');
+offre = elements['visionneuse-liens'].innerHTML;
+verifie('Plus rien a proposer : aucun menu deroulant',
+  offre.indexOf('<select') === -1, offre);
+verifie('… mais une phrase qui dit quoi faire',
+  offre.indexOf('Détachez-en une') !== -1, offre);
+
+// Aucune projection du tout : la phrase est differente, elle ne parle
+// pas de detacher ce qui n'existe pas.
+sandbox.elements = [sandbox.trouverElement('q1'), sandbox.trouverElement('q2')];
+sandbox.ouvrirVisionneuse('q1');
+offre = elements['visionneuse-liens'].innerHTML;
+verifie('Aucune projection du tout : on ne propose pas d\'en detacher une',
+  offre.indexOf('Détachez-en une') === -1 && offre.indexOf('Aucune autre projection') !== -1, offre);
+
+sandbox.elements = [
+  { id: 'p1', type: 'image', titre: 'Le talus, cote sud', categorie: 'actuelle',
+    url: 'https://res.cloudinary.com/x/upload/p1.jpg', creeLe: ilYA(30), dateEvenement: ilYA(30) },
+  { id: 'p2', type: 'image', titre: 'L\'entree', categorie: 'actuelle',
+    url: 'https://res.cloudinary.com/x/upload/p2.jpg', creeLe: ilYA(20), dateEvenement: ilYA(20) },
+  { id: 'v1', type: 'image', titre: 'Talus en terrasses', categorie: 'projection', imageSourceId: 'p1',
+    url: 'https://res.cloudinary.com/x/upload/v1.jpg', creeLe: ilYA(10), dateEvenement: ilYA(10) },
+  { id: 'v2', type: 'image', titre: 'Talus enherbe', categorie: 'projection', imageSourceId: 'p1',
+    url: 'https://res.cloudinary.com/x/upload/v2.jpg', creeLe: ilYA(5), dateEvenement: ilYA(5) },
+  { id: 'v3', type: 'image', titre: 'Inspiration Pinterest', categorie: 'projection',
+    url: 'https://res.cloudinary.com/x/upload/v3.jpg', creeLe: ilYA(3), dateEvenement: ilYA(3) },
+  { id: 'v4', type: 'image', titre: 'Croquis de l\'archi', categorie: 'projection', imageSourceId: 'p-disparue',
+    url: 'https://res.cloudinary.com/x/upload/v4.jpg', creeLe: ilYA(2), dateEvenement: ilYA(2) },
+];
+
 sandbox.ouvrirVisionneuse('v1');
 verifie('La visionneuse d\'une projection montre d\'ou elle vient',
   elements['visionneuse-liens'].innerHTML.indexOf('Établie à partir') !== -1,

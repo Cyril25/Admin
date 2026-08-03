@@ -160,16 +160,17 @@ function fermerVisionneuse() {
 // Rattachement photo ↔ projections
 // ------------------------------------------------------------
 // Vu depuis une photo du terrain : tout ce qu'on a imaginé dessus.
+//
+// La relation n'est pas symétrique, et c'est ce qui gouverne la liste
+// proposée ci-dessous : une projection découle d'UNE photo et d'une
+// seule — c'est le sens du champ unique imageSourceId — alors qu'une
+// photo en porte autant qu'on veut.
 function liensDepuisPhoto(image) {
     var liees = projectionsDe(image.id);
     var vignettes = liees.map(function(projection) {
         return miniatureLiee(projection, 'Détacher cette projection',
             'rattacherProjection(\'' + jsAttr(projection.id) + '\', \'\')');
     }).join('');
-
-    var candidates = elementsDeType('image').filter(function(i) {
-        return (i.categorie || 'actuelle') === 'projection' && i.imageSourceId !== image.id;
-    }).sort(parDateDecroissante);
 
     return '<h3 class="visionneuse-liens-titre">'
         +   '<i class="fa-solid fa-wand-magic-sparkles"></i> '
@@ -178,8 +179,36 @@ function liensDepuisPhoto(image) {
                 : 'Aucune projection rattachée à cette photo')
         + '</h3>'
         + (vignettes ? '<div class="visionneuse-miniatures">' + vignettes + '</div>' : '')
-        + selectRattachement(candidates, 'Rattacher une projection…',
+        + choixDeRattachement(image);
+}
+
+// Ne sont proposées que les projections encore libres. Une projection
+// déjà rattachée ailleurs ne doit pas apparaître ici : un clic la
+// volerait à l'autre photo sans rien dire, et elle n'a qu'une origine à
+// donner. Pour la déplacer, on la détache d'abord — le geste est
+// explicite, et il se fait depuis la photo qui la porte.
+//
+// « Libre » se lit sur la source VIVANTE, pas sur le champ : une
+// projection dont la photo d'origine a été supprimée n'est plus
+// rattachée à rien, elle redevient proposable.
+function choixDeRattachement(image) {
+    var projections = elementsDeType('image').filter(function(i) {
+        return (i.categorie || 'actuelle') === 'projection';
+    });
+    var libres = projections.filter(function(i) { return !imageSourceDe(i); })
+        .sort(parDateDecroissante);
+
+    if (libres.length) {
+        return selectRattachement(libres, 'Rattacher une projection…',
             'rattacherProjection(this.value, \'' + jsAttr(image.id) + '\')');
+    }
+
+    // Rien à proposer n'est pas la même chose qu'un bouton absent :
+    // sans un mot, on chercherait ce qui ne s'affiche pas.
+    var autres = projections.filter(function(i) { return i.imageSourceId !== image.id; });
+    return '<p class="visionneuse-note">' + escapeHtml(autres.length
+        ? 'Les autres projections sont déjà rattachées à une photo. Détachez-en une pour la déplacer ici.'
+        : 'Aucune autre projection pour l’instant.') + '</p>';
 }
 
 // Vu depuis une projection : d'où elle vient.

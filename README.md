@@ -320,6 +320,18 @@ d'accord avec la réalité à chaque suppression, et laisserait des références
 Un champ unique se rattache en **une écriture sur un seul document**, et la vue
 « Aujourd'hui » lit le lien à l'envers, ce qui n'est qu'un filtre (`projectionsDe`).
 
+**La relation n'est pas symétrique**, et l'interface le montre : une projection
+découle d'**une** photo et d'une seule — c'est le sens du champ unique — alors qu'une
+photo en porte autant qu'on veut. Une projection déjà rattachée n'apparaît donc pas
+dans les rattachables d'une autre photo : un clic la volerait à la première sans rien
+dire. Pour la déplacer, on la détache d'abord, depuis la photo qui la porte ou depuis
+sa propre fiche. Quand il ne reste rien à proposer, une phrase le dit plutôt que de
+laisser un menu absent.
+
+« Déjà rattachée » se lit sur la source **vivante**, pas sur le champ : une projection
+dont la photo d'origine a été supprimée n'est plus rattachée à rien et redevient
+proposable.
+
 Le rattachement se fait dans la visionneuse, dans les deux sens, et la vignette
 annonce le nombre de projections sans qu'on ait à ouvrir. Détacher écrit une chaîne
 vide plutôt que de supprimer le champ, et une photo d'origine disparue se **dit**
