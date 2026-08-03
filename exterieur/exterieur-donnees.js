@@ -58,6 +58,10 @@ var CATEGORIES_IMAGE = [
     { value: 'projection', label: 'Projection' }
 ];
 
+// Un événement du journal reste une phrase : ce n'est pas là qu'on
+// archive un mail. Au-delà, c'est une note — ou un document.
+var MAX_EVENEMENT = 500;
+
 var CATEGORIES_CONTACT = [
     { value: 'btp',              label: 'BTP' },
     { value: 'paysagiste',       label: 'Paysagiste' },
@@ -182,6 +186,15 @@ function cleSujet(sujet) {
     return normaliserTexte(sujet);
 }
 
+// Le tri du plus récent au plus ancien, partagé par le fil, les
+// documents et les images. Sur dateEvenement — quand la chose s'est
+// produite — avec repli sur creeLe quand elle n'en a pas.
+function parDateDecroissante(a, b) {
+    var da = toDate(a.dateEvenement) || toDate(a.creeLe);
+    var db2 = toDate(b.dateEvenement) || toDate(b.creeLe);
+    return (db2 ? db2.getTime() : 0) - (da ? da.getTime() : 0);
+}
+
 function trouverElement(id) {
     for (var i = 0; i < elements.length; i++) {
         if (elements[i].id === id) return elements[i];
@@ -295,17 +308,141 @@ function campParDefaut(type, sens) {
 }
 
 // Réécrit campDepuis à chaque bascule : l'ancienneté affichée compte
-// depuis le changement lui-même, pas depuis la création.
-function changerCamp(id, camp) {
-    return modifierElement(id, { camp: camp, campDepuis: horodatage() })
-        .then(function() {
-            var def = getCampDef(camp);
-            showToast(def ? ('Passé en « ' + def.label + ' ».') : 'Camp modifié.', 'success');
-        })
-        .catch(function(erreur) {
-            console.error(erreur);
-            showToast('Changement impossible : ' + erreur.message, 'error');
-        });
+// depuis le changement lui-même, pas depuis la création. Et pose un
+// événement au journal — la bascule EST un événement, même quand on n'a
+// rien à en dire.
+//
+// L'échec n'est PAS rattrapé ici : l'appelant ferme sa modale sur la
+// promesse, et une erreur avalée la fermerait aussi, emportant la
+// phrase qu'on venait d'écrire.
+function changerCamp(id, camp, texte) {
+    return ajouterEvenement(id, texte, camp).then(function() {
+        var def = getCampDef(camp);
+        showToast(def ? ('Passé en « ' + def.label + ' ».') : 'Camp modifié.', 'success');
+    });
+}
+
+// ------------------------------------------------------------
+// 7 bis. Le journal — une tâche est une suite d'événements
+// ------------------------------------------------------------
+// « Écrire à Untel » n'est pas un état, c'est une histoire : on écrit,
+// on attend, on apprend que la personne n'est pas disponible, on
+// renonce. Le camp seul ne retient que le dernier chapitre. Le journal
+// garde les autres — c'est ce qui permet, six mois plus tard, de savoir
+// POURQUOI une tâche est close.
+//
+// Stocké dans un tableau du document, pas dans une sous-collection :
+// tout le projet vit sur un seul onSnapshot de la collection
+// « exterieur », une sous-collection y serait invisible et demanderait
+// un écouteur par tâche. Un tableau, lui, arrive avec le document.
+//
+// ⚠ serverTimestamp() est INTERDIT par Firestore à l'intérieur d'un
+// tableau. La date d'un événement vient donc de l'horloge du
+// navigateur : elle peut mentir de quelques secondes, ce qui est sans
+// conséquence ici où l'on lit des jours.
+//
+// arrayUnion, et JAMAIS une réécriture du tableau entier : à deux, deux
+// événements ajoutés en même temps doivent survivre tous les deux.
+// C'est aussi ce qui rend l'ajout sûr sur les documents déjà en base,
+// qui n'ont pas de champ « journal » — arrayUnion le crée.
+function entreeJournal(texte, campAvant, campApres) {
+    var entree = {
+        le: new Date(),
+        par: utilisateurReel(),
+        texte: String(texte == null ? '' : texte).trim().slice(0, MAX_EVENEMENT)
+    };
+    if (campApres) {
+        entree.camp = campApres;
+        entree.campAvant = campAvant || '';
+    }
+    return entree;
+}
+
+// Du plus ancien au plus récent. Le tri ne se fie pas à l'ordre du
+// tableau : les dates viennent de deux navigateurs différents, dont les
+// horloges ne sont pas d'accord à la seconde près.
+function journalDe(element) {
+    if (!element || !element.journal || !element.journal.length) return [];
+    // filter() rend déjà un nouveau tableau : trier ne touche pas au
+    // document en mémoire, que le prochain snapshot remplacera.
+    return element.journal.filter(function(e) { return !!e; }).sort(function(a, b) {
+        var da = toDate(a.le), db2 = toDate(b.le);
+        return (da ? da.getTime() : 0) - (db2 ? db2.getTime() : 0);
+    });
+}
+
+// Le journal tel qu'on le lit, création comprise. Cette première ligne
+// n'est jamais stockée : elle se déduit de creeLe/creePar. C'est ce qui
+// donne une histoire cohérente aux tâches saisies AVANT que le journal
+// existe — aucune migration, aucune donnée réécrite.
+function journalAffiche(element) {
+    if (!element) return [];
+    var creation = { le: element.creeLe, par: element.creePar, texte: '', creation: true };
+    return [creation].concat(journalDe(element));
+}
+
+function dernierEvenement(element) {
+    var entrees = journalDe(element);
+    return entrees.length ? entrees[entrees.length - 1] : null;
+}
+
+// Ce qu'on lit d'un événement en une ligne, sur une carte. Un passage
+// sans commentaire reste une information : il dit quand ça a basculé.
+// Formulé sans accord de genre — « tâche » est féminin, « document »
+// ne l'est pas, et la même phrase sert aux deux.
+function resumeEvenement(entree) {
+    if (!entree) return '';
+    if (entree.texte) return entree.texte;
+    var def = getCampDef(entree.camp);
+    return def ? ('passage en « ' + def.label + ' »') : '';
+}
+
+// Un événement sans texte ET sans changement de camp ne raconte rien :
+// on ne l'écrit pas.
+function ajouterEvenement(id, texte, campApres) {
+    var propre = String(texte == null ? '' : texte).trim();
+    if (!propre && !campApres) return Promise.reject(new Error('Rien à noter.'));
+
+    var element = trouverElement(id);
+    var doc = {
+        journal: firebase.firestore.FieldValue.arrayUnion(
+            entreeJournal(propre, element ? element.camp : '', campApres))
+    };
+    if (campApres) {
+        doc.camp = campApres;
+        doc.campDepuis = horodatage();
+    }
+    return modifierElement(id, doc);
+}
+
+// ------------------------------------------------------------
+// 7 ter. Photos d'aujourd'hui et projections
+// ------------------------------------------------------------
+// Le lien est porté par la PROJECTION — « je découle de cette photo » —
+// et pas par la photo — « voici mes projections ». Un seul champ au
+// lieu de deux listes à tenir d'accord : supprimer une projection ne
+// laisse aucune référence morte derrière elle, et rattacher se fait en
+// une écriture sur un seul document. La vue « Aujourd'hui » lit le lien
+// à l'envers, ce qui n'est qu'un filtre.
+function projectionsDe(imageId) {
+    if (!imageId) return [];
+    return elementsDeType('image')
+        .filter(function(i) { return i.imageSourceId === imageId; })
+        .sort(parDateDecroissante);
+}
+
+// Comme pour les contacts : une photo d'origine supprimée ne casse
+// rien, elle se signale.
+function imageSourceDe(element) {
+    if (!element || !element.imageSourceId) return null;
+    var source = trouverElement(element.imageSourceId);
+    return (source && source.type === 'image') ? source : null;
+}
+
+function imagesActuelles() {
+    return elementsDeType('image')
+        .filter(function(i) { return (i.categorie || 'actuelle') === 'actuelle'; })
+        .sort(parDateDecroissante);
 }
 
 // ------------------------------------------------------------

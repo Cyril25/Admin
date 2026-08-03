@@ -34,11 +34,7 @@ function renderFil() {
 function elementsDuFil() {
     return elements
         .filter(function(e) { return TYPES_FIL.indexOf(e.type) !== -1; })
-        .sort(function(a, b) {
-            var da = toDate(a.dateEvenement) || toDate(a.creeLe);
-            var db2 = toDate(b.dateEvenement) || toDate(b.creeLe);
-            return (db2 ? db2.getTime() : 0) - (da ? da.getTime() : 0);
-        });
+        .sort(parDateDecroissante);
 }
 
 function filtresDuFil() {

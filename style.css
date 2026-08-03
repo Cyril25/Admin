@@ -1171,9 +1171,97 @@ body.login-page {
 .badge-alerte   { background: #FFF7E6; color: #7A5200; font-weight: 700; }
 .badge-categorie { background: var(--color-surface); color: var(--color-text-secondary); }
 .badge-lies     { background: #E3EDF5; color: #2C4A63; }
+.badge-creation { background: #F0F2F4; color: #5A6470; }
 
 .badge-lien { background: var(--color-surface); color: var(--color-secondary); text-decoration: none; }
 .badge-lien:hover { background: var(--color-border-light); }
+
+/* ---------- 12.5 bis Journal ---------- */
+/* Une tâche n'est pas un état mais une suite d'événements. Sur une
+   carte on n'en montre qu'un — le dernier — parce que c'est celui qui
+   explique où on en est ; l'histoire complète est dans la modale. */
+.journal-dernier {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin: var(--spacing-sm) 0 0;
+    padding-left: 8px;
+    border-left: 2px solid var(--color-border);
+    font-size: 0.82rem;
+    color: var(--color-text-muted);
+    line-height: 1.45;
+    white-space: pre-wrap;
+}
+.journal-dernier i { margin-right: 5px; color: var(--color-text-disabled); }
+
+.journal-entete {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-sm);
+    flex-wrap: wrap;
+    margin-bottom: var(--spacing-sm);
+}
+
+.journal-titre {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+}
+.journal-titre i { margin-right: 6px; color: var(--color-text-muted); }
+
+.journal-liste {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    max-height: 260px;
+    overflow-y: auto;
+}
+
+.journal-entree {
+    position: relative;
+    padding: 0 0 var(--spacing-md) var(--spacing-md);
+    border-left: 2px solid var(--color-border-light);
+}
+.journal-entree:last-child { padding-bottom: 0; }
+
+/* La pastille du fil vertical, posée sur la bordure gauche. */
+.journal-entree::before {
+    content: '';
+    position: absolute;
+    left: -5px;
+    top: 6px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--color-border);
+}
+
+.journal-ligne-meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+}
+.journal-quand { font-weight: 500; }
+.journal-qui {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 220px;
+    white-space: nowrap;
+}
+
+.journal-texte {
+    margin: 3px 0 0;
+    font-size: 0.88rem;
+    color: var(--color-text);
+    line-height: 1.45;
+    white-space: pre-wrap;
+}
 
 /* ---------- 12.6 Mouvement ---------- */
 .mouvement-phrase {
@@ -1273,12 +1361,29 @@ body.login-page {
 }
 
 .vignette-bouton {
+    position: relative;
     display: block;
     width: 100%;
     padding: 0;
     border: none;
     background: var(--color-surface);
     cursor: pointer;
+}
+
+/* « Ce coin du jardin a trois projections », lisible sans ouvrir. */
+.vignette-pastille {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 12px;
+    background: rgba(0, 0, 0, 0.62);
+    color: #fff;
+    font-size: 0.74rem;
+    font-weight: 700;
 }
 .vignette-bouton img {
     display: block;
@@ -1306,10 +1411,14 @@ body.login-page {
     gap: var(--spacing-md);
     max-width: 96vw;
     max-height: 92vh;
+    /* Les projections rattachées s'ajoutent sous l'image : sur un
+       téléphone, la colonne dépasse et doit défiler plutôt que d'être
+       coupée. */
+    overflow-y: auto;
 }
 .visionneuse img {
     max-width: 96vw;
-    max-height: 76vh;
+    max-height: 62vh;
     object-fit: contain;
     border-radius: var(--radius-sm);
 }
@@ -1336,6 +1445,86 @@ body.login-page {
     color: #fff;
     font-size: 0.88rem;
 }
+
+/* Le va-et-vient entre une photo du terrain et ce qu'on a imaginé
+   dessus. Sous l'image, dans la visionneuse même : ouvrir une modale
+   par-dessus une modale rendrait Échap ambigu. */
+.visionneuse-liens {
+    width: 100%;
+    max-width: 640px;
+    padding-top: var(--spacing-sm);
+    border-top: 1px solid rgba(255, 255, 255, 0.22);
+    color: #fff;
+    text-align: center;
+}
+
+.visionneuse-liens-titre {
+    margin: 0 0 var(--spacing-sm);
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.86);
+}
+.visionneuse-liens-titre i { margin-right: 6px; }
+
+.visionneuse-miniatures {
+    display: flex;
+    gap: var(--spacing-sm);
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-bottom: var(--spacing-sm);
+}
+
+.miniature-liee {
+    margin: 0;
+    width: 108px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+}
+.miniature-liee-bouton {
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: none;
+    background: none;
+    cursor: pointer;
+}
+.miniature-liee-bouton img {
+    display: block;
+    width: 100%;
+    height: 72px;
+    object-fit: cover;
+    /* Écrase le max-height de .visionneuse img, qui viserait aussi
+       ces miniatures et les laisserait à leur taille d'origine. */
+    max-height: 72px;
+    border-radius: 0;
+}
+.miniature-liee figcaption {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+    padding: 3px 6px;
+    font-size: 0.7rem;
+    color: rgba(255, 255, 255, 0.8);
+}
+.miniature-liee .icon-btn { color: rgba(255, 255, 255, 0.7); padding: 2px 5px; }
+.miniature-liee .icon-btn:hover { color: #fff; background: rgba(255, 255, 255, 0.16); }
+
+.visionneuse-select {
+    max-width: 100%;
+    padding: 6px 10px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: var(--radius-sm);
+    color: #fff;
+    font-family: inherit;
+    font-size: 0.82rem;
+    cursor: pointer;
+}
+/* Sur fond blanc du menu déroulant natif, le blanc sur blanc
+   disparaîtrait : les options reprennent la couleur du texte. */
+.visionneuse-select option { color: var(--color-text); }
 
 /* ---------- 12.11 Emails ---------- */
 .mail-entete {

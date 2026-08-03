@@ -116,6 +116,7 @@ function carteTache(tache) {
         +   '<button type="button" class="carte-titre carte-titre--bouton" onclick="ouvrirModaleElement(\'' + id + '\')">'
         +     escapeHtml(titreAffiche(tache)) + '</button>'
         +   (tache.notes ? '<p class="carte-apercu">' + escapeHtml(tache.notes) + '</p>' : '')
+        +   ligneDernierEvenement(tache)
         +   '<div class="carte-meta">' + bouts.join(' ') + '</div>'
         +   boutonsCamp(tache)
         + '</div>'

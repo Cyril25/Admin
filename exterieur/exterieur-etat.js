@@ -221,6 +221,7 @@ function carteEtat(element) {
         +   '<button type="button" class="carte-titre carte-titre--bouton" onclick="ouvrirModaleElement(\'' + id + '\')">'
         +     escapeHtml(titreAffiche(element)) + '</button>'
         + '</div>'
+        + ligneDernierEvenement(element)
         + '<div class="carte-meta">' + metaCarte(element) + '</div>'
         + boutonsCamp(element)
         + '</div>';
@@ -262,18 +263,35 @@ function metaCarte(element) {
     return bouts.join(' ');
 }
 
-// Trois boutons, un clic, aucune saisie. C'est ce qui rend la déduction
-// automatique du camp acceptable : quand elle se trompe, la correction
-// coûte moins cher que la question qu'on aurait posée à la création.
+// Trois boutons, un clic. C'est ce qui rend la déduction automatique du
+// camp acceptable : quand elle se trompe, la correction coûte moins
+// cher que la question qu'on aurait posée à la création.
+//
+// Le clic ouvre la modale « Que s'est-il passé ? » plutôt que d'écrire
+// tout de suite : la bascule sans son motif est ce qui manque trois
+// mois plus tard. Le motif reste facultatif — « Sans note » écrit quand
+// même, en un clic de plus.
 function boutonsCamp(element) {
     var id = jsAttr(element.id);
     var boutons = CAMPS.map(function(camp) {
         var actif = (element.camp === camp.value) ? ' active' : '';
         return '<button type="button" class="camp-btn' + actif + '"'
-            + ' onclick="changerCamp(\'' + id + '\', \'' + jsAttr(camp.value) + '\')">'
+            + ' onclick="ouvrirModaleJournal(\'' + id + '\', \'' + jsAttr(camp.value) + '\')">'
             + '<i class="' + escapeAttr(camp.icone) + '"></i> ' + escapeHtml(camp.court) + '</button>';
     }).join('');
     return '<div class="camp-actions">' + boutons + '</div>';
+}
+
+// La dernière chose qui s'est passée, sur une carte. C'est ce qui
+// distingue « en attente depuis 18 jours » de « en attente depuis 18
+// jours, parce qu'on a écrit et que personne n'a répondu ».
+function ligneDernierEvenement(element) {
+    var entree = dernierEvenement(element);
+    if (!entree) return '';
+    var resume = resumeEvenement(entree);
+    if (!resume) return '';
+    return '<p class="journal-dernier"><i class="fa-solid fa-clock-rotate-left"></i> '
+        + escapeHtml(resume) + '</p>';
 }
 
 // Le titre lisible d'un élément, quel que soit son type. Un email n'a

@@ -190,7 +190,12 @@
 
                 <div class="field" id="ligne-categorie">
                     <label for="e-categorie">Catégorie</label>
-                    <select id="e-categorie"></select>
+                    <select id="e-categorie" onchange="surChangementCategorieImage()"></select>
+                </div>
+
+                <div class="field" id="ligne-image-source">
+                    <label for="e-image-source">Faite à partir de <span class="field-hint">(photo d’aujourd’hui)</span></label>
+                    <select id="e-image-source"></select>
                 </div>
 
                 <p class="field--full">
@@ -198,6 +203,20 @@
                         <i class="fa-solid fa-arrow-up-right-from-square"></i> Ouvrir le fichier
                     </a>
                 </p>
+
+                <!-- Le journal : une tâche n'est pas un état, c'est une
+                     suite d'événements. En lecture seule ici — on y
+                     ajoute depuis la modale « Que s'est-il passé ? »,
+                     qui écrit tout de suite et n'attend pas Enregistrer. -->
+                <div class="field--full" id="bloc-journal" style="display:none">
+                    <div class="journal-entete">
+                        <h3 class="journal-titre"><i class="fa-solid fa-clock-rotate-left"></i> Journal</h3>
+                        <button type="button" class="btn-export" onclick="ouvrirModaleJournal(elementEnEdition, '')">
+                            <i class="fa-solid fa-plus"></i> Noter ce qui s’est passé
+                        </button>
+                    </div>
+                    <ol class="journal-liste" id="e-journal"></ol>
+                </div>
 
                 <p class="modal-meta" id="e-meta"></p>
             </div>
@@ -207,6 +226,32 @@
                         onclick="demanderSuppression(elementEnEdition, '')">Supprimer</button>
                 <button type="button" class="modal-btn" onclick="fermerModaleElement()">Annuler</button>
                 <button type="button" class="modal-btn modal-btn-primary" onclick="sauverElement()">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ Modale journal — « que s'est-il passé ? » ============ -->
+    <!-- Elle s'intercale entre le clic sur un bouton de camp et
+         l'écriture : « c'est à eux » sans dire ce qu'on a envoyé, c'est
+         l'information qui manquera dans trois mois. Le commentaire
+         reste facultatif — un outil nourri à la main ne survit pas si
+         chaque geste coûte une phrase obligatoire. -->
+    <div id="journal-overlay" class="modal-overlay" style="display:none">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="journal-modal-titre" style="max-width:520px">
+            <h2 class="modal-title" id="journal-modal-titre">Que s’est-il passé ?</h2>
+            <p class="modal-desc" id="journal-contexte"></p>
+            <div class="modal-form">
+                <div class="field field--full">
+                    <label for="j-texte">Ce qui s’est passé</label>
+                    <textarea id="j-texte" rows="4"
+                              placeholder="Ex : mail envoyé à Jean Dupont, il répond sous huit jours."></textarea>
+                    <span class="field-hint">Ctrl + Entrée pour enregistrer.</span>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="modal-btn" id="j-btn-sans-note" onclick="validerJournal(true)">Sans note</button>
+                <button type="button" class="modal-btn" onclick="fermerModaleJournal()">Annuler</button>
+                <button type="button" class="modal-btn modal-btn-primary" onclick="validerJournal(false)">Enregistrer</button>
             </div>
         </div>
     </div>
@@ -290,6 +335,9 @@
                 <span id="visionneuse-legende"></span>
                 <button type="button" id="visionneuse-bascule" class="btn-export"></button>
             </div>
+            <!-- Ce que cette image a inspiré, ou ce dont elle découle.
+                 Rempli par rafraichirVisionneuse(). -->
+            <div id="visionneuse-liens" class="visionneuse-liens"></div>
         </div>
     </div>
 

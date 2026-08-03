@@ -54,11 +54,7 @@ function grouperDocumentsParSujet(docs) {
     });
 
     groupes.forEach(function(groupe) {
-        groupe.devis.sort(function(a, b) {
-            var da = toDate(a.dateEvenement) || toDate(a.creeLe);
-            var db2 = toDate(b.dateEvenement) || toDate(b.creeLe);
-            return (db2 ? db2.getTime() : 0) - (da ? da.getTime() : 0);
-        });
+        groupe.devis.sort(parDateDecroissante);
     });
 
     if (sansSujet.length) {

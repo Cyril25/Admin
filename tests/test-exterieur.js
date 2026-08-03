@@ -59,7 +59,16 @@ const sandbox = {
   window: { location: { pathname: '/exterieur/', search: '', hash: '', hostname: 'admin.ofildudoubs.fr' }, addEventListener() {} },
   // Les ecritures ne sont pas testees ici (elles partiraient chez
   // Google) : le stub existe juste pour que le chargement passe.
-  firebase: { firestore: { FieldValue: { serverTimestamp: () => 'SERVER_TS', arrayUnion: (v) => v, arrayRemove: (v) => v } } },
+  //
+  // arrayUnion enveloppe sa valeur plutot que de la rendre telle
+  // quelle : c'est ce qui permet de verifier qu'un ajout au journal
+  // AJOUTE, au lieu de reecrire le tableau entier — la difference entre
+  // « on garde tout » et « le dernier qui ecrit efface l'autre ».
+  firebase: { firestore: { FieldValue: {
+    serverTimestamp: () => 'SERVER_TS',
+    arrayUnion: (v) => ({ arrayUnion: v }),
+    arrayRemove: (v) => ({ arrayRemove: v }),
+  } } },
   HUB: { user: { email: 'cyril.samson41@gmail.com', displayName: 'Cyril Samson' }, effectif: { nom: 'Alisson' } },
 };
 sandbox.window.document = document;
@@ -754,9 +763,9 @@ verifie('AC29 : l\'amorcage utilise set(merge), jamais update()',
   ecrit.op === 'set' && ecrit.opts && ecrit.opts.merge === true, JSON.stringify(ecrit));
 verifie('AC29 : il vise bien le singleton _projet', ecrit.id === '_projet');
 verifie('AC21 : l\'adresse de la personne connectee rejoint nosAdresses',
-  ecrit.doc.nosAdresses === 'cyril.samson41@gmail.com', String(ecrit.doc.nosAdresses));
+  ecrit.doc.nosAdresses.arrayUnion === 'cyril.samson41@gmail.com', JSON.stringify(ecrit.doc.nosAdresses));
 verifie('AC21 : son prenom rejoint intervenants',
-  ecrit.doc.intervenants === 'Cyril', String(ecrit.doc.intervenants));
+  ecrit.doc.intervenants.arrayUnion === 'Cyril', JSON.stringify(ecrit.doc.intervenants));
 verifie('T9 : c\'est bien HUB.user, pas HUB.effectif (Alisson)',
   JSON.stringify(ecrit.doc).indexOf('Alisson') === -1);
 
@@ -765,6 +774,326 @@ ecritures.length = 0;
 sandbox.supprimerElement('z1');
 verifie('AC25 : la suppression ne touche que Firestore',
   derniere().op === 'delete' && derniere().collection === 'exterieur');
+
+// ================================================================
+// 12 bis. Le journal — une tache est une suite d'evenements
+// ================================================================
+// « Ecrire a Untel » n'est pas un etat : on ecrit, on attend, on
+// apprend que la personne n'est pas dispo, on renonce. Le camp seul ne
+// retient que le dernier chapitre. Ce qui est verifie ici, c'est que
+// les autres survivent — y compris sur les taches saisies AVANT que le
+// journal existe, qui n'ont pas le champ.
+console.log('\n12 bis. Journal');
+
+const TACHE_ANCIENNE = { id: 'j0', type: 'tache', titre: 'Ecrire a Jean', camp: 'a_nous',
+  creePar: 'cyril.samson41@gmail.com', creeLe: ilYA(20) };
+
+// --- Aucune migration : une tache sans champ journal se lit ---
+sandbox.elements = [TACHE_ANCIENNE];
+verifie('Une tache d\'avant le journal a un journal vide, pas une erreur',
+  Array.isArray(sandbox.journalDe(TACHE_ANCIENNE)) && sandbox.journalDe(TACHE_ANCIENNE).length === 0);
+verifie('Elle a quand meme une histoire : la creation, deduite de creeLe',
+  sandbox.journalAffiche(TACHE_ANCIENNE).length === 1
+  && sandbox.journalAffiche(TACHE_ANCIENNE)[0].creation === true,
+  JSON.stringify(sandbox.journalAffiche(TACHE_ANCIENNE)));
+verifie('La ligne de creation n\'est jamais stockee (elle n\'est pas dans journal)',
+  TACHE_ANCIENNE.journal === undefined);
+verifie('dernierEvenement d\'une tache sans journal vaut null',
+  sandbox.dernierEvenement(TACHE_ANCIENNE) === null);
+verifie('journalDe(null) ne plante pas', sandbox.journalDe(null).length === 0);
+
+// --- L'ordre : on lit une histoire, du debut a la fin ---
+const TACHE_RICHE = { id: 'j1', type: 'tache', titre: 'Ecrire a Jean', camp: 'clos',
+  creePar: 'cyril.samson41@gmail.com', creeLe: ilYA(30), journal: [
+    // Volontairement dans le desordre : les dates viennent de deux
+    // navigateurs, dont les horloges ne sont pas d'accord.
+    { le: ilYA(5),  par: 'alisson@example.fr',        camp: 'clos',  campAvant: 'a_eux',
+      texte: 'Pas dispo cette annee, on ne travaillera pas avec eux.' },
+    { le: ilYA(20), par: 'cyril.samson41@gmail.com',  camp: 'a_eux', campAvant: 'a_nous',
+      texte: 'Mail envoye a Jean Dupont.' },
+    { le: ilYA(12), par: 'cyril.samson41@gmail.com',  texte: 'Relance par telephone, sans reponse.' },
+  ] };
+sandbox.elements = [TACHE_RICHE];
+
+let histoire = sandbox.journalDe(TACHE_RICHE);
+verifie('Le journal se lit du plus ancien au plus recent',
+  histoire.map((e) => e.texte.slice(0, 6)).join('|') === 'Mail e|Relanc|Pas di',
+  histoire.map((e) => e.texte.slice(0, 6)).join('|'));
+verifie('journalAffiche met la creation en tete',
+  sandbox.journalAffiche(TACHE_RICHE)[0].creation === true);
+verifie('dernierEvenement rend le plus recent, pas le dernier du tableau',
+  sandbox.dernierEvenement(TACHE_RICHE).texte.indexOf('Pas dispo') === 0,
+  sandbox.dernierEvenement(TACHE_RICHE).texte);
+verifie('Le tri ne modifie pas le tableau d\'origine',
+  TACHE_RICHE.journal[0].texte.indexOf('Pas dispo') === 0);
+
+// --- Un passage sans commentaire reste une information ---
+verifie('Un evenement sans texte se resume par son camp',
+  sandbox.resumeEvenement({ camp: 'clos', texte: '' }) === 'passage en « Réglé »',
+  sandbox.resumeEvenement({ camp: 'clos', texte: '' }));
+verifie('Un evenement avec texte se resume par son texte',
+  sandbox.resumeEvenement({ camp: 'clos', texte: 'Devis signe.' }) === 'Devis signe.');
+verifie('resumeEvenement(null) rend une chaine vide', sandbox.resumeEvenement(null) === '');
+
+// --- L'ecriture : arrayUnion, jamais une reecriture du tableau ---
+ecritures.length = 0;
+sandbox.changerCamp('j1', 'a_nous', 'Ils rappellent finalement.');
+ecrit = derniere();
+verifie('Un evenement s\'AJOUTE (arrayUnion), il ne reecrit pas le tableau',
+  ecrit.doc.journal && ecrit.doc.journal.arrayUnion !== undefined
+  && !Array.isArray(ecrit.doc.journal), JSON.stringify(ecrit.doc.journal));
+let entree = ecrit.doc.journal.arrayUnion;
+verifie('L\'evenement porte le commentaire saisi',
+  entree.texte === 'Ils rappellent finalement.', entree.texte);
+verifie('L\'evenement porte le camp d\'arrivee', entree.camp === 'a_nous', entree.camp);
+verifie('… et celui de depart, pour relire la bascule',
+  entree.campAvant === 'clos', entree.campAvant);
+verifie('L\'evenement nomme l\'utilisateur REEL, comme creePar',
+  entree.par === 'cyril.samson41@gmail.com', entree.par);
+verifie('Rien de l\'identite impersonnee ne fuite dans le journal',
+  JSON.stringify(entree).indexOf('Alisson') === -1);
+verifie('La bascule ecrit toujours camp et campDepuis',
+  ecrit.doc.camp === 'a_nous' && ecrit.doc.campDepuis === 'SERVER_TS', JSON.stringify(ecrit.doc));
+
+// serverTimestamp() est INTERDIT par Firestore dans un element de
+// tableau : la date vient de l'horloge du navigateur. Si quelqu'un
+// « corrige » ca un jour, l'ecriture entiere sera rejetee.
+verifie('La date de l\'evenement est une vraie Date, PAS un serverTimestamp',
+  entree.le instanceof Date, String(entree.le));
+
+// --- Basculer sans rien dire reste possible : le cout d'une saisie
+//     obligatoire tuerait l'outil ---
+ecritures.length = 0;
+sandbox.changerCamp('j1', 'clos', '');
+entree = derniere().doc.journal.arrayUnion;
+verifie('On peut basculer sans commentaire : l\'evenement est ecrit quand meme',
+  entree.texte === '' && entree.camp === 'clos', JSON.stringify(entree));
+
+// --- Mais une note vide SANS bascule ne raconte rien : rien ne part ---
+// Le .catch() est la pour ne pas laisser un rejet non traite : le refus
+// se lit sur l'absence d'ecriture, qui est synchrone.
+ecritures.length = 0;
+sandbox.ajouterEvenement('j1', '   ', '').catch(() => {});
+verifie('Une note vide sans bascule n\'ecrit rien', ecritures.length === 0);
+
+// --- Une note seule, sans changement de camp ---
+ecritures.length = 0;
+sandbox.ajouterEvenement('j1', 'Relance par telephone.', '');
+ecrit = derniere();
+verifie('Une note seule s\'ajoute au journal', ecrit.doc.journal.arrayUnion.texte === 'Relance par telephone.');
+verifie('… sans toucher au camp ni a l\'anciennete',
+  ecrit.doc.camp === undefined && ecrit.doc.campDepuis === undefined, JSON.stringify(ecrit.doc));
+
+// --- Un texte trop long est coupe, pas refuse ---
+ecritures.length = 0;
+sandbox.ajouterEvenement('j1', 'x'.repeat(900), '');
+verifie('Un evenement trop long est coupe a MAX_EVENEMENT, pas rejete',
+  derniere().doc.journal.arrayUnion.texte.length === sandbox.MAX_EVENEMENT,
+  String(derniere().doc.journal.arrayUnion.texte.length));
+
+// --- Le meme chemin depuis la modale : l'histoire ne doit pas avoir
+//     de trous selon le bouton qu'on a pris ---
+sandbox.elements = [{ id: 'j2', type: 'tache', titre: 'Appeler la mairie', camp: 'a_nous', creeLe: ilYA(4) }];
+ecritures.length = 0;
+sandbox.ouvrirModaleElement('j2');
+elements['e-camp'].value = 'a_eux';
+sandbox.sauverElement();
+ecrit = derniere();
+verifie('Changer le camp depuis la modale entre AUSSI au journal',
+  ecrit.doc.journal && ecrit.doc.journal.arrayUnion.camp === 'a_eux', JSON.stringify(ecrit.doc.journal));
+
+// … et modifier autre chose n'invente pas d'evenement.
+ecritures.length = 0;
+sandbox.ouvrirModaleElement('j2');
+elements['e-titre'].value = 'Appeler la mairie de Pontarlier';
+sandbox.sauverElement();
+verifie('Modifier le titre seul n\'ecrit aucun evenement',
+  derniere().doc.journal === undefined, JSON.stringify(derniere().doc));
+
+// --- Le clic sur un bouton de camp DEMANDE ce qui s'est passe ---
+// TACHE_RICHE est close : elle n'apparait ni dans « A nous » ni dans
+// « En attente ». Il en faut donc une ouverte pour voir le tableau de
+// bord, et le filtre « toutes » pour voir la close dans les taches.
+const TACHE_ATTENTE = { id: 'j3', type: 'tache', titre: 'Relancer Dupont', camp: 'a_eux',
+  campDepuis: ilYA(6), creePar: 'cyril.samson41@gmail.com', creeLe: ilYA(20), journal: [
+    { le: ilYA(6), par: 'cyril.samson41@gmail.com', camp: 'a_eux', campAvant: 'a_nous',
+      texte: 'Mail envoye a Jean Dupont.' },
+  ] };
+sandbox.elements = [TACHE_RICHE, TACHE_ATTENTE];
+sandbox.filtreCampTaches = 'toutes';
+ecritures.length = 0;
+sandbox.renderEtat();
+sandbox.renderTaches();
+sandbox.filtreCampTaches = 'ouvertes';
+
+verifie('Les boutons de camp ouvrent la modale au lieu d\'ecrire directement',
+  elements['vue-etat'].innerHTML.indexOf('ouvrirModaleJournal(') !== -1
+  && elements['vue-etat'].innerHTML.indexOf('changerCamp(') === -1,
+  elements['vue-etat'].innerHTML.slice(0, 200));
+verifie('Un clic sur un bouton de camp n\'ecrit rien tout seul', ecritures.length === 0);
+
+// --- Ce qu'on lit sans ouvrir : le dernier evenement ---
+verifie('La carte de tache montre le dernier evenement',
+  elements['vue-taches'].innerHTML.indexOf('Pas dispo cette annee') !== -1);
+verifie('Le tableau de bord aussi : « en attente depuis 6 jours » ET pourquoi',
+  elements['vue-etat'].innerHTML.indexOf('Mail envoye a Jean Dupont.') !== -1);
+
+// --- La modale journal ---
+let erreurJournal = '';
+try { sandbox.ouvrirModaleJournal('j1', 'a_eux'); } catch (e) { erreurJournal = e.message; }
+verifie('La modale « que s\'est-il passe ? » s\'ouvre sans exception', !erreurJournal, erreurJournal);
+verifie('Elle annonce la bascule visee',
+  elements['journal-contexte'].innerHTML.indexOf('En attente') !== -1,
+  elements['journal-contexte'].innerHTML);
+verifie('« Sans note » est propose quand il y a une bascule a ecrire',
+  elements['j-btn-sans-note'].style.display !== 'none');
+
+sandbox.ouvrirModaleJournal('j1', '');
+verifie('« Sans note » disparait pour une note seule : elle serait vide',
+  elements['j-btn-sans-note'].style.display === 'none');
+
+// Recliquer sur le camp courant n'est pas une bascule : ca ne doit pas
+// ecrire « A nous -> A nous ».
+sandbox.elements = [{ id: 'j4', type: 'tache', titre: 'Deja a nous', camp: 'a_nous', creeLe: ilYA(2) }];
+sandbox.ouvrirModaleJournal('j4', 'a_nous');
+elements['j-texte'].value = 'Point d\'etape.';
+ecritures.length = 0;
+sandbox.validerJournal(false);
+verifie('Recliquer sur le camp courant ecrit une note, pas une bascule',
+  derniere().doc.camp === undefined
+  && derniere().doc.journal.arrayUnion.texte === 'Point d\'etape.',
+  JSON.stringify(derniere().doc));
+
+sandbox.elements = [TACHE_RICHE, TACHE_ATTENTE];
+
+ecritures.length = 0;
+elements['j-texte'].value = '';
+sandbox.validerJournal(false);
+verifie('Valider une note vide n\'ecrit rien', ecritures.length === 0);
+
+sandbox.ouvrirModaleJournal('j1', 'a_eux');
+elements['j-texte'].value = 'Devis redemande.';
+ecritures.length = 0;
+sandbox.validerJournal(false);
+verifie('Valider ecrit l\'evenement tout de suite, sans passer par Enregistrer',
+  derniere().doc.journal.arrayUnion.texte === 'Devis redemande.', JSON.stringify(derniere().doc));
+
+// --- La recherche voit le journal : c'est souvent le seul endroit ou
+//     « pas dispo » est ecrit ---
+sandbox.elements = [TACHE_RICHE, { id: 'a1', type: 'tache', titre: 'Autre tache' }];
+verifie('La recherche trouve un mot ecrit dans le journal',
+  sandbox.chercher('travaillera').length === 1
+  && sandbox.chercher('travaillera')[0].id === 'j1',
+  String(sandbox.chercher('travaillera').length));
+verifie('… sans accent ni casse, comme le reste', sandbox.chercher('TELEPHONE').length === 1);
+
+// ================================================================
+// 12 ter. Photos d'aujourd'hui et projections
+// ================================================================
+// Le lien est porte par la PROJECTION. Une seule ecriture pour
+// rattacher, et surtout : supprimer une projection ne laisse aucune
+// reference morte dans la photo.
+console.log('\n12 ter. Photos et projections');
+
+sandbox.elements = [
+  { id: 'p1', type: 'image', titre: 'Le talus, cote sud', categorie: 'actuelle',
+    url: 'https://res.cloudinary.com/x/upload/p1.jpg', creeLe: ilYA(30), dateEvenement: ilYA(30) },
+  { id: 'p2', type: 'image', titre: 'L\'entree', categorie: 'actuelle',
+    url: 'https://res.cloudinary.com/x/upload/p2.jpg', creeLe: ilYA(20), dateEvenement: ilYA(20) },
+  { id: 'v1', type: 'image', titre: 'Talus en terrasses', categorie: 'projection', imageSourceId: 'p1',
+    url: 'https://res.cloudinary.com/x/upload/v1.jpg', creeLe: ilYA(10), dateEvenement: ilYA(10) },
+  { id: 'v2', type: 'image', titre: 'Talus enherbe', categorie: 'projection', imageSourceId: 'p1',
+    url: 'https://res.cloudinary.com/x/upload/v2.jpg', creeLe: ilYA(5), dateEvenement: ilYA(5) },
+  { id: 'v3', type: 'image', titre: 'Inspiration Pinterest', categorie: 'projection',
+    url: 'https://res.cloudinary.com/x/upload/v3.jpg', creeLe: ilYA(3), dateEvenement: ilYA(3) },
+  { id: 'v4', type: 'image', titre: 'Croquis de l\'archi', categorie: 'projection', imageSourceId: 'p-disparue',
+    url: 'https://res.cloudinary.com/x/upload/v4.jpg', creeLe: ilYA(2), dateEvenement: ilYA(2) },
+];
+
+verifie('Une photo rend les projections etablies avec elle',
+  sandbox.projectionsDe('p1').map((i) => i.id).join(',') === 'v2,v1',
+  sandbox.projectionsDe('p1').map((i) => i.id).join(','));
+verifie('Une photo sans projection en rend zero', sandbox.projectionsDe('p2').length === 0);
+verifie('projectionsDe(null) ne plante pas', sandbox.projectionsDe(null).length === 0);
+verifie('Une projection sait de quelle photo elle decoule',
+  sandbox.imageSourceDe(sandbox.trouverElement('v1')).id === 'p1');
+verifie('Une projection sans origine rend null',
+  sandbox.imageSourceDe(sandbox.trouverElement('v3')) === null);
+verifie('Une photo d\'origine supprimee rend null, elle ne plante pas',
+  sandbox.imageSourceDe(sandbox.trouverElement('v4')) === null);
+verifie('imagesActuelles ne rend que les photos du terrain, la plus recente d\'abord',
+  sandbox.imagesActuelles().map((i) => i.id).join(',') === 'p2,p1',
+  sandbox.imagesActuelles().map((i) => i.id).join(','));
+
+// --- Ce qu'on voit sans ouvrir ---
+sandbox.renderImages('actuelle');
+verifie('La vignette d\'une photo annonce son nombre de projections',
+  /vignette-pastille[^>]*>[\s\S]{0,120}2</.test(elements['vue-images-actuelle'].innerHTML),
+  elements['vue-images-actuelle'].innerHTML.slice(0, 400));
+
+// --- La visionneuse : le va-et-vient dans les deux sens ---
+let erreurVue = '';
+try { sandbox.ouvrirVisionneuse('p1'); } catch (e) { erreurVue = e.message; }
+verifie('La visionneuse d\'une photo s\'ouvre sans exception', !erreurVue, erreurVue);
+verifie('Elle liste les projections etablies avec cette photo',
+  elements['visionneuse-liens'].innerHTML.indexOf('Projections établies') !== -1,
+  elements['visionneuse-liens'].innerHTML.slice(0, 300));
+verifie('Elle propose de rattacher les projections qui ne le sont pas encore',
+  elements['visionneuse-liens'].innerHTML.indexOf('Rattacher une projection') !== -1);
+
+sandbox.ouvrirVisionneuse('v1');
+verifie('La visionneuse d\'une projection montre d\'ou elle vient',
+  elements['visionneuse-liens'].innerHTML.indexOf('Établie à partir') !== -1,
+  elements['visionneuse-liens'].innerHTML.slice(0, 300));
+sandbox.ouvrirVisionneuse('v4');
+verifie('Une photo d\'origine supprimee est dite, pas cachee',
+  elements['visionneuse-liens'].innerHTML.indexOf('supprimée') !== -1,
+  elements['visionneuse-liens'].innerHTML.slice(0, 300));
+
+// Le JS genere dans la visionneuse doit parser lui aussi.
+sandbox.ouvrirVisionneuse('p1');
+let onclicksValides = true, detailOnclick = '';
+for (const m of elements['visionneuse-liens'].innerHTML.matchAll(/on(?:click|change)="([^"]*)"/g)) {
+  try { new vm.Script('(function(event){' + decodeHtml(m[1]) + '\n})'); }
+  catch (e) { onclicksValides = false; detailOnclick = decodeHtml(m[1]) + ' :: ' + e.message; }
+}
+verifie('Les handlers de la visionneuse sont du JS valide', onclicksValides, detailOnclick);
+
+// --- Rattacher : une seule ecriture, sur la projection ---
+ecritures.length = 0;
+sandbox.rattacherProjection('v3', 'p2');
+verifie('Rattacher n\'ecrit que sur la projection',
+  ecritures.length === 1 && derniere().id === 'v3', JSON.stringify(ecritures));
+verifie('… et ne touche QUE imageSourceId (pas d\'URL retouchee)',
+  derniere().doc.imageSourceId === 'p2' && derniere().doc.url === undefined
+  && derniere().doc.categorie === undefined, JSON.stringify(derniere().doc));
+
+ecritures.length = 0;
+sandbox.rattacherProjection('v1', '');
+verifie('Detacher vide le champ plutot que de le supprimer',
+  derniere().doc.imageSourceId === '', JSON.stringify(derniere().doc));
+
+// --- Le lien survit a un passage dans le formulaire ---
+// C'est le piege : un select qui ne contient pas la valeur courante
+// retombe sur « Aucune », et enregistrer effacerait le rattachement
+// sans rien demander.
+ecritures.length = 0;
+sandbox.ouvrirModaleElement('v1');
+sandbox.sauverElement();
+verifie('Enregistrer une projection sans y toucher conserve son origine',
+  derniere().doc.imageSourceId === 'p1', JSON.stringify(derniere().doc));
+
+ecritures.length = 0;
+sandbox.ouvrirModaleElement('v4');
+sandbox.sauverElement();
+verifie('Meme quand la photo d\'origine a disparu : le lien n\'est pas efface',
+  derniere().doc.imageSourceId === 'p-disparue', JSON.stringify(derniere().doc));
+
+// Et une photo du terrain ne se voit pas proposer de decouler d'elle-meme.
+sandbox.ouvrirModaleElement('p1');
+verifie('Une image ne peut pas etre sa propre origine',
+  elements['e-image-source'].innerHTML.indexOf('value="p1"') === -1,
+  elements['e-image-source'].innerHTML);
 
 // ================================================================
 // 13. Toutes les vues s'affichent sans planter

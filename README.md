@@ -228,6 +228,7 @@ Champs des éléments **actionnables** (`tache`, `email`, `document`) :
 |---|---|---|
 | `camp` | string | `a_nous` / `a_eux` / `clos` — absent = non actionnable |
 | `campDepuis` | timestamp | Réécrit **automatiquement** à chaque changement de `camp` |
+| `journal` | array | Les événements de l'élément — voir plus bas |
 | `dateEcheance` | timestamp | Facultatif, tâches surtout |
 | `assigneA` | string | Étiquette issue de `intervenants` |
 | `contactId` | string | Id du document `contact` lié |
@@ -237,7 +238,7 @@ Champs propres à chaque type :
 
 | Type | Champs |
 |---|---|
-| `image` | `url`, `categorie` (`actuelle` / `projection`) |
+| `image` | `url`, `categorie` (`actuelle` / `projection`), `imageSourceId` |
 | `document` | `url`, `nomFichier`, `titre` **obligatoire** |
 | `email` | `url`, `de`, `a`, `objet`, `dateEnvoi`, `corps`, `corpsTronque`, `sens`, `parseOk` |
 | `contact` | `nom`, `prenom`, `entreprise`, `telephone`, `email`, `commentaire`, `categorie` |
@@ -266,6 +267,63 @@ sans qu'aucune date n'ait jamais été saisie. Le seuil est de 15 jours
 supposerait de connaître le total des tâches, faux par nature dans un chantier qui
 se découvre en avançant. On montre le mouvement réel, y compris son absence
 (« rien n'a bougé depuis 9 jours »).
+
+#### `journal` : une tâche est une suite d'événements
+
+Le camp seul ne retient que le **dernier chapitre**. « Écrire à Untel » n'est pas un
+état : on écrit, on attend, on apprend que la personne n'est pas disponible, on
+renonce. Trois mois plus tard, `clos` ne dit pas *pourquoi*.
+
+Chaque bascule de camp passe donc par une modale **« Que s'est-il passé ? »**, et le
+commentaire rejoint un tableau `journal` sur le document :
+
+| Champ de l'entrée | Type | Détail |
+|---|---|---|
+| `le` | `Date` | ⚠ Horloge du **navigateur** — voir ci-dessous |
+| `par` | string | Email de l'utilisateur **réel**, comme `creePar` |
+| `texte` | string | Facultatif, coupé à `MAX_EVENEMENT` (500) |
+| `camp`, `campAvant` | string | Présents seulement si l'entrée accompagne une bascule |
+
+**Le commentaire reste facultatif** (« Sans note » écrit quand même) : un outil
+nourri à la main ne survit pas si chaque geste coûte une phrase obligatoire. On peut
+aussi noter un événement **sans** rien basculer — « relancé par téléphone, sans
+réponse ». La dernière entrée s'affiche sur la carte, l'histoire complète dans la
+modale, et la recherche balaie les textes du journal : « pas disponible » n'est
+souvent écrit nulle part ailleurs.
+
+Trois décisions à ne pas défaire :
+
+- **Un tableau, pas une sous-collection.** Toute la page vit sur un seul `onSnapshot`
+  de `exterieur` ; une sous-collection y serait invisible et demanderait un écouteur
+  par tâche. Un tableau arrive avec le document.
+- **`arrayUnion`, jamais une réécriture du tableau.** À deux, deux événements ajoutés
+  en même temps doivent survivre tous les deux. C'est aussi ce qui rend l'ajout sûr
+  sur les documents déjà en base, qui n'ont pas le champ : `arrayUnion` le crée.
+- **`serverTimestamp()` est INTERDIT par Firestore dans un élément de tableau.** D'où
+  `new Date()` : la date peut mentir de quelques secondes, sans conséquence là où on
+  lit des jours. « Corriger » ce point ferait rejeter l'écriture entière.
+
+**Aucune migration.** La ligne « Création » en tête du journal n'est jamais stockée :
+elle se déduit de `creeLe` / `creePar`. Les tâches saisies avant le journal ont donc
+une histoire cohérente sans qu'une seule donnée ait été réécrite. Une entrée ne
+s'efface pas non plus : un journal qu'on peut retoucher n'est plus une trace — une
+erreur se corrige par une entrée de plus.
+
+#### Photos et projections : le lien est porté par la projection
+
+Une projection est faite **à partir d'**une photo du terrain, et on veut, en regardant
+un coin du jardin, revoir tout ce qu'on a imaginé dessus. Le champ `imageSourceId`
+vit sur l'image de catégorie `projection` et pointe vers l'image `actuelle`.
+
+Ce sens-là et pas l'autre : une liste `projectionIds` sur la photo devrait être tenue
+d'accord avec la réalité à chaque suppression, et laisserait des références mortes.
+Un champ unique se rattache en **une écriture sur un seul document**, et la vue
+« Aujourd'hui » lit le lien à l'envers, ce qui n'est qu'un filtre (`projectionsDe`).
+
+Le rattachement se fait dans la visionneuse, dans les deux sens, et la vignette
+annonce le nombre de projections sans qu'on ait à ouvrir. Détacher écrit une chaîne
+vide plutôt que de supprimer le champ, et une photo d'origine disparue se **dit**
+au lieu de faire disparaître le lien — même tolérance que pour un contact supprimé.
 
 #### Deux listes qui se remplissent toutes seules
 

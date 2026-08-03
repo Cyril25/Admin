@@ -108,8 +108,21 @@ function rendreVueCourante() {
 
 // Appelé par ecouterElements() à chaque snapshot : seule la vue
 // visible est redessinée, les autres le seront en y arrivant.
+//
+// Les deux couches ouvertes par-dessus se rafraîchissent aussi, mais
+// elles seules : rattacher une projection ou noter un événement doit se
+// voir sans refermer. On ne touche PAS aux champs de saisie de la
+// modale élément — rejouer le formulaire effacerait ce qui est en train
+// d'être tapé.
 function rafraichirVues() {
     rendreVueCourante();
+    rafraichirVisionneuse();
+
+    var journal = document.getElementById('e-journal');
+    if (journal && elementEnEdition) {
+        var element = trouverElement(elementEnEdition);
+        if (element) journal.innerHTML = htmlJournal(element);
+    }
 }
 
 function renderSelecteur() {
@@ -151,6 +164,11 @@ function texteRecherchable(element) {
         var valeur = element[CHAMPS_RECHERCHE[i]];
         if (valeur) morceaux.push(String(valeur));
     }
+    // Le journal aussi : « pas disponible cette année » n'est écrit
+    // nulle part ailleurs, et c'est exactement ce qu'on cherchera.
+    journalDe(element).forEach(function(entree) {
+        if (entree.texte) morceaux.push(entree.texte);
+    });
     return normaliserTexte(morceaux.join(' '));
 }
 
@@ -269,6 +287,7 @@ function ouvrirModaleElement(id, prerempli) {
     remplirSelectContact(element.contactId || '');
     remplirDatalistSujets();
     remplirSelectCategorie(element.categorie || 'actuelle');
+    remplirSelectImageSource(element.imageSourceId || '', id);
 
     // Champs propres aux emails
     document.getElementById('e-de').value = element.de || '';
@@ -287,6 +306,13 @@ function ouvrirModaleElement(id, prerempli) {
     afficherLigne('ligne-categorie', type === 'image');
     afficherLigne('ligne-notes', type !== 'email');
     afficherLigne('bloc-email', type === 'email');
+    surChangementCategorieImage();
+
+    // Le journal n'existe qu'une fois l'élément créé : il s'écrit tout
+    // de suite, il lui faut donc un document où atterrir.
+    afficherLigne('bloc-journal', !!id && TYPES_ACTIONNABLES.indexOf(type) !== -1);
+    var journal = document.getElementById('e-journal');
+    if (journal) journal.innerHTML = id ? htmlJournal(element) : '';
 
     // Le fichier n'est jamais remplacé depuis cette modale : le lien
     // est là pour vérifier, pas pour rééditer.
@@ -411,6 +437,76 @@ function remplirSelectCategorie(valeur) {
     select.value = valeur || 'actuelle';
 }
 
+// La photo du terrain dont une projection découle. Toujours remplie,
+// même quand la ligne est masquée : sauverElement() relit ce select, et
+// un select vidé effacerait le lien sans rien demander à personne.
+function remplirSelectImageSource(valeur, idCourant) {
+    var select = document.getElementById('e-image-source');
+    if (!select) return;
+
+    var options = '<option value="">Aucune</option>';
+    var connue = !valeur;
+    imagesActuelles().forEach(function(image) {
+        // Une image ne découle pas d'elle-même.
+        if (image.id === idCourant) return;
+        if (image.id === valeur) connue = true;
+        options += '<option value="' + escapeAttr(image.id) + '">'
+            + escapeHtml(titreAffiche(image) + ' — ' + formatDateFr(image.dateEvenement || image.creeLe))
+            + '</option>';
+    });
+
+    // Photo d'origine supprimée, ou reclassée en projection : la valeur
+    // n'a plus d'option. On lui en fabrique une plutôt que de laisser le
+    // select retomber sur « Aucune » — le lien survivrait mal à un
+    // simple passage dans le formulaire.
+    if (!connue) {
+        var source = trouverElement(valeur);
+        options += '<option value="' + escapeAttr(valeur) + '">'
+            + escapeHtml(source ? titreAffiche(source) : 'photo supprimée') + '</option>';
+    }
+
+    select.innerHTML = options;
+    select.value = valeur || '';
+}
+
+// Une photo du terrain ne découle de rien : la ligne ne s'affiche que
+// pour les projections, et suit le sélecteur de catégorie en direct.
+function surChangementCategorieImage() {
+    var type = document.getElementById('e-type');
+    var categorie = document.getElementById('e-categorie');
+    afficherLigne('ligne-image-source',
+        !!type && type.value === 'image' && !!categorie && categorie.value === 'projection');
+}
+
+// ------------------------------------------------------------
+// 4 bis. Le journal, en lecture
+// ------------------------------------------------------------
+// Du plus ancien au plus récent, création comprise. On lit une
+// histoire : commencer par la fin la rendrait illisible.
+function htmlJournal(element) {
+    return journalAffiche(element).map(function(entree) {
+        var etiquette;
+        if (entree.creation) {
+            etiquette = '<span class="badge badge-creation">Création</span>';
+        } else {
+            var def = getCampDef(entree.camp);
+            etiquette = def
+                ? '<span class="badge badge-camp badge-camp--' + escapeAttr(entree.camp) + '">'
+                    + '<i class="' + escapeAttr(def.icone) + '"></i>' + escapeHtml(def.label) + '</span>'
+                : '';
+        }
+
+        return '<li class="journal-entree">'
+            + '<div class="journal-ligne-meta">'
+            +   '<span class="journal-quand">' + escapeHtml(formatDateFr(entree.le)) + '</span>'
+            +   (entree.par ? '<span class="journal-qui">' + escapeHtml(entree.par) + '</span>' : '')
+            +   etiquette
+            + '</div>'
+            + (entree.texte ? '<p class="journal-texte">' + escapeHtml(entree.texte) + '</p>' : '')
+            + '</li>';
+    }).join('');
+}
+
 function sauverElement() {
     var type = document.getElementById('e-type').value;
     var contexte = elementModaleContexte || {};
@@ -448,6 +544,7 @@ function sauverElement() {
     }
     if (type === 'image') {
         donnees.categorie = document.getElementById('e-categorie').value;
+        donnees.imageSourceId = document.getElementById('e-image-source').value;
     }
     if (type === 'email') {
         donnees.de = document.getElementById('e-de').value.trim();
@@ -482,8 +579,12 @@ function sauverElement() {
         var avant = trouverElement(elementEnEdition);
         // Le camp a changé : campDepuis repart de maintenant, sinon
         // l'ancienneté affichée compterait depuis la mauvaise bascule.
+        // Et la bascule entre au journal, comme depuis les boutons de
+        // camp — sinon l'histoire aurait des trous selon le chemin pris.
         if (donnees.camp && avant && avant.camp !== donnees.camp) {
             donnees.campDepuis = horodatage();
+            donnees.journal = firebase.firestore.FieldValue.arrayUnion(
+                entreeJournal('', avant.camp, donnees.camp));
         }
         operation = modifierElement(elementEnEdition, donnees);
     } else {
@@ -500,6 +601,109 @@ function sauverElement() {
             showToast('Enregistrement impossible : ' + erreur.message, 'error');
         });
 }
+
+// ------------------------------------------------------------
+// 4 ter. Le journal, en écriture
+// ------------------------------------------------------------
+// Deux portes d'entrée, une seule modale :
+//   un bouton de camp   — on bascule ET on dit pourquoi
+//   « Noter ce qui s'est passé » — on raconte sans rien basculer
+//
+// L'écriture part dès la validation, sans passer par « Enregistrer » de
+// la modale élément : un événement est un fait daté, pas un brouillon.
+var journalCible = null;
+var journalCampVise = '';
+
+function ouvrirModaleJournal(id, camp) {
+    var element = id ? trouverElement(id) : null;
+    if (!element) return;
+
+    journalCible = id;
+    // Recliquer sur le camp où l'on est déjà n'est pas une bascule :
+    // « À nous → À nous » ne raconterait rien. On garde la porte
+    // ouverte, mais comme simple note.
+    journalCampVise = (camp && camp !== element.camp) ? camp : '';
+
+    var def = getCampDef(journalCampVise);
+    document.getElementById('journal-modal-titre').textContent =
+        def ? 'Que s’est-il passé ?' : 'Noter ce qui s’est passé';
+
+    var contexte = document.getElementById('journal-contexte');
+    if (contexte) {
+        var depart = getCampDef(element.camp);
+        contexte.innerHTML = '<strong>' + escapeHtml(titreAffiche(element)) + '</strong>'
+            + (def
+                ? '<br>' + escapeHtml((depart ? depart.label : 'Sans camp') + ' → ' + def.label)
+                : '');
+    }
+
+    // Le bouton « Sans note » n'a de sens qu'avec une bascule à écrire :
+    // une note vide sans changement de camp ne raconterait rien.
+    var sansNote = document.getElementById('j-btn-sans-note');
+    if (sansNote) sansNote.style.display = def ? '' : 'none';
+
+    var texte = document.getElementById('j-texte');
+    if (texte) {
+        texte.value = '';
+        texte.placeholder = def
+            ? placeholderSelonCamp(journalCampVise)
+            : 'Ex : relancé par téléphone, sans réponse.';
+    }
+
+    document.getElementById('journal-overlay').style.display = 'flex';
+    if (texte) texte.focus();
+}
+
+// Le meilleur moyen de faire écrire quelqu'un est de lui montrer la
+// phrase qu'il aurait écrite.
+function placeholderSelonCamp(camp) {
+    if (camp === 'a_eux') return 'Ex : mail envoyé à Jean Dupont, il répond sous huit jours.';
+    if (camp === 'clos')  return 'Ex : pas disponible avant l’an prochain, on ne travaillera pas avec eux.';
+    return 'Ex : leur réponse est arrivée, à nous de trancher.';
+}
+
+function fermerModaleJournal() {
+    document.getElementById('journal-overlay').style.display = 'none';
+    journalCible = null;
+    journalCampVise = '';
+}
+
+function validerJournal(sansNote) {
+    if (!journalCible) return;
+    var champ = document.getElementById('j-texte');
+    var texte = sansNote ? '' : (champ ? champ.value.trim() : '');
+
+    if (!texte && !journalCampVise) {
+        showToast('Écrivez ce qui s’est passé, ou annulez.', 'error');
+        if (champ) champ.focus();
+        return;
+    }
+
+    var id = journalCible;
+    var camp = journalCampVise;
+    var operation = camp ? changerCamp(id, camp, texte) : ajouterEvenement(id, texte, '');
+
+    operation
+        .then(function() {
+            if (!camp) showToast('Noté au journal.', 'success');
+            fermerModaleJournal();
+        })
+        .catch(function(erreur) {
+            console.error(erreur);
+            showToast('Impossible de noter : ' + erreur.message, 'error');
+        });
+}
+
+// Ctrl+Entrée valide : la souris n'a rien à faire au bout d'une phrase
+// qu'on vient de taper.
+document.addEventListener('keydown', function(evenement) {
+    if (evenement.key !== 'Enter' || !(evenement.ctrlKey || evenement.metaKey)) return;
+    var overlay = document.getElementById('journal-overlay');
+    if (overlay && overlay.style.display === 'flex') {
+        evenement.preventDefault();
+        validerJournal(false);
+    }
+});
 
 // ------------------------------------------------------------
 // 5. Suppression
@@ -533,6 +737,7 @@ function confirmerSuppression() {
         .then(function() {
             showToast('Élément supprimé.', 'success');
             fermerModaleSuppression();
+            fermerModaleJournal();
             fermerModaleElement();
             fermerModaleContact();
             fermerModaleLien();
@@ -546,8 +751,10 @@ function confirmerSuppression() {
 // ------------------------------------------------------------
 // 6. Échap ferme la modale la plus haute
 // ------------------------------------------------------------
-var OVERLAYS = ['suppression-overlay', 'visionneuse-overlay', 'contact-overlay',
-                'lien-overlay', 'element-overlay', 'ajout-overlay'];
+// Dans l'ordre d'empilement : la modale journal se ferme avant la
+// modale élément, qui peut être ouverte dessous.
+var OVERLAYS = ['suppression-overlay', 'journal-overlay', 'visionneuse-overlay',
+                'contact-overlay', 'lien-overlay', 'element-overlay', 'ajout-overlay'];
 
 document.addEventListener('keydown', function(evenement) {
     if (evenement.key !== 'Escape') return;
@@ -556,6 +763,7 @@ document.addEventListener('keydown', function(evenement) {
         if (overlay && overlay.style.display === 'flex') {
             overlay.style.display = 'none';
             if (OVERLAYS[i] === 'element-overlay') elementEnEdition = null;
+            if (OVERLAYS[i] === 'journal-overlay') { journalCible = null; journalCampVise = ''; }
             return;
         }
     }

@@ -70,6 +70,19 @@ la recherche, la traçabilité sous impersonation (`creePar` doit nommer l'utili
 Un faux Firestore capture les écritures : on vérifie ce qui **part réellement** en base,
 pas seulement ce que l'écran affiche.
 
+Le **journal** des tâches y ajoute deux garanties qu'aucun clic ne rattraperait. D'abord
+qu'un événement s'**ajoute** (`arrayUnion`) au lieu de réécrire le tableau : le stub
+enveloppe la valeur, si bien qu'un jour où quelqu'un passerait un tableau complet,
+l'assertion tombe. Sans ça, deux notes prises en même temps s'effaceraient l'une l'autre,
+en silence. Ensuite que la date d'une entrée est une vraie `Date` et **pas** un
+`serverTimestamp()` — Firestore l'interdit dans un élément de tableau et rejetterait
+l'écriture entière.
+
+Le cas « on ne perd rien » est figé lui aussi : une tâche **sans** champ `journal` se lit,
+affiche quand même sa création (déduite de `creeLe`), et un aller-retour dans le
+formulaire d'une projection ne doit pas effacer son `imageSourceId` — même quand la photo
+d'origine a disparu, le piège classique du `<select>` qui retombe sur « Aucune ».
+
 ## Comment ça marche
 
 Il n'y a pas de navigateur. Chaque test charge les vrais fichiers du site dans un contexte
