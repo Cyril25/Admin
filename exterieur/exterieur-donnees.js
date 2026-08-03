@@ -62,11 +62,22 @@ var CATEGORIES_IMAGE = [
 // archive un mail. Au-delà, c'est une note — ou un document.
 var MAX_EVENEMENT = 500;
 
+// Du métier qui exécute à celui qui conçoit. « Autre » reste en
+// dernier : c'est la valeur par défaut d'un contact dont on n'a pas
+// encore décidé, et la place de fin le dit.
+//
+// ⚠ Purement additif. La valeur (à gauche) est ce qui est écrit en base
+// sur chaque fiche : en renommer une déclasserait silencieusement les
+// contacts existants en « Autre », puisque libelleCategorieContact()
+// s'y replie quand elle ne reconnaît pas la valeur. Ajouter, oui ;
+// renommer, seulement avec une reprise des données.
 var CATEGORIES_CONTACT = [
-    { value: 'btp',              label: 'BTP' },
-    { value: 'paysagiste',       label: 'Paysagiste' },
-    { value: 'archi-paysagiste', label: 'Archi-paysagiste' },
-    { value: 'autre',            label: 'Autre' }
+    { value: 'btp',                    label: 'BTP' },
+    { value: 'paysagiste',             label: 'Paysagiste' },
+    { value: 'concepteur-paysagiste',  label: 'Concepteur-paysagiste' },
+    { value: 'archi-paysagiste',       label: 'Archi-paysagiste' },
+    { value: 'architecte',             label: 'Architecte' },
+    { value: 'autre',                  label: 'Autre' }
 ];
 
 // Au-delà, un élément « en attente d'eux » se signale tout seul. C'est

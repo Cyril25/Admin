@@ -1297,6 +1297,58 @@ verifie('Modifier un mail colle ne touche pas a son texte integral',
   derniere().doc.emlBrut === undefined, JSON.stringify(derniere().doc.emlBrut));
 
 // ================================================================
+// 12 septies. Les metiers du carnet
+// ================================================================
+// La valeur de gauche est ce qui est ecrit en base sur chaque fiche.
+// En renommer une declasserait silencieusement les contacts existants
+// en « Autre », puisque libelleCategorieContact() s'y replie quand elle
+// ne reconnait pas la valeur. Ce bloc gele donc les valeurs, pas les
+// libelles — qui, eux, peuvent etre reformules librement.
+console.log('\n12 septies. Metiers du carnet');
+
+['btp', 'paysagiste', 'concepteur-paysagiste', 'archi-paysagiste', 'architecte', 'autre']
+  .forEach((valeur) => {
+    verifie('Le metier « ' + valeur + ' » existe toujours',
+      sandbox.CATEGORIES_CONTACT.some((c) => c.value === valeur),
+      sandbox.CATEGORIES_CONTACT.map((c) => c.value).join(','));
+  });
+
+verifie('« Autre » reste en dernier : c\'est le defaut, pas un metier',
+  sandbox.CATEGORIES_CONTACT[sandbox.CATEGORIES_CONTACT.length - 1].value === 'autre');
+verifie('Aucun metier en double',
+  new Set(sandbox.CATEGORIES_CONTACT.map((c) => c.value)).size === sandbox.CATEGORIES_CONTACT.length);
+verifie('Chaque metier a un libelle',
+  sandbox.CATEGORIES_CONTACT.every((c) => !!c.label));
+
+// Un contact portant un metier disparu du referentiel ne doit pas
+// planter : il s'affiche « Autre ».
+verifie('Un metier inconnu se replie sur « Autre »',
+  sandbox.libelleCategorieContact('metier-supprime') === 'Autre');
+verifie('Un contact sans metier aussi',
+  sandbox.libelleCategorieContact('') === 'Autre' && sandbox.libelleCategorieContact(null) === 'Autre');
+verifie('Les nouveaux metiers ont bien leur libelle',
+  sandbox.libelleCategorieContact('architecte') === 'Architecte'
+  && sandbox.libelleCategorieContact('concepteur-paysagiste') === 'Concepteur-paysagiste',
+  sandbox.libelleCategorieContact('concepteur-paysagiste'));
+
+// Le carnet doit les proposer au filtre comme a la saisie.
+sandbox.elements = [
+  { id: 'k1', type: 'contact', prenom: 'Marie', nom: 'Martin', categorie: 'architecte', titre: 'Marie Martin' },
+  { id: 'k2', type: 'contact', prenom: 'Luc', nom: 'Bernard', categorie: 'concepteur-paysagiste', titre: 'Luc Bernard' },
+];
+sandbox.renderCarnet();
+verifie('Le filtre du carnet propose les nouveaux metiers, avec leur compte',
+  /Architecte \(1\)/.test(elements['vue-carnet'].innerHTML)
+  && /Concepteur-paysagiste \(1\)/.test(elements['vue-carnet'].innerHTML),
+  elements['vue-carnet'].innerHTML.slice(0, 600));
+
+sandbox.ouvrirModaleContact('k1');
+verifie('La modale contact les propose a la saisie',
+  elements['c-categorie'].innerHTML.indexOf('value="architecte"') !== -1);
+verifie('… et retrouve le metier du contact ouvert',
+  elements['c-categorie'].value === 'architecte', elements['c-categorie'].value);
+
+// ================================================================
 // 13. Toutes les vues s'affichent sans planter
 // ================================================================
 // Un ID de champ mal orthographie ou une concatenation ratee ne se
