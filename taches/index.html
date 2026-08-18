@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://cdnjs.cloudflare.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; img-src 'self' data: https://lh3.googleusercontent.com; connect-src 'self' https://www.gstatic.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://www.googleapis.com https://accounts.google.com; frame-src 'self' https://ofildudoubs-hub.firebaseapp.com https://apis.google.com https://accounts.google.com;">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="description" content="To-do priorisée — hub O'Fil du Doubs.">
+    <title>Mes tâches — Hub O'Fil du Doubs</title>
+    <link rel="icon" href="../icon.svg" type="image/svg+xml">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous">
+    <link rel="stylesheet" href="../style.css">
+</head>
+<body data-projet="taches" data-racine="../">
+    <div id="header-placeholder"></div>
+
+    <div id="app-content" class="page" style="display:none">
+
+        <div class="page-header">
+            <h1><i class="fa-solid fa-list-check"></i> Mes tâches</h1>
+            <div class="page-header-actions">
+                <button type="button" class="btn-export" onclick="exporterJson()"
+                        title="Télécharger toutes les tâches en JSON (sauvegarde — ignore les filtres)">
+                    <i class="fa-solid fa-download"></i> Exporter
+                </button>
+                <button type="button" class="btn-add" onclick="ouvrirModale(null)">
+                    <i class="fa-solid fa-plus"></i> Nouvelle tâche
+                </button>
+            </div>
+        </div>
+
+        <!-- Une liste de corvées est personnelle : sous impersonation, il
+             n'y a rien à montrer, et le dire vaut mieux qu'un écran vide
+             qu'on prendrait pour une panne. -->
+        <div class="avertissement avertissement--info" id="note-impersonation" style="display:none"></div>
+
+        <!-- Le compteur de reports, rendu visible. C'est le seul endroit
+             qui ose dire qu'une tâche est morte. -->
+        <div class="avertissement avertissement--info" id="note-enlisement" style="display:none"></div>
+
+        <div class="toolbar">
+            <div class="search">
+                <i class="fa-solid fa-magnifying-glass search__icon"></i>
+                <input type="text" id="search-input" class="search__input"
+                       placeholder="Rechercher (titre, détail, projet…)" oninput="renderTaches()">
+                <button type="button" class="search__clear" id="search-clear" onclick="clearSearch()" style="display:none">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+        </div>
+
+        <div id="etat-filter" class="filter-row"></div>
+        <div id="result-count" class="result-count"></div>
+
+        <div id="taches-blocs"></div>
+
+        <div class="empty-state" id="empty-state" style="display:none">
+            <i class="fa-solid fa-mug-hot"></i>
+            <p>Rien à faire dans ce filtre.</p>
+        </div>
+
+    </div>
+
+    <!-- Modale ajout / édition -->
+    <div id="modal-overlay" class="modal-overlay" style="display:none">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+            <h2 class="modal-title" id="modal-title">Nouvelle tâche</h2>
+            <div class="modal-form">
+                <div class="field field--full">
+                    <label for="f-titre">Titre *</label>
+                    <input type="text" id="f-titre" maxlength="140" placeholder="En une phrase : quoi ?">
+                </div>
+                <div class="field">
+                    <!-- LA seule qualification saisie à la main. L'autre axe
+                         de la matrice, l'urgence, se déduit de l'échéance :
+                         voir l'en-tête de taches-calcul.js. -->
+                    <label for="f-important">Important</label>
+                    <select id="f-important">
+                        <option value="non" selected>Non</option>
+                        <option value="oui">Oui</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="f-echeance">Échéance</label>
+                    <input type="date" id="f-echeance">
+                </div>
+                <div class="field">
+                    <label for="f-projet">Projet</label>
+                    <!-- Liste fermée, comme au carnet d'idées : on ne note
+                         une tâche que sur ce à quoi on a accès. -->
+                    <select id="f-projet"></select>
+                </div>
+                <div class="field">
+                    <label class="checkbox-inline" style="margin-top:22px">
+                        <input type="checkbox" id="f-urgent-force"> Urgent tout de suite
+                    </label>
+                    <small class="field-hint">Pour l'urgence qu'aucune date ne dit.</small>
+                </div>
+                <div class="field field--full">
+                    <label for="f-detail">Détail</label>
+                    <textarea id="f-detail" rows="4" placeholder="Le contexte, le numéro à rappeler, ce qu'il faut avoir sous la main…"></textarea>
+                </div>
+                <p class="modal-meta" id="f-meta" style="display:none"></p>
+            </div>
+            <div class="modal-actions">
+                <button type="button" id="btn-delete" class="modal-btn modal-btn-danger" style="display:none" onclick="ouvrirModaleSuppression()">Supprimer</button>
+                <button type="button" class="modal-btn" onclick="fermerModale()">Fermer</button>
+                <button type="button" id="btn-enregistrer" class="modal-btn modal-btn-primary" onclick="sauverTache()">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modale de confirmation de suppression -->
+    <div id="delete-overlay" class="modal-overlay" style="display:none">
+        <div class="modal" role="alertdialog" aria-modal="true" style="max-width:460px">
+            <h2 class="modal-title">Supprimer cette tâche ?</h2>
+            <p class="modal-desc">
+                Suppression définitive. Pour la sortir de la liste en gardant la trace, cochez-la plutôt comme faite.
+            </p>
+            <div class="modal-actions">
+                <button type="button" class="modal-btn" onclick="fermerModaleSuppression()">Annuler</button>
+                <button type="button" class="modal-btn modal-btn-danger" style="margin-right:0" onclick="confirmerSuppression()">Confirmer</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js" integrity="sha384-v3Z/Xdw1sCeo6M/geW7sn1Lt9obIm7MhAk8laVV+rvYFmzuWDELOiygx7dVte2dX" crossorigin="anonymous"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js" integrity="sha384-p62xBRve8PdqGDGASZtZMuHgPsyPcT5VsFwgmz2p4zaFdEtt5ZzNqxK+CLzQS7xP" crossorigin="anonymous"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js" integrity="sha384-3LctmFHtNDZwkVOSZ0fvJZJD9XR5Og5ol/MVEfNt36gUUnSYBRJN0iFjIMbFecOg" crossorigin="anonymous"></script>
+    <script src="../config.js"></script>
+    <script src="../projets.js"></script>
+    <!-- sites.js : la liste des projets d'une tâche puise dans les deux
+         registres, filtrés par les droits. -->
+    <script src="../sites.js"></script>
+    <script src="../auth.js"></script>
+    <script src="../hub-utils.js"></script>
+    <script src="taches-calcul.js"></script>
+    <script src="taches.js"></script>
+</body>
+</html>

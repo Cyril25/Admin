@@ -1123,7 +1123,12 @@ body.login-page {
 /* Trois boutons, un clic : c'est ce qui rend acceptable la déduction
    automatique du camp. La correction coûte moins cher que la question
    qu'on aurait posée à la création. */
-.camp-actions {
+
+/* `.tache-actions` / `.tache-btn` partagent ces règles : la to-do
+   priorisée fait le même geste que le chantier — agir depuis la carte
+   sans ouvrir la fiche. Ce qui lui est propre est en § 14.2. */
+.camp-actions,
+.tache-actions {
     display: flex;
     gap: 4px;
     flex-wrap: wrap;
@@ -1132,7 +1137,8 @@ body.login-page {
     border-top: 1px solid var(--color-border-light);
 }
 
-.camp-btn {
+.camp-btn,
+.tache-btn {
     display: inline-flex;
     align-items: center;
     gap: 5px;
@@ -1146,7 +1152,8 @@ body.login-page {
     cursor: pointer;
     transition: background var(--transition-fast), color var(--transition-fast);
 }
-.camp-btn:hover { background: var(--color-surface); color: var(--color-primary); }
+.camp-btn:hover,
+.tache-btn:hover { background: var(--color-surface); color: var(--color-primary); }
 .camp-btn.active {
     background: var(--color-primary);
     border-color: var(--color-primary);
@@ -1945,4 +1952,88 @@ body.login-page {
     .grille-especes { grid-template-columns: 1fr; }
     .jour-entete { flex-direction: column; gap: var(--spacing-xs); }
     .carte-espece { padding: var(--spacing-sm) var(--spacing-md); }
+}
+
+/* =========================================================
+   14. Projet « Tâches » — la to-do priorisée
+   Aucune couleur nouvelle : la page réutilise les badges du
+   chantier (.badge-retard en tête) parce qu'un retard doit se
+   lire pareil partout dans le hub.
+   ========================================================= */
+
+/* ---------- 14.1 Blocs de priorité ---------- */
+/* La hiérarchie tient dans l'ordre des blocs, pas dans leur
+   décoration : quatre encadrés bariolés se regarderaient à
+   égalité, ce qui détruirait justement ce qu'on veut dire. Seul
+   le retard reçoit une marque, parce qu'il passe avant tout. */
+.bloc-taches { margin-bottom: var(--spacing-lg); }
+
+.bloc-taches-titre {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--color-text-secondary);
+}
+.bloc-taches-titre i { color: var(--color-text-muted); }
+
+.bloc-taches-compte {
+    padding: 1px 8px;
+    background: var(--color-surface);
+    border-radius: 10px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--color-text-muted);
+}
+
+.bloc-taches-aide {
+    margin: 2px 0 var(--spacing-sm);
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+}
+
+.bloc-taches--retard .bloc-taches-titre,
+.bloc-taches--retard .bloc-taches-titre i { color: var(--color-danger); }
+.bloc-taches--retard .bloc-taches-compte {
+    background: #FDECEA;
+    color: #A63030;
+    font-weight: 700;
+}
+
+/* ---------- 14.2 Actions de carte ---------- */
+/* La pastille et sa barre viennent des boutons de camp du chantier
+   (§ 12.4), dont les sélecteurs accueillent aussi `.tache-actions`
+   et `.tache-btn` : c'est le même geste — agir depuis la carte sans
+   ouvrir la fiche —, il ne doit pas avoir deux apparences, ni deux
+   déclarations à maintenir en parallèle. Il ne reste ici que ce qui
+   diffère vraiment. */
+
+/* Clore une tâche est l'action qu'on vient chercher : elle se
+   distingue des deux boutons de report, qui ne font que gagner
+   du temps. */
+.tache-btn--fait { border-color: var(--color-accent); color: #0B6B60; }
+.tache-btn--fait:hover { background: var(--color-accent); color: #fff; }
+
+/* ---------- 14.3 Badges des tâches ---------- */
+.badge-important    { background: #FEE4E4; color: #A63030; font-weight: 700; }
+.badge-urgent-force { background: #FFF7E6; color: #7A5200; font-weight: 700; }
+.badge-sans-date    { background: #F0F2F4; color: #8A94A0; font-style: italic; }
+.badge-faite        { background: #E4F5F2; color: #0B6B60; }
+
+/* Le compteur de reports vire au rouge une fois l'enlisement
+   atteint. C'est tout le mécanisme : rendre visible qu'une tâche
+   n'attend plus une date, mais une décision. */
+.badge-reports { background: var(--color-surface); color: var(--color-text-secondary); }
+.badge-enlisee { background: #FDECEA; color: #A63030; font-weight: 700; }
+
+/* ---------- 14.4 Compteur sur la tuile d'accueil ---------- */
+/* La seule alerte du hub qui parte au-devant de la personne. Le
+   site est statique : ni mail ni notification, donc si le retard
+   ne se voit pas ici, il ne se voit nulle part. */
+.tile h2 .badge-retard {
+    margin-left: 6px;
+    vertical-align: middle;
+    font-size: 0.72rem;
 }

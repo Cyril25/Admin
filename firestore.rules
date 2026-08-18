@@ -125,6 +125,41 @@ service cloud.firestore {
       allow read, write: if aAcces('exterieur');
     }
 
+    // To-do priorisée — CHACUN CHEZ SOI, LECTURE COMPRISE.
+    //
+    // ⚠ C'est le seul projet du hub dont la LECTURE est cloisonnée. Le
+    // carnet d'idées et les forçages de cueillette se partagent : une
+    // liste de corvées personnelles, non. Cocher `taches` sur une fiche
+    // n'ouvre que les tâches de la personne elle-même.
+    //
+    // Le superadmin ne fait PAS exception ici : sa clause habituelle
+    // `superadmin() ||` est volontairement absente. Il a bien accès à la
+    // collection — `aAcces()` le lui accorde — mais seulement à ses
+    // propres tâches, comme tout le monde. Conséquence assumée : sous
+    // impersonation, la page n'affiche rien, et elle le dit.
+    //
+    // ⚠ Une règle n'est PAS un filtre : la page doit interroger
+    // `where('creePar', '==', <son email>)`, sinon Firestore rejette la
+    // requête en bloc et l'écran est entièrement vide.
+    match /taches/{document} {
+      allow read: if aAcces('taches')
+                  && resource.data.creePar == idAppelant();
+
+      // Comparé au jeton RÉEL : une tâche saisie sous impersonation est
+      // enregistrée au nom de qui la saisit vraiment.
+      allow create: if aAcces('taches')
+                    && request.resource.data.creePar == idAppelant();
+
+      // `creePar` est immuable — sans cette clause on pourrait refiler
+      // une corvée à quelqu'un d'autre, ou s'attribuer la sienne.
+      allow update: if aAcces('taches')
+                    && resource.data.creePar == idAppelant()
+                    && request.resource.data.creePar == resource.data.creePar;
+
+      allow delete: if aAcces('taches')
+                    && resource.data.creePar == idAppelant();
+    }
+
     // Calendrier de cueillette du Haut-Doubs — LES FORÇAGES SEULEMENT.
     //
     // ⚠ Le référentiel des espèces n'est PAS ici : il vit dans

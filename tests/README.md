@@ -14,6 +14,38 @@ d'étape de build.
 | `test-idees.js` | La page Idées : tri, filtres, échappement, export JSON, **droits par auteur et liste fermée des projets** |
 | `test-exterieur.js` | Le pilotage du chantier : analyseur `.eml`, camp et relances, regroupement des devis, recherche, écritures |
 | `test-cueillette.js` | Le calendrier de cueillette : calcul des statuts, **isolation des forçages par saison**, cohérence du référentiel |
+| `test-taches.js` | La to-do priorisée : calendrier, urgence déduite, ordre des blocs, **compteur de reports**, cloisonnement en lecture |
+
+### `test-taches.js` — un compteur qui ne doit pas mentir
+
+Même faiblesse que le calendrier de cueillette : l'erreur y est **silencieuse**. Une liste
+mal priorisée reste une liste plausible, on la suit sans se douter de rien. Le test pilote
+donc la date du jour à la main et vérifie les verdicts, frontières comprises — J+7 est
+urgent, J+8 ne l'est pas encore, et le jour même n'est *pas* un retard.
+
+Le cas à ne jamais casser est le **compteur de reports** : c'est la seule chose qui sépare
+une tâche en retard d'une tâche morte. Six assertions vérifient qu'il ne compte que ce qui
+en est un — repousser une date qui existait déjà. Dater une tâche qui n'en avait pas, ou
+corriger une saisie vers l'arrière, ne doit rien incrémenter, sinon il gonfle tout seul, on
+cesse de le regarder, et le signal disparaît. Une septième vérifie que la première date
+visée ne se réécrit jamais.
+
+Deux assertions figent le **changement d'heure**. Le dernier dimanche de mars, une
+soustraction de dates locales rend 23 heures et l'arrondi mange un jour : « en retard de
+1 j » s'afficherait « 0 j » et la tâche changerait de bloc, deux fois par an, sans que rien
+n'échoue.
+
+Le reste couvre ce qu'un clic ne rattrape pas : le `where('creePar', …)` **obligatoire**
+sans lequel Firestore rejette la requête en bloc et laisse un écran vide qu'on prendrait
+pour une panne ; le fait que la page ne demande **rien du tout** sous impersonation ; que
+`creePar` porte l'utilisateur *réel* et ne reparte jamais à la modification ; et que
+l'accueil **réutilise** `compterEnRetard()` au lieu de recopier la règle — deux définitions
+de « en retard » finiraient par diverger, la tuile en annoncerait deux quand la page en
+montre trois.
+
+Cinq assertions relisent enfin `firestore.rules`, dont une qui échoue si une clause
+`superadmin()` réapparaît dans le bloc `taches` : c'est le seul lot du hub sans passe-droit,
+et l'exception doit rester volontaire.
 
 ### `test-cueillette.js` — une machine à dates
 

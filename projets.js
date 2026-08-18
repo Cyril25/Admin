@@ -41,6 +41,13 @@ var PROJETS = [
         description: "Le chantier au meme endroit : devis, mails archives, photos, taches, contacts. La vue d'accueil repond a une seule question — la balle est dans quel camp ?"
     },
     {
+        slug: 'taches',
+        nom: 'Mes taches',
+        icone: 'fa-solid fa-list-check',
+        url: 'taches/',
+        description: "La to-do priorisee. L'importance se declare, l'urgence se deduit de l'echeance : une tache devient urgente toute seule en vieillissant. Ce qui est en retard remonte en tete et compte ses reports."
+    },
+    {
         slug: 'cueillette',
         nom: 'Calendrier de cueillette',
         icone: 'fa-solid fa-basket-shopping',

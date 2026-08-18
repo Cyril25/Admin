@@ -21,6 +21,7 @@ dans Firestore.
 | `membres.html` / `membres.js` | Annuaire des membres et attribution des accès (superadmin) |
 | `idees/` | Projet « Idées / Projets » |
 | `exterieur/` | Projet « Extérieur de la maison » |
+| `taches/` | Projet « Mes tâches » — to-do priorisée. `taches-calcul.js` est **aussi chargé par l'accueil**, pour le compteur de retards |
 | `cueillette/` | Projet « Calendrier de cueillette du Haut-Doubs » |
 | — | [collections.ofildudoubs.fr](https://collections.ofildudoubs.fr) est un **site** à part : seul son droit d'accès se coche ici, dans la liste des sites |
 | `style.css` | Feuille de styles unique |
@@ -67,16 +68,23 @@ Le site distant ne gère aucun droit : il lit `membres`, vérifie une fois qu'il
 et obéit. Un membre du hub sans cette case est renvoyé à son écran de connexion avec
 l'explication — pas devant une page vide qu'il prendrait pour une panne.
 
-### Deux modèles de partage coexistent
+### Trois modèles de partage coexistent
 
 | Donnée | Modèle | Pourquoi |
 |---|---|---|
-| `idees` | Lecture partagée, écriture personnelle | Un carnet d'idées se lit à plusieurs ; c'est le propriétaire qui les met en œuvre |
+| `idees`, `cueillette` | Lecture partagée, écriture personnelle | Un carnet d'idées se lit à plusieurs ; c'est le propriétaire qui les met en œuvre |
 | `achats`, `fournisseurs` | Cloisonnées par `proprietaire` | Des achats et des mots de passe ne se lisent pas à plusieurs |
+| `taches` | Cloisonnée par `creePar`, **superadmin compris** | Une liste de corvées personnelles n'a pas de lecteur légitime autre que soi |
 
-Le patron à copier pour une future collection cloisonnée : un champ `proprietaire` immuable
+Le patron à copier pour une future collection cloisonnée : un champ de propriété immuable
 sur chaque document, un `where` **obligatoire** côté client (sans lui la page est
 *entièrement* vide, pas partielle), et quatre règles séparées par opération.
+
+**`taches` est le seul lot sans passe-droit superadmin**, et c'est délibéré : partout
+ailleurs la clause `superadmin() ||` existe pour que l'impersonation affiche quelque chose.
+Ici elle n'aurait aucune justification, et la page dit franchement pourquoi elle est vide
+sous impersonation plutôt que de laisser croire à une panne. `test-taches.js` échoue si la
+clause réapparaît.
 
 ### ⚠ Ce que la garde JavaScript ne fait pas
 
@@ -452,6 +460,104 @@ saisissables à la main. **Un format exotique ne doit jamais faire perdre un mai
 Le bloc `match /exterieur/{document}` existe déjà et couvre tous les types du
 tiroir — conséquence directe du choix d'une collection unique. C'est le seul lot du
 hub dans ce cas, autant l'écrire noir sur blanc pour éviter qu'on le cherche.
+
+### Projet `taches` — la to-do priorisée
+
+Le problème n'était pas de lister des tâches, c'était que **rien ne signale un retard**.
+Une échéance manquée dans Google Calendar disparaît simplement du champ de vision : elle
+n'est pas en retard, elle n'est plus là. Toute la page tient à ça.
+
+#### ⚠ Un seul axe est saisi à la main, et c'est la décision centrale
+
+La matrice d'Eisenhower a deux axes, mais ils ne vieillissent pas de la même façon.
+L'importance d'une tâche ne bouge pas toute seule ; **son urgence, si** — c'est la
+définition du mot.
+
+Un `urgent = oui` coché il y a trois semaines a donc exactement le défaut qu'on reproche au
+calendrier : l'information se périme sans que rien ne bouge. Et un `urgent = non` sur une
+tâche due demain est faux. D'où :
+
+- **Important** — case à cocher, elle seule ;
+- **Urgent** — *calculé* à chaque affichage : échéance dans les `JOURS_URGENCE` (7) jours.
+  Une tâche traverse la frontière toute seule en vieillissant, sans entretien ;
+- **`urgentForce`** — le seul rattrapage manuel, pour l'urgence qu'aucune date ne dit
+  (« rappeler le plombier avant qu'il ne parte »).
+
+Bénéfice secondaire, la saisie tombe à trois gestes : un titre, une case, une date.
+
+#### Quatre blocs, dans cet ordre, et le retard passe devant
+
+**En retard** → **Urgent** → **Important non urgent** → **Le reste**. L'ordre de la
+constante `BLOCS` *est* la priorité ; les blocs vides ne s'affichent pas.
+
+À l'intérieur d'un bloc, **l'important passe devant**, y compris parmi les retards. C'est
+le cas du retour de vacances : quarante retards d'un coup, triés par ancienneté, mettraient
+la même croûte en tête pour toujours pendant que l'important pourrit trois écrans plus bas.
+
+#### ⚠ Le compteur de reports — ce qui manque à tous les todos
+
+« Le retard remonte en tête » marche pour trois tâches, pas pour quarante : au bout de
+quelques semaines, le haut de la liste redevient le mur qu'on voulait éviter et le
+mécanisme s'auto-annule. Il faut donc pouvoir **dégonfler le tas** — deux boutons de report
+sur les seules tâches en retard — et surtout **compter les reports**.
+
+Une tâche reportée `REPORTS_ENLISEMENT` (3) fois n'est plus en retard : elle est morte. Le
+badge vire au rouge, un avertissement le dit en toutes lettres en haut de page. C'est le
+seul endroit qui autorise enfin à abandonner.
+
+**Le compteur ne vaut que s'il ne ment pas.** Dater une tâche qui n'avait pas de date, ou
+corriger une saisie vers l'arrière, n'est *pas* un report — sinon il gonfle tout seul, on
+cesse de le regarder, et le signal disparaît. La décision est centralisée dans
+`champsDeReport()`, et six assertions la verrouillent.
+
+#### Le compteur sur la tuile d'accueil, sans lequel rien ne signale rien
+
+Le hub est **statique** : pas de serveur, donc ni mail ni notification. Un retard ne peut
+se faire remarquer qu'à un seul endroit — l'accueil, la seule page qu'on ouvre sans y
+penser. `index.html` charge donc `taches/taches-calcul.js` (fonctions pures, aucun DOM) et
+`accueil.js` pose « N en retard » sur la tuile.
+
+**La règle « en retard » n'est pas recopiée là-bas** : deux définitions auraient fini par
+diverger, et la tuile annoncerait deux retards quand la page en montre trois. Si le
+compteur échoue, il se tait — il ne doit jamais emporter l'accueil avec lui.
+
+#### Modèle de données — collection `taches`
+
+| Champ | Type | Détail |
+|---|---|---|
+| `titre` | string | Obligatoire |
+| `detail` | string | Texte libre |
+| `projet` | string | Libellé, liste fermée filtrée par les droits (comme `idees`) |
+| `important` | bool | La seule qualification saisie à la main |
+| `urgentForce` | bool | « Urgent tout de suite », pour l'urgence sans date |
+| `echeance` | string | **`AAAA-MM-JJ`, pas un Timestamp** — voir ci-dessous |
+| `faite` / `faiteLe` | bool / string | `faiteLe` est **vidé** à la réouverture, sinon le badge ment |
+| `nbReports` | int | Combien de fois l'échéance a été repoussée |
+| `echeanceInitiale` | string | La toute première date visée, écrite une seule fois |
+| `creePar` | string | Email **réel** — titre de propriété *et* de lecture |
+| `createdAt`, `updatedAt` | timestamp | Horodatage serveur |
+
+**Pourquoi une chaîne et pas un Timestamp** : « en retard » est une question de *jour du
+calendrier*, pas d'instant. Un Timestamp posé à minuit heure de Paris se relit la veille au
+soir sous un autre fuseau, et la tâche bascule selon l'endroit d'où on regarde. Une chaîne
+se compare telle quelle — l'ordre lexicographique de ce format est l'ordre chronologique —,
+se pose dans un `<input type="date">` sans conversion, et rend les tests déterministes.
+C'est le seul endroit du hub qui s'écarte du Timestamp : ailleurs on horodate un événement
+qui a eu lieu, ici on vise un jour à venir.
+
+Les écarts de jours passent par `Date.UTC`, jamais par une soustraction de dates locales :
+deux fois par an, le changement d'heure rend 23 heures et ferait afficher « en retard de
+0 j » à une tâche qui l'est d'un jour. Deux assertions le figent.
+
+#### Ce qui n'y est pas, et pourquoi
+
+**Les tâches récurrentes** (impôts, révision, ramonage) sont hors périmètre v1 : la
+génération d'occurrences et le rattrapage des échéances manquées doublent la complexité, et
+se conçoivent mieux une fois la liste vivante. Rien dans le modèle ne les empêche.
+
+**Aucun pont avec le carnet d'idées.** La tentation existe — une idée passée « à faire »
+ferait une jolie tâche — mais on ne saurait plus où est la vérité. Les deux collections
+n'ont d'ailleurs pas le même modèle de partage : `idees` se lit à plusieurs, `taches` non.
 
 ### Projet `cueillette` — le calendrier du Haut-Doubs
 
