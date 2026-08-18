@@ -583,6 +583,14 @@ compteur échoue, il se tait — il ne doit jamais emporter l'accueil avec lui.
 | `creneauJour` | string | `AAAA-MM-JJ` — la décision : quand je m'y colle |
 | `creneauHeure` | string | `HH:MM`, chaîne locale sans fuseau |
 | `creneauDuree` | int | Minutes, liste fermée (15 → 480) |
+
+**C'est le jour qui crée le créneau.** L'heure se saisit en deux listes fermées — les 24
+heures, et les quatre quarts — et a donc toujours une valeur ; sans jour choisi, elle n'est
+simplement pas écrite. Un `<input type="time">` acceptait n'importe quelle minute et
+ouvrait, selon le navigateur, la liste des soixante : imprenable au doigt, pour une
+précision qu'on n'a pas. Une nouvelle tâche s'ouvre sur **l'heure pleine suivante** (passé
+23 h, sur 09:00 — le champ du jour est vide de toute façon), et une minute héritée du temps
+de l'ancien champ est conservée dans la liste plutôt qu'arrondie en silence.
 | `faite` / `faiteLe` | bool / string | `faiteLe` est **vidé** à la réouverture, sinon le badge ment |
 | `nbReports` | int | Combien de fois l'échéance a été repoussée |
 | `echeanceInitiale` | string | La toute première date visée, écrite une seule fois |

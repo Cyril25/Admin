@@ -63,9 +63,12 @@ tout calendrier maison. Côté grille, les voies parallèles se comptent par gra
 chevauchements : une assertion vérifie qu'un doublon à 9 h ne rétrécit pas l'après-midi, qui
 n'y est pour rien.
 
-Enfin, un jour de créneau sans heure doit être **refusé sans qu'aucune écriture ne parte** :
-ce serait une seconde échéance déguisée, exactement la confusion que toute cette conception
-cherche à éviter.
+Côté saisie, c'est **le jour qui crée le créneau** : une heure choisie sans jour ne doit
+écrire aucun des trois champs — ce serait une seconde échéance déguisée, exactement la
+confusion que toute cette conception cherche à éviter. Le cas à ne pas perdre est la
+**minute héritée** : une valeur du temps de l'`<input type="time">` (14:37) doit rester dans
+la liste des quarts d'heure plutôt que d'être arrondie en silence à la simple ouverture de
+la modale — même piège, et même remède, que le projet « hérité » du carnet d'idées.
 
 ### `test-cueillette.js` — une machine à dates
 

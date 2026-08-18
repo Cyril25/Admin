@@ -830,6 +830,49 @@ function remplirSelectProjet(valeurCourante) {
     select.value = valeurCourante || '';
 }
 
+// L'heure se saisit en DEUX listes fermées : les 24 heures d'un côté,
+// les quatre quarts de l'autre. Un `<input type="time">` acceptait
+// n'importe quelle minute et ouvrait, selon le navigateur, la liste des
+// soixante — imprenable au doigt, pour une précision qu'on n'a pas.
+function remplirSelectsHeure(valeurCourante) {
+    var selectH = document.getElementById('f-creneau-h');
+    var selectM = document.getElementById('f-creneau-m');
+    if (!selectH || !selectM) return;
+
+    // Nouvelle tâche : l'heure pleine suivante. Le jour, lui, reste
+    // vide — c'est le jour qui crée le créneau, pas l'heure.
+    var heure = heureValide(valeurCourante) ? valeurCourante : heurePleineSuivante(heureCourante());
+    var bouts = heure.split(':');
+
+    var htmlH = '';
+    for (var h = 0; h < 24; h++) {
+        var hh = (h < 10 ? '0' : '') + h;
+        htmlH += '<option value="' + hh + '">' + hh + '</option>';
+    }
+    selectH.innerHTML = htmlH;
+    selectH.value = bouts[0];
+
+    // Une minute héritée — saisie du temps de l'`<input type="time">`,
+    // ou venue d'un import — ne doit pas se faire arrondir en silence à
+    // la simple ouverture de la modale. On l'ajoute plutôt que de la
+    // perdre, comme la liste des projets le fait déjà.
+    var htmlM = MINUTES_CRENEAU.map(function(mm) {
+        return '<option value="' + mm + '">' + mm + '</option>';
+    }).join('');
+    if (MINUTES_CRENEAU.indexOf(bouts[1]) === -1) {
+        htmlM += '<option value="' + escapeAttr(bouts[1]) + '">' + escapeHtml(bouts[1]) + '</option>';
+    }
+    selectM.innerHTML = htmlM;
+    selectM.value = bouts[1];
+}
+
+function heureSaisie() {
+    var selectH = document.getElementById('f-creneau-h');
+    var selectM = document.getElementById('f-creneau-m');
+    if (!selectH || !selectM) return '';
+    return selectH.value + ':' + selectM.value;
+}
+
 // Durées en liste fermée : personne ne planifie 37 minutes, et un champ
 // libre inviterait à une précision qu'on n'a pas.
 function remplirSelectDuree(valeurCourante) {
@@ -858,8 +901,8 @@ function ouvrirModale(id) {
     document.getElementById('f-important').value    = (tache && tache.important) ? 'oui' : 'non';
     document.getElementById('f-echeance').value     = (tache && isoValide(tache.echeance)) ? tache.echeance : '';
     document.getElementById('f-urgent-force').checked = !!(tache && tache.urgentForce);
-    document.getElementById('f-creneau-jour').value  = (tache && isoValide(tache.creneauJour)) ? tache.creneauJour : '';
-    document.getElementById('f-creneau-heure').value = (tache && heureValide(tache.creneauHeure)) ? tache.creneauHeure : '';
+    document.getElementById('f-creneau-jour').value = (tache && isoValide(tache.creneauJour)) ? tache.creneauJour : '';
+    remplirSelectsHeure(tache ? tache.creneauHeure : '');
     remplirSelectDuree(tache ? dureeCreneau(tache) : DUREE_DEFAUT);
     remplirSelectProjet(tache ? (tache.projet || '') : '');
 
@@ -896,14 +939,16 @@ function sauverTache() {
 
     var echeance = document.getElementById('f-echeance').value;
 
-    // Un créneau n'existe que si le jour ET l'heure sont là. Une heure
-    // sans jour ne veut rien dire, et un jour sans heure serait une
-    // seconde échéance déguisée — exactement la confusion qu'on évite.
+    // C'EST LE JOUR QUI CRÉE LE CRÉNEAU. Les deux listes d'heure ont
+    // toujours une valeur — il n'existe donc plus de « jour sans heure »
+    // à refuser. Sans jour, en revanche, l'heure ne veut rien dire et
+    // n'est pas écrite : un jour sans heure serait une seconde échéance
+    // déguisée, exactement la confusion qu'on évite.
     var creneauJour = document.getElementById('f-creneau-jour').value;
-    var creneauHeure = document.getElementById('f-creneau-heure').value;
+    var creneauHeure = heureSaisie();
     var creneauComplet = isoValide(creneauJour) && heureValide(creneauHeure);
-    if ((creneauJour || creneauHeure) && !creneauComplet) {
-        showToast('Un créneau demande un jour ET une heure.', 'error');
+    if (creneauJour && !creneauComplet) {
+        showToast('Ce créneau n\'est pas lisible : vérifiez le jour et l\'heure.', 'error');
         return;
     }
 

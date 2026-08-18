@@ -125,8 +125,15 @@
                 </div>
                 <div class="field field--duo">
                     <div>
-                        <label for="f-creneau-heure">Heure</label>
-                        <input type="time" id="f-creneau-heure" step="900">
+                        <!-- Deux listes fermées plutôt qu'un <input type="time"> :
+                             celui-ci laissait saisir n'importe quelle minute et
+                             ouvrait, selon le navigateur, la liste des soixante. -->
+                        <label for="f-creneau-h">Heure</label>
+                        <div class="champ-heure">
+                            <select id="f-creneau-h" aria-label="Heure"></select>
+                            <span class="champ-heure-separateur">:</span>
+                            <select id="f-creneau-m" aria-label="Minutes"></select>
+                        </div>
                     </div>
                     <div>
                         <label for="f-creneau-duree">Durée</label>

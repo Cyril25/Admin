@@ -278,6 +278,26 @@ var HEURE_FIN_GRILLE = 22;
 var DUREE_DEFAUT = 60;
 var DUREES = [15, 30, 45, 60, 90, 120, 240, 480];
 
+// Les seules minutes proposées à la saisie. Un `<input type="time">`
+// laissait entrer n'importe quelle minute et ouvrait, selon le
+// navigateur, la liste des soixante — imprenable au doigt pour un gain
+// nul : on ne planifie pas à 14 h 37.
+var MINUTES_CRENEAU = ['00', '15', '30', '45'];
+
+// L'heure pleine suivante, à partir d'une heure de référence. Sert de
+// valeur par défaut à la saisie : on ne planifie jamais « maintenant »,
+// et des minutes à 00 évitent d'avoir à les corriger à chaque fois.
+//
+// Passé 23 h, la prochaine occasion réelle est le lendemain matin — le
+// champ du jour est vide de toute façon, autant proposer une heure
+// crédible plutôt qu'un 00:00 qui n'a de sens pour personne.
+function heurePleineSuivante(heureReference) {
+    var minutes = minutesDeHeure(heureReference);
+    if (minutes === null) return '09:00';
+    var suivante = (Math.floor(minutes / 60) + 1) * 60;
+    return suivante > 23 * 60 ? '09:00' : heureDeMinutes(suivante);
+}
+
 function heureValide(hhmm) {
     return /^([01]\d|2[0-3]):[0-5]\d$/.test(String(hhmm || ''));
 }

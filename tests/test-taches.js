@@ -771,20 +771,22 @@ verifie('deplanifier vide les trois champs de creneau',
 verifie('...sans compter un report ni toucher a l\'echeance',
   retire && retire.data.nbReports === undefined && retire.data.echeance === undefined);
 
-// Un jour sans heure serait une seconde echeance deguisee : exactement
-// la confusion que toute cette conception cherche a eviter.
+// Une heure illisible avec un jour pose ne doit RIEN ecrire : mieux
+// vaut un refus clair qu'un creneau a moitie enregistre.
 ecritures.length = 0;
 sandbox.taches = [];
 sandbox.idEnEdition = null;
 el('f-titre').value = 'Creneau incomplet';
 el('f-echeance').value = '';
 el('f-creneau-jour').value = '2026-08-20';
-el('f-creneau-heure').value = '';
+el('f-creneau-h').value = '';
+el('f-creneau-m').value = '';
 sandbox.sauverTache();
-verifie('un jour sans heure est refuse, et rien ne part en base',
+verifie('un jour avec une heure illisible est refuse, et rien ne part en base',
   ecritures.length === 0, ecritures.length + ' ecriture(s)');
 
-el('f-creneau-heure').value = '14:30';
+el('f-creneau-h').value = '14';
+el('f-creneau-m').value = '30';
 el('f-creneau-duree').value = '90';
 sandbox.sauverTache();
 const avecCreneau = ecritures.find((e) => e.type === 'add');
@@ -793,8 +795,63 @@ verifie('un creneau complet part avec sa duree',
   && avecCreneau.data.creneauHeure === '14:30' && avecCreneau.data.creneauDuree === 90,
   avecCreneau && JSON.stringify(avecCreneau.data));
 
+// SANS JOUR, PAS DE CRENEAU. L'heure a beau etre choisie — les listes en
+// ont toujours une —, elle ne doit pas partir seule : ce serait une
+// seconde echeance deguisee, la confusion que tout ceci evite.
+ecritures.length = 0;
 el('f-creneau-jour').value = '';
-el('f-creneau-heure').value = '';
+sandbox.sauverTache();
+const sansJour = ecritures.find((e) => e.type === 'add');
+verifie('une heure choisie sans jour n\'ecrit aucun creneau',
+  sansJour && sansJour.data.creneauJour === '' && sansJour.data.creneauHeure === ''
+  && sansJour.data.creneauDuree === 0,
+  sansJour && JSON.stringify(sansJour.data));
+
+// --- 17bis. La saisie de l'heure -------------------------------------
+console.log('\n17bis. La saisie de l\'heure');
+// Le « : » d'un <input type="time"> laissait entrer 14:37 et ouvrait,
+// selon le navigateur, la liste des soixante minutes.
+verifie('l\'heure pleine suivante arrondit vers le haut',
+  sandbox.heurePleineSuivante('14:20') === '15:00', sandbox.heurePleineSuivante('14:20'));
+verifie('...meme pile a l\'heure', sandbox.heurePleineSuivante('14:00') === '15:00');
+verifie('passe 23 h, on propose le lendemain matin plutot qu\'un 00:00 absurde',
+  sandbox.heurePleineSuivante('23:30') === '09:00', sandbox.heurePleineSuivante('23:30'));
+verifie('...et une heure illisible retombe sur la meme valeur sure',
+  sandbox.heurePleineSuivante('') === '09:00');
+verifie('seuls les quarts d\'heure sont proposes',
+  sandbox.MINUTES_CRENEAU.join(',') === '00,15,30,45');
+
+// Une NOUVELLE tache s'ouvre sur l'heure pleine suivante, minutes a 00 :
+// c'est ce qu'on corrigeait a la main a chaque saisie.
+sandbox.heureCourante = () => '10:20';
+sandbox.remplirSelectsHeure('');
+verifie('une nouvelle tache s\'ouvre sur l\'heure pleine suivante',
+  el('f-creneau-h').value === '11' && el('f-creneau-m').value === '00',
+  el('f-creneau-h').value + ':' + el('f-creneau-m').value);
+verifie('les 24 heures sont proposees',
+  (el('f-creneau-h').innerHTML.match(/<option/g) || []).length === 24,
+  (el('f-creneau-h').innerHTML.match(/<option/g) || []).length + ' options');
+
+// LE CAS A NE PAS PERDRE : une minute heritee du temps de l'<input
+// type="time"> ne doit pas se faire arrondir en silence a la simple
+// ouverture de la modale.
+sandbox.remplirSelectsHeure('14:37');
+verifie('une minute heritee est conservee, pas arrondie',
+  el('f-creneau-m').value === '37', el('f-creneau-m').value);
+verifie('...et vient s\'ajouter aux quatre quarts',
+  (el('f-creneau-m').innerHTML.match(/<option/g) || []).length === 5);
+
+sandbox.remplirSelectsHeure('09:30');
+verifie('une minute normale n\'ajoute pas d\'option',
+  (el('f-creneau-m').innerHTML.match(/<option/g) || []).length === 4
+  && el('f-creneau-h').value === '09',
+  el('f-creneau-h').value + ':' + el('f-creneau-m').value);
+
+verifie('heureSaisie recompose bien HH:MM',
+  sandbox.heureSaisie() === '09:30', sandbox.heureSaisie());
+
+sandbox.heureCourante = () => '12:00';
+el('f-creneau-jour').value = '';
 
 sandbox.aujourdhui = vraiAujourdhui;
 

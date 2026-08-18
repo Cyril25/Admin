@@ -2246,3 +2246,10 @@ body.login-page {
 
 .field--duo { display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm); }
 .field--duo > div { display: flex; flex-direction: column; gap: 2px; }
+
+/* Heure et minutes en deux listes accolées : le « : » entre les deux
+   dit que c'est un seul champ, là où deux selects côte à côte se
+   liraient comme deux réglages sans rapport. */
+.champ-heure { display: flex; align-items: center; gap: 4px; }
+.champ-heure select { flex: 1; min-width: 0; }
+.champ-heure-separateur { color: var(--color-text-muted); font-weight: 700; }
