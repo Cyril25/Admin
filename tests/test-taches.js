@@ -257,6 +257,52 @@ verifie('une tache sans date passe apres celles qui en ont une',
   range2.reste.map((t) => t.id).join(',') === 'lointain,sans-date',
   range2.reste.map((t) => t.id).join(','));
 
+// LE BUG SIGNALE. Deux taches importantes, l'une planifiee a 12:45 et
+// l'autre a 19:00, sortaient dans l'ordre de leur CREATION : le tri ne
+// regardait que l'echeance et ignorait completement le creneau. A
+// contrainte egale, c'est pourtant lui qui dit dans quel ordre les
+// choses vont reellement s'enchainer.
+const memeJournee = [
+  tache({ id: 'soir', important: true, creneauJour: AJD, creneauHeure: '19:00',
+          createdAt: new Date('2026-08-01T08:00:00Z') }),
+  tache({ id: 'midi', important: true, creneauJour: AJD, creneauHeure: '12:45',
+          createdAt: new Date('2026-08-02T08:00:00Z') }),
+];
+verifie('a echeance egale, le creneau le plus tot passe devant',
+  sandbox.rangerParBloc(memeJournee, AJD).important.map((t) => t.id).join(',') === 'midi,soir',
+  sandbox.rangerParBloc(memeJournee, AJD).important.map((t) => t.id).join(','));
+
+// Le jour compte avant l'heure : 09:00 demain vient apres 19:00 ce soir.
+const deuxJours = [
+  tache({ id: 'demain-tot', important: true, creneauJour: '2026-08-19', creneauHeure: '09:00' }),
+  tache({ id: 'ce-soir', important: true, creneauJour: AJD, creneauHeure: '19:00' }),
+];
+verifie('le jour du creneau passe avant son heure',
+  sandbox.rangerParBloc(deuxJours, AJD).important.map((t) => t.id).join(',') === 'ce-soir,demain-tot',
+  sandbox.rangerParBloc(deuxJours, AJD).important.map((t) => t.id).join(','));
+
+// Non planifiee en dernier, comme une tache sans echeance : n'avoir
+// aucun moment decide n'est pas un rang.
+const avecEtSans = [
+  tache({ id: 'sans-creneau', important: true }),
+  tache({ id: 'planifiee', important: true, creneauJour: '2026-12-31', creneauHeure: '23:00' }),
+];
+verifie('une tache non planifiee passe apres les planifiees',
+  sandbox.rangerParBloc(avecEtSans, AJD).important.map((t) => t.id).join(',') === 'planifiee,sans-creneau',
+  sandbox.rangerParBloc(avecEtSans, AJD).important.map((t) => t.id).join(','));
+
+// L'echeance reste prioritaire sur le creneau : c'est la contrainte qui
+// commande, le creneau ne fait que departager a contrainte egale.
+// Les deux echeances sont volontairement au-dela de J+7, sinon les
+// taches changeraient de BLOC et ne se compareraient jamais entre elles.
+const contrainteDAbord = [
+  tache({ id: 'due-tard', important: true, echeance: '2026-10-01', creneauJour: AJD, creneauHeure: '08:00' }),
+  tache({ id: 'due-tot', important: true, echeance: '2026-09-01', creneauJour: AJD, creneauHeure: '20:00' }),
+];
+verifie('l\'echeance commande, le creneau ne fait que departager',
+  sandbox.rangerParBloc(contrainteDAbord, AJD).important.map((t) => t.id).join(',') === 'due-tot,due-tard',
+  sandbox.rangerParBloc(contrainteDAbord, AJD).important.map((t) => t.id).join(','));
+
 verifie('rangerParBloc rend toujours les cinq cles, meme vides',
   ['retard', 'urgent', 'important', 'reste', 'faites']
     .every((c) => Array.isArray(sandbox.rangerParBloc([], AJD)[c])));
@@ -724,6 +770,29 @@ verifie('les cases vides sont cliquables',
   (grille.match(/ouvrirChoixTache\(/g) || []).length > 0);
 verifie('le jour courant est distingue',
   grille.indexOf('semaine-colonne--aujourdhui') !== -1);
+
+// L'AUTRE BUG SIGNALE : « certains titres apparaissent et d'autres pas ».
+// Sur un creneau court, deux lignes ne tenaient pas et c'est le TITRE qui
+// debordait — donc la seule chose qui identifie la tache. Un creneau de
+// 15 min devenait une pastille muette.
+sandbox.taches = [
+  tache({ id: 'court', titre: 'Coup de fil rapide', creneauJour: '2026-08-18', creneauHeure: '11:00', creneauDuree: 15 }),
+  tache({ id: 'long', titre: 'Rendez-vous couvreur', creneauJour: '2026-08-18', creneauHeure: '14:00', creneauDuree: 120 }),
+];
+sandbox.renderSemaine();
+const grilleCourts = el('vue-semaine').innerHTML;
+verifie('le titre d\'un creneau COURT est present dans le rendu',
+  grilleCourts.indexOf('Coup de fil rapide') !== -1);
+verifie('...et son bloc passe en mode compact',
+  grilleCourts.indexOf('semaine-bloc--compact') !== -1);
+verifie('un creneau long garde les deux lignes',
+  (grilleCourts.match(/semaine-bloc--compact/g) || []).length === 1,
+  (grilleCourts.match(/semaine-bloc--compact/g) || []).length + ' bloc(s) compact(s) pour 1 creneau court');
+verifie('aucun bloc ne descend sous la hauteur d\'une ligne lisible',
+  (grilleCourts.match(/height:(\d+(?:\.\d+)?)px/g) || [])
+    .map((m) => Number(m.replace(/[^\d.]/g, '')))
+    .filter((h) => h !== sandbox.HAUTEUR_HEURE)
+    .every((h) => h >= sandbox.HAUTEUR_BLOC_MINI));
 
 const onclicksGrille = [];
 grille.replace(/onclick="([^"]*)"/g, (m, code) => { onclicksGrille.push(code); return m; });

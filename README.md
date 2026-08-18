@@ -534,14 +534,27 @@ Sur téléphone, la grille **défile horizontalement** plutôt que de passer à 
 à la fois » : du code en moins, et la semaine reste sous les yeux au moment précis où on
 planifie.
 
+Sous 34 px de haut — soit moins de 45 min — un bloc passe en **mode compact** : l'heure
+s'efface au profit du titre. C'est l'inverse qui se produisait, et un créneau de 15 min
+devenait une pastille muette ; or la position verticale du bloc dit déjà l'heure, et
+l'infobulle la donne en toutes lettres.
+
 #### Quatre blocs, dans cet ordre, et le retard passe devant
 
 **En retard** → **Urgent** → **Important non urgent** → **Le reste**. L'ordre de la
 constante `BLOCS` *est* la priorité ; les blocs vides ne s'affichent pas.
 
-À l'intérieur d'un bloc, **l'important passe devant**, y compris parmi les retards. C'est
-le cas du retour de vacances : quarante retards d'un coup, triés par ancienneté, mettraient
-la même croûte en tête pour toujours pendant que l'important pourrit trois écrans plus bas.
+À l'intérieur d'un bloc, l'ordre est **important → échéance → créneau → ancienneté**.
+
+L'important passe devant y compris parmi les retards : c'est le cas du retour de vacances —
+quarante retards d'un coup, triés par ancienneté, mettraient la même croûte en tête pour
+toujours pendant que l'important pourrit trois écrans plus bas.
+
+Le **créneau ne départage qu'à contrainte égale** : c'est l'échéance qui commande, le
+créneau dit seulement dans quel ordre les choses vont réellement s'enchaîner. Deux tâches du
+même jour, l'une à 12 h 45 et l'autre à 19 h, se lisent dans cet ordre-là. Une tâche non
+planifiée passe en dernier, pour la même raison qu'une tâche sans échéance : n'avoir aucun
+moment décidé n'est pas un rang.
 
 #### ⚠ Le compteur de reports — ce qui manque à tous les todos
 

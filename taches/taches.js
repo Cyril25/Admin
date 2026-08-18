@@ -53,6 +53,14 @@ var premierChargement = true;
 // pure : le calcul, lui, ne connaît que des minutes.
 var HAUTEUR_HEURE = 46;
 
+// Un bloc ne descend jamais sous une ligne de texte lisible, sinon un
+// créneau de 15 min n'est plus qu'un trait.
+var HAUTEUR_BLOC_MINI = 22;
+
+// En dessous, l'heure et le titre ne tiennent pas tous les deux. Le bloc
+// passe en mode compact — voir `blocCreneau`.
+var HAUTEUR_DEUX_LIGNES = 34;
+
 // Le bloc des tâches réglées : de la présentation pure, d'où sa place
 // ici et non dans BLOCS, dont l'ordre porte, lui, la priorité.
 var BLOC_FAITES = {
@@ -625,10 +633,17 @@ function infobulleEcheance(tache) {
 function blocCreneau(element, plage) {
     var tache = element.tache;
     var haut = ((element.debut - plage.debut) / 60) * HAUTEUR_HEURE;
-    var hauteur = Math.max(18, ((element.fin - element.debut) / 60) * HAUTEUR_HEURE);
+    var hauteur = Math.max(HAUTEUR_BLOC_MINI, ((element.fin - element.debut) / 60) * HAUTEUR_HEURE);
     var largeur = 100 / element.nbVoies;
 
     var classe = 'semaine-bloc';
+    // ⚠ SUR UN BLOC COURT, DEUX LIGNES NE TIENNENT PAS, et c'est le titre
+    // qui débordait — donc la seule chose qui identifie la tâche. Un
+    // créneau de 15 ou 30 min devenait une pastille muette.
+    //
+    // C'est l'heure qui s'efface, pas le titre : la position verticale du
+    // bloc la dit déjà, et l'infobulle la donne en toutes lettres.
+    if (hauteur < HAUTEUR_DEUX_LIGNES) classe += ' semaine-bloc--compact';
     if (tache.faite) classe += ' semaine-bloc--faite';
     else if (creneauManque(tache, aujourdhui(), heureCourante())) classe += ' semaine-bloc--manque';
     else if (tache.important) classe += ' semaine-bloc--important';

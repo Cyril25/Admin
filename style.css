@@ -2179,6 +2179,13 @@ body.login-page {
 .semaine-bloc-heure { font-size: 0.64rem; opacity: 0.75; }
 .semaine-bloc-titre { overflow: hidden; text-overflow: ellipsis; }
 
+/* Bloc trop court pour deux lignes : l'heure disparaît, le titre reste.
+   L'inverse — ce qui se produisait — rendait un créneau de 15 min
+   totalement muet, alors que la position du bloc dit déjà l'heure. */
+.semaine-bloc--compact { justify-content: center; }
+.semaine-bloc--compact .semaine-bloc-heure { display: none; }
+.semaine-bloc--compact .semaine-bloc-titre { white-space: nowrap; }
+
 .semaine-bloc--important { background: #FEE4E4; border-left-color: #A63030; color: #A63030; }
 .semaine-bloc--faite     { opacity: 0.5; }
 .semaine-bloc--faite .semaine-bloc-titre { text-decoration: line-through; }

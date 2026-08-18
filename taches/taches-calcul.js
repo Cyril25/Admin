@@ -219,11 +219,29 @@ function comparerDansBloc(a, b) {
     var eb = isoValide(b.echeance) ? b.echeance : '￿';
     if (ea !== eb) return ea < eb ? -1 : 1;
 
+    // Puis le CRÉNEAU. À contrainte égale, c'est lui qui dit dans quel
+    // ordre les choses vont réellement s'enchaîner : deux tâches du même
+    // jour, l'une à 12 h 45 et l'autre à 19 h, doivent se lire dans cet
+    // ordre-là. Sans cette comparaison elles retombaient sur leur date de
+    // création, c'est-à-dire sur rien.
+    //
+    // Jour ET heure d'un coup : les deux chaînes concaténées se comparent
+    // dans l'ordre chronologique, comme chacune le fait séparément.
+    // Non planifiée en dernier, pour la même raison qu'une tâche sans
+    // échéance — n'avoir pas de moment décidé n'est pas un rang.
+    var ka = ordreCreneau(a);
+    var kb = ordreCreneau(b);
+    if (ka !== kb) return ka < kb ? -1 : 1;
+
     // À égalité stricte, la plus ancienne : elle attend depuis plus
     // longtemps.
     var ca = toDate(a.createdAt);
     var cb = toDate(b.createdAt);
     return (ca ? ca.getTime() : 0) - (cb ? cb.getTime() : 0);
+}
+
+function ordreCreneau(tache) {
+    return aUnCreneau(tache) ? (tache.creneauJour + ' ' + tache.creneauHeure) : '￿';
 }
 
 // Range une liste de tâches par bloc, chaque bloc déjà trié. Rend un
