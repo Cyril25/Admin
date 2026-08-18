@@ -27,6 +27,31 @@
 // plombier avant qu'il ne parte »).
 //
 // ------------------------------------------------------------
+// L'ÉCHÉANCE ET LE CRÉNEAU SONT DEUX CHOSES, ET C'EST TOUT LE SUJET
+// ------------------------------------------------------------
+// `echeance` répond à « AVANT QUAND ça doit être fait » : c'est une
+// contrainte, et elle n'a pas d'heure.
+// `creneauJour` + `creneauHeure` répondent à « QUAND JE M'Y COLLE » :
+// c'est une décision, et elle en a une.
+//
+// Les confondre est la maladie exacte de Google Calendar : la contrainte
+// y devient un événement à 14 h, et si on ne le fait pas à 14 h, il
+// passe — sans rien dire. Coller une heure sur `echeance` aurait
+// d'ailleurs casse le mécanisme de retard construit ici : « en retard »
+// serait redevenu une question d'instant, et le bloc de tête se serait
+// mis à clignoter à midi pour une tâche qu'on a jusqu'au soir.
+//
+// Séparés, les deux champs font au contraire apparaître trois signaux
+// qu'aucun des deux outils ne sait donner :
+//   - PLANIFIÉ APRÈS L'ÉCHÉANCE — le créneau est jeudi, c'était dû mardi ;
+//   - URGENT SANS CRÉNEAU       — ça brûle et on n'a pas décidé quand ;
+//   - CRÉNEAU MANQUÉ            — l'heure est passée, la tâche est ouverte.
+//
+// Aucun des trois ne change le bloc de la tâche : ce sont des alertes,
+// pas une cinquième priorité. Diluer les quatre blocs les aurait rendus
+// muets, ce qui est exactement ce qu'on cherche à éviter.
+//
+// ------------------------------------------------------------
 // POURQUOI UNE CHAÎNE 'AAAA-MM-JJ' ET PAS UN TIMESTAMP FIRESTORE
 // ------------------------------------------------------------
 // « En retard » est une question de JOUR DU CALENDRIER, pas d'instant.
@@ -235,7 +260,203 @@ function compterEnRetard(taches, ajd) {
 }
 
 // ------------------------------------------------------------
-// 4. Le report
+// 4. Les créneaux — l'heure, elle, est une heure
+// ------------------------------------------------------------
+// Même parti pris que pour l'échéance : une chaîne locale 'HH:MM', pas
+// un instant. On planifie « mardi 14 h », pas « mardi 12 h UTC », et
+// personne ne veut voir son planning se décaler en changeant de fuseau.
+
+// La plage affichée par défaut. Elle s'étend d'elle-même si un créneau
+// tombe en dehors : une tâche planifiee a 6 h ne doit pas devenir
+// invisible parce que la grille commence a 7 h.
+var HEURE_DEBUT_GRILLE = 7;
+var HEURE_FIN_GRILLE = 22;
+
+// Durées proposées, en minutes. Une liste fermée plutôt qu'une saisie
+// libre : personne ne planifie 37 minutes, et un champ libre invite à
+// une précision qu'on n'a pas.
+var DUREE_DEFAUT = 60;
+var DUREES = [15, 30, 45, 60, 90, 120, 240, 480];
+
+function heureValide(hhmm) {
+    return /^([01]\d|2[0-3]):[0-5]\d$/.test(String(hhmm || ''));
+}
+
+function minutesDeHeure(hhmm) {
+    if (!heureValide(hhmm)) return null;
+    var bouts = String(hhmm).split(':');
+    return Number(bouts[0]) * 60 + Number(bouts[1]);
+}
+
+function heureDeMinutes(minutes) {
+    if (typeof minutes !== 'number' || isNaN(minutes)) return '';
+    // Borné à la journée : un créneau ne franchit jamais minuit ici.
+    // Le faire déborder demanderait de le couper en deux dans la grille,
+    // pour un cas qui ne se présente pas quand on planifie sa journée.
+    var borne = Math.max(0, Math.min(1439, Math.round(minutes)));
+    var h = String(Math.floor(borne / 60));
+    var m = String(borne % 60);
+    if (h.length < 2) h = '0' + h;
+    if (m.length < 2) m = '0' + m;
+    return h + ':' + m;
+}
+
+function aUnCreneau(tache) {
+    return !!tache && isoValide(tache.creneauJour) && heureValide(tache.creneauHeure);
+}
+
+function dureeCreneau(tache) {
+    var duree = tache && Number(tache.creneauDuree);
+    return (duree && duree > 0) ? duree : DUREE_DEFAUT;
+}
+
+// Début et fin en minutes depuis minuit. null si la tâche n'est pas
+// planifiée — une absence doit se voir comme une absence.
+function bornesCreneau(tache) {
+    if (!aUnCreneau(tache)) return null;
+    var debut = minutesDeHeure(tache.creneauHeure);
+    return { debut: debut, fin: Math.min(1440, debut + dureeCreneau(tache)) };
+}
+
+// ------------------------------------------------------------
+// 5. Les trois signaux que la separation rend possibles
+// ------------------------------------------------------------
+
+// Le créneau est posé APRÈS la date à laquelle c'était dû. Rien, dans
+// un calendrier seul ni dans une liste seule, ne peut le dire.
+function planifieApresEcheance(tache) {
+    if (!tache || tache.faite) return false;
+    if (!aUnCreneau(tache) || !isoValide(tache.echeance)) return false;
+    return tache.creneauJour > tache.echeance;
+}
+
+// Ça brûle et on n'a pas décidé quand : le vrai trou de la planification.
+function sansCreneauAlorsQueProche(tache, ajd) {
+    if (!tache || tache.faite || aUnCreneau(tache)) return false;
+    return estEnRetard(tache, ajd) || estUrgente(tache, ajd);
+}
+
+// L'heure est passée, la tâche est ouverte. CE N'EST PAS UN RETARD :
+// l'échéance tient peut-être encore. C'est une replanification à faire,
+// et les confondre reviendrait à crier au loup un jour trop tôt.
+function creneauManque(tache, ajd, heureCourante) {
+    if (!tache || tache.faite || !aUnCreneau(tache)) return false;
+    if (tache.creneauJour > ajd) return false;
+    if (tache.creneauJour < ajd) return true;
+
+    var bornes = bornesCreneau(tache);
+    var maintenant = minutesDeHeure(heureCourante);
+    // Sans heure courante exploitable, on ne déclare rien : mieux vaut
+    // taire un signal que d'en inventer un.
+    if (maintenant === null) return false;
+    return maintenant > bornes.fin;
+}
+
+// ------------------------------------------------------------
+// 6. La semaine
+// ------------------------------------------------------------
+// Semaine ISO : elle commence le lundi. `getUTCDay()` rend 0 pour
+// dimanche, d'où le décalage — sans lui, la semaine du dimanche
+// commencerait le lendemain.
+function lundiDeLaSemaine(iso) {
+    var ms = isoVersUTC(iso);
+    if (ms === null) return '';
+    var jour = new Date(ms).getUTCDay();
+    return ajouterJours(iso, -((jour + 6) % 7));
+}
+
+function joursDeLaSemaine(isoLundi) {
+    var jours = [];
+    for (var i = 0; i < 7; i++) jours.push(ajouterJours(isoLundi, i));
+    return jours;
+}
+
+function creneauxDuJour(taches, iso) {
+    return (taches || []).filter(function(tache) {
+        return aUnCreneau(tache) && tache.creneauJour === iso;
+    });
+}
+
+// Les échéances tombant ce jour-là, créneau ou pas : dans la grille
+// elles s'affichent en bandeau au-dessus des heures. Une contrainte
+// n'a pas d'horaire, la poser dans la grille serait mentir.
+function echeancesDuJour(taches, iso) {
+    return (taches || []).filter(function(tache) {
+        return !tache.faite && tache.echeance === iso;
+    });
+}
+
+// ------------------------------------------------------------
+// 7. Les voies parallèles
+// ------------------------------------------------------------
+// Deux créneaux qui se chevauchent doivent rester tous les deux
+// lisibles : empilés, le second cacherait le premier et on planifierait
+// par-dessus sans le voir.
+//
+// Les voies se comptent par GRAPPE de chevauchements, pas par journée.
+// Sinon un doublon à 9 h réduirait de moitié la largeur de tout le
+// reste de la journée, qui n'y est pour rien.
+//
+// Rend [{ tache, debut, fin, voie, nbVoies }], en minutes.
+function repartirEnVoies(creneaux) {
+    var elements = (creneaux || []).map(function(tache) {
+        var bornes = bornesCreneau(tache);
+        return { tache: tache, debut: bornes.debut, fin: bornes.fin, voie: 0, nbVoies: 1 };
+    }).sort(function(a, b) {
+        if (a.debut !== b.debut) return a.debut - b.debut;
+        return a.fin - b.fin;
+    });
+
+    var grappes = [];
+    var courante = [];
+    var finMax = -1;
+    elements.forEach(function(element) {
+        if (courante.length && element.debut >= finMax) {
+            grappes.push(courante);
+            courante = [];
+            finMax = -1;
+        }
+        courante.push(element);
+        if (element.fin > finMax) finMax = element.fin;
+    });
+    if (courante.length) grappes.push(courante);
+
+    grappes.forEach(function(grappe) {
+        var finsDeVoie = [];
+        grappe.forEach(function(element) {
+            var voie = 0;
+            while (voie < finsDeVoie.length && finsDeVoie[voie] > element.debut) voie++;
+            element.voie = voie;
+            finsDeVoie[voie] = element.fin;
+        });
+        grappe.forEach(function(element) { element.nbVoies = finsDeVoie.length; });
+    });
+
+    return elements;
+}
+
+// La plage d'heures a afficher : les constantes, elargies a ce que la
+// semaine contient reellement. Arrondie a l'heure pleine des deux cotes,
+// pour que la colonne de gauche n'affiche pas « 06:40 ».
+function plageHoraire(taches) {
+    var debut = HEURE_DEBUT_GRILLE * 60;
+    var fin = HEURE_FIN_GRILLE * 60;
+
+    (taches || []).forEach(function(tache) {
+        var bornes = bornesCreneau(tache);
+        if (!bornes) return;
+        if (bornes.debut < debut) debut = bornes.debut;
+        if (bornes.fin > fin) fin = bornes.fin;
+    });
+
+    return {
+        debut: Math.floor(debut / 60) * 60,
+        fin: Math.min(1440, Math.ceil(fin / 60) * 60)
+    };
+}
+
+// ------------------------------------------------------------
+// 8. Le report
 // ------------------------------------------------------------
 // LE COMPTEUR NE VAUT QUE S'IL NE MENT PAS. Un report, c'est repousser
 // une date qui existait déjà. Dater une tâche qui n'en avait pas, ou

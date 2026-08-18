@@ -7,7 +7,10 @@
 //   projet           string   libellé, liste fermée (comme le carnet d'idées)
 //   important        bool     la seule qualification saisie à la main
 //   urgentForce      bool     « urgent tout de suite », pour l'urgence sans date
-//   echeance         string   'AAAA-MM-JJ', ou '' si la tâche n'est pas datée
+//   echeance         string   'AAAA-MM-JJ' — AVANT QUAND ça doit être fait
+//   creneauJour      string   'AAAA-MM-JJ' — QUAND je m'y colle
+//   creneauHeure     string   'HH:MM'
+//   creneauDuree     int      minutes
 //   faite            bool
 //   faiteLe          string   'AAAA-MM-JJ'
 //   nbReports        int      combien de fois l'échéance a été repoussée
@@ -40,8 +43,15 @@
 var db = null;
 var taches = [];
 var filtreEtat = 'a_faire';   // a_faire | faites | toutes
+var vue = 'liste';            // liste | semaine
+var lundiAffiche = '';        // lundi de la semaine montrée par la grille
 var idEnEdition = null;
+var creneauEnCours = null;    // { jour, heure } pendant le choix d'une tâche
 var premierChargement = true;
+
+// La hauteur d'une heure dans la grille, en pixels. De la présentation
+// pure : le calcul, lui, ne connaît que des minutes.
+var HAUTEUR_HEURE = 46;
 
 // Le bloc des tâches réglées : de la présentation pure, d'où sa place
 // ici et non dans BLOCS, dont l'ordre porte, lui, la priorité.
@@ -57,6 +67,8 @@ var BLOC_FAITES = {
 // ------------------------------------------------------------
 function onHubReady() {
     db = firebase.firestore();
+    lundiAffiche = lundiDeLaSemaine(aujourdhui());
+    renderSelecteurVues();
 
     // Sous impersonation, il n'y a rien d'honnête à afficher. Les
     // requêtes partent avec le jeton du superadmin : interroger la
@@ -75,7 +87,7 @@ function onHubReady() {
             note.style.display = '';
         }
         renderFiltres();
-        renderTaches();
+        renderVue();
         return;
     }
 
@@ -100,7 +112,7 @@ function ecouterTaches() {
             });
             premierChargement = false;
             renderFiltres();
-            renderTaches();
+            renderVue();
         }, function(erreur) {
             console.error('Erreur Firestore :', erreur);
             var cible = document.getElementById('taches-blocs');
@@ -142,8 +154,67 @@ function libelleEcheance(iso, ajd) {
     return formatEcheance(iso);
 }
 
+// Le jour de la semaine, en toutes lettres. Reconstruit en Date LOCALE
+// pour la même raison que `formatEcheance`.
+function dateLocale(iso) {
+    if (!isoValide(iso)) return null;
+    var bouts = iso.split('-');
+    return new Date(Number(bouts[0]), Number(bouts[1]) - 1, Number(bouts[2]));
+}
+
+function libelleJourCourt(iso) {
+    var date = dateLocale(iso);
+    if (!date) return '';
+    return date.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' });
+}
+
 // ------------------------------------------------------------
-// 4. Filtres
+// 4. Les deux vues
+// ------------------------------------------------------------
+// Même donnée, deux regards : la liste dit « dans quel ordre », la
+// grille dit « quand ». Une page et non deux, comme le chantier fait
+// déjà avec ses vues — ce sont les mêmes tâches, pas deux outils.
+var VUES = [
+    { cle: 'liste',   titre: 'Liste',   icone: 'fa-solid fa-list-check' },
+    { cle: 'semaine', titre: 'Semaine', icone: 'fa-solid fa-calendar-week' }
+];
+
+function renderSelecteurVues() {
+    var cible = document.getElementById('selecteur-vues');
+    if (!cible) return;
+    cible.innerHTML = VUES.map(function(v) {
+        return '<button type="button" class="vue-btn' + (vue === v.cle ? ' active' : '') + '"'
+            + ' onclick="changerVue(\'' + jsAttr(v.cle) + '\')">'
+            + '<i class="' + escapeAttr(v.icone) + '"></i> ' + escapeHtml(v.titre) + '</button>';
+    }).join('');
+}
+
+function changerVue(cle) {
+    vue = cle;
+    renderSelecteurVues();
+    renderVue();
+}
+
+function renderVue() {
+    var liste = document.getElementById('vue-liste');
+    var semaine = document.getElementById('vue-semaine');
+    // La barre de recherche et les filtres n'ont de sens que sur la
+    // liste : filtrer une grille en masquerait des cases sans le dire.
+    var outils = document.getElementById('outils-liste');
+
+    if (liste) liste.style.display = (vue === 'liste') ? '' : 'none';
+    if (semaine) semaine.style.display = (vue === 'semaine') ? '' : 'none';
+    if (outils) outils.style.display = (vue === 'liste') ? '' : 'none';
+
+    signalerEnlisement();
+    signalerSansCreneau();
+
+    if (vue === 'semaine') renderSemaine();
+    else renderTaches();
+}
+
+// ------------------------------------------------------------
+// 5. Filtres
 // ------------------------------------------------------------
 function renderFiltres() {
     var cible = document.getElementById('etat-filter');
@@ -190,7 +261,7 @@ function tachesFiltrees() {
 }
 
 // ------------------------------------------------------------
-// 5. Rendu
+// 6. Rendu de la liste
 // ------------------------------------------------------------
 function renderTaches() {
     var cible = document.getElementById('taches-blocs');
@@ -201,8 +272,6 @@ function renderTaches() {
     var lignes = tachesFiltrees();
     var ajd = aujourdhui();
     var rangement = rangerParBloc(lignes, ajd);
-
-    signalerEnlisement();
 
     if (compteur) {
         compteur.textContent = lignes.length + ' tâche' + (lignes.length > 1 ? 's' : '');
@@ -270,6 +339,27 @@ function carteTache(tache, ajd) {
             + escapeHtml(formatEcheance(tache.faiteLe)) + '</span>');
     }
 
+    // Les trois signaux que la séparation échéance / créneau rend
+    // possibles. Ils ne changent pas le bloc de la tâche — ce sont des
+    // alertes, pas une cinquième priorité.
+    if (aUnCreneau(tache) && !tache.faite) {
+        var manque = creneauManque(tache, ajd, heureCourante());
+        bouts.push('<span class="badge ' + (manque ? 'badge-creneau-manque' : 'badge-creneau') + '">'
+            + '<i class="fa-solid fa-' + (manque ? 'clock-rotate-left' : 'calendar-check') + '"></i>'
+            + escapeHtml(libelleCreneau(tache, ajd)) + (manque ? ' — manqué' : '') + '</span>');
+    }
+    if (planifieApresEcheance(tache)) {
+        bouts.push('<span class="badge badge-debordee"'
+            + ' title="' + escapeAttr('Le créneau est le ' + formatEcheance(tache.creneauJour)
+                + ', l\'échéance était le ' + formatEcheance(tache.echeance) + '.') + '">'
+            + '<i class="fa-solid fa-arrow-right-long"></i>planifié après l\'échéance</span>');
+    }
+    if (sansCreneauAlorsQueProche(tache, ajd)) {
+        bouts.push('<span class="badge badge-sans-creneau"'
+            + ' title="Ça brûle, et aucun moment n\'est encore décidé.">'
+            + '<i class="fa-solid fa-calendar-plus"></i>sans créneau</span>');
+    }
+
     return '<article class="carte-fil carte-tache' + (tache.faite ? ' carte-fil--close' : '') + '">'
         + '<div class="carte-fil-corps">'
         +   '<button type="button" class="carte-titre carte-titre--bouton" onclick="ouvrirModale(\'' + id + '\')">'
@@ -279,6 +369,15 @@ function carteTache(tache, ajd) {
         +   actionsTache(tache, retard)
         + '</div>'
         + '</article>';
+}
+
+// « aujourd'hui 14:00 », « mar. 3 à 09:30 » : le jour se dit en clair
+// quand il n'est pas aujourd'hui, sinon l'heure suffit.
+function libelleCreneau(tache, ajd) {
+    var heure = tache.creneauHeure;
+    if (tache.creneauJour === ajd) return 'aujourd\'hui ' + heure;
+    if (tache.creneauJour === ajouterJours(ajd, 1)) return 'demain ' + heure;
+    return libelleJourCourt(tache.creneauJour) + ' à ' + heure;
 }
 
 function titreReports(tache) {
@@ -308,10 +407,45 @@ function actionsTache(tache, retard) {
         }
     }
 
+    if (aUnCreneau(tache) && !tache.faite) {
+        boutons += '<button type="button" class="tache-btn" onclick="deplanifierTache(\'' + id + '\')"'
+            + ' title="Retirer le créneau — la tâche reste, seule la décision du moment s\'efface">'
+            + '<i class="fa-solid fa-calendar-xmark"></i> Déplanifier</button>';
+    }
+
     boutons += '<button type="button" class="tache-btn" onclick="ouvrirModale(\'' + id + '\')">'
         + '<i class="fa-solid fa-pen"></i> Modifier</button>';
 
     return '<div class="tache-actions">' + boutons + '</div>';
+}
+
+// Le trou de la planification : ça brûle et rien n'est décidé. C'est le
+// signal qu'un calendrier seul ne peut pas donner — il ne connaît que ce
+// qu'on y a déjà posé — et qu'une liste seule ne peut pas donner non
+// plus, faute de savoir ce qui est planifié.
+function signalerSansCreneau() {
+    var bloc = document.getElementById('note-sans-creneau');
+    if (!bloc) return;
+
+    var ajd = aujourdhui();
+    var orphelines = taches.filter(function(tache) {
+        return sansCreneauAlorsQueProche(tache, ajd);
+    });
+
+    if (!orphelines.length) {
+        bloc.style.display = 'none';
+        return;
+    }
+
+    var nb = orphelines.length;
+    bloc.innerHTML = '<i class="fa-solid fa-calendar-plus"></i>'
+        + '<div><strong>' + nb + ' tâche' + (nb > 1 ? 's' : '') + ' sans créneau</strong> '
+        + 'alors qu\'' + (nb > 1 ? 'elles arrivent' : 'elle arrive') + ' à échéance. '
+        + 'Savoir que c\'est urgent ne suffit pas : tant qu\'aucun moment n\'est posé, '
+        + 'rien ne se fera.'
+        + '<button type="button" class="btn-ajout-auteur" onclick="changerVue(\'semaine\')">'
+        + 'Ouvrir la semaine</button></div>';
+    bloc.style.display = '';
 }
 
 // L'avertissement qui dit tout haut ce qu'un compteur de reports ne
@@ -337,7 +471,267 @@ function signalerEnlisement() {
 }
 
 // ------------------------------------------------------------
-// 6. Clôture et report
+// 7. La grille de semaine
+// ------------------------------------------------------------
+// Construite à la main : sept colonnes, des blocs positionnés au pixel
+// depuis des minutes. Une librairie de calendrier passerait la CSP mais
+// pèserait plus lourd que tout le hub réuni, pour un rendu qu'on ne
+// maîtriserait plus.
+//
+// Deux étages, et la distinction est le sujet même de cette vue :
+//   - EN HAUT, hors grille : les échéances. Une contrainte n'a pas
+//     d'horaire, la poser dans les heures serait lui en inventer un.
+//   - DANS LA GRILLE : les créneaux. Eux seuls ont une heure.
+function renderSemaine() {
+    var cible = document.getElementById('vue-semaine');
+    if (!cible) return;
+
+    var ajd = aujourdhui();
+    var jours = joursDeLaSemaine(lundiAffiche);
+    // La plage se calcule sur la semaine affichée seulement : une tâche
+    // planifiée à 5 h en mars ne doit pas allonger toutes les grilles de
+    // l'année.
+    var deLaSemaine = taches.filter(function(t) {
+        return aUnCreneau(t) && jours.indexOf(t.creneauJour) !== -1;
+    });
+    var plage = plageHoraire(deLaSemaine);
+
+    cible.innerHTML = barreSemaine(jours, ajd)
+        + '<div class="semaine-defilement">'
+        +   '<div class="semaine-grille">'
+        +     colonneHeures(plage)
+        +     jours.map(function(iso) { return colonneJour(iso, ajd, plage); }).join('')
+        +   '</div>'
+        + '</div>'
+        + legendeSemaine();
+}
+
+function barreSemaine(jours, ajd) {
+    var debut = dateLocale(jours[0]);
+    var fin = dateLocale(jours[6]);
+    var titre = debut && fin
+        ? debut.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
+            + ' — ' + fin.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+        : '';
+
+    var nbPlanifiees = jours.reduce(function(total, iso) {
+        return total + creneauxDuJour(taches, iso).length;
+    }, 0);
+
+    return '<div class="semaine-barre">'
+        + '<div class="semaine-nav">'
+        +   '<button type="button" class="tache-btn" onclick="semaineDecalee(-7)" title="Semaine précédente">'
+        +     '<i class="fa-solid fa-chevron-left"></i></button>'
+        +   '<button type="button" class="tache-btn" onclick="semaineAujourdhui()">Cette semaine</button>'
+        +   '<button type="button" class="tache-btn" onclick="semaineDecalee(7)" title="Semaine suivante">'
+        +     '<i class="fa-solid fa-chevron-right"></i></button>'
+        + '</div>'
+        + '<div class="semaine-titre">' + escapeHtml(titre)
+        +   '<span class="semaine-compte">' + nbPlanifiees + ' créneau' + (nbPlanifiees > 1 ? 'x' : '') + '</span>'
+        + '</div>'
+        + '</div>';
+}
+
+function legendeSemaine() {
+    return '<p class="semaine-legende">'
+        + '<i class="fa-solid fa-hand-pointer"></i> '
+        + 'Cliquez une case vide pour y poser une tâche. '
+        + 'Les <strong>échéances</strong> sont en haut de colonne, hors des heures : '
+        + 'ce sont des contraintes, pas des rendez-vous.'
+        + '</p>';
+}
+
+function semaineDecalee(jours) {
+    lundiAffiche = ajouterJours(lundiAffiche, jours);
+    renderSemaine();
+}
+
+function semaineAujourdhui() {
+    lundiAffiche = lundiDeLaSemaine(aujourdhui());
+    renderSemaine();
+}
+
+function colonneHeures(plage) {
+    var lignes = '';
+    for (var minutes = plage.debut; minutes < plage.fin; minutes += 60) {
+        lignes += '<div class="semaine-heure" style="height:' + HAUTEUR_HEURE + 'px">'
+            + '<span>' + escapeHtml(heureDeMinutes(minutes)) + '</span></div>';
+    }
+    return '<div class="semaine-colonne semaine-colonne--heures">'
+        + '<div class="semaine-entete"></div>'
+        + '<div class="semaine-bandeau"></div>'
+        + '<div class="semaine-heures">' + lignes + '</div>'
+        + '</div>';
+}
+
+function colonneJour(iso, ajd, plage) {
+    var estAujourdhui = (iso === ajd);
+    var hauteur = ((plage.fin - plage.debut) / 60) * HAUTEUR_HEURE;
+
+    // Les cases cliquables sous les blocs : une par heure. Une case par
+    // demi-heure doublerait le nombre de boutons pour un gain nul, la
+    // modale de pose laissant de toute façon choisir l'heure exacte.
+    var cases = '';
+    for (var minutes = plage.debut; minutes < plage.fin; minutes += 60) {
+        cases += '<button type="button" class="semaine-case"'
+            + ' style="height:' + HAUTEUR_HEURE + 'px"'
+            + ' onclick="ouvrirChoixTache(\'' + jsAttr(iso) + '\', \'' + jsAttr(heureDeMinutes(minutes)) + '\')"'
+            + ' title="' + escapeAttr('Poser une tâche le ' + libelleJourCourt(iso)
+                + ' à ' + heureDeMinutes(minutes)) + '"></button>';
+    }
+
+    var blocs = repartirEnVoies(creneauxDuJour(taches, iso))
+        .map(function(element) { return blocCreneau(element, plage); })
+        .join('');
+
+    return '<div class="semaine-colonne' + (estAujourdhui ? ' semaine-colonne--aujourdhui' : '') + '">'
+        + '<div class="semaine-entete">' + escapeHtml(libelleJourCourt(iso)) + '</div>'
+        + '<div class="semaine-bandeau">' + bandeauEcheances(iso) + '</div>'
+        + '<div class="semaine-heures" style="height:' + hauteur + 'px">'
+        +   cases
+        +   blocs
+        + '</div>'
+        + '</div>';
+}
+
+// Les échéances du jour, en pastilles au-dessus de la grille. Une tâche
+// dont l'échéance tombe ici mais dont le créneau est ailleurs apparaît
+// donc aux deux endroits : c'est justement ce qu'on veut voir.
+function bandeauEcheances(iso) {
+    var lignes = echeancesDuJour(taches, iso);
+    if (!lignes.length) return '';
+
+    return lignes.map(function(tache) {
+        var classe = 'semaine-echeance';
+        if (tache.important) classe += ' semaine-echeance--important';
+        if (planifieApresEcheance(tache)) classe += ' semaine-echeance--debordee';
+        return '<button type="button" class="' + classe + '"'
+            + ' onclick="ouvrirModale(\'' + jsAttr(tache.id) + '\')"'
+            + ' title="' + escapeAttr(infobulleEcheance(tache)) + '">'
+            + '<i class="fa-solid fa-flag-checkered"></i> ' + escapeHtml(tache.titre || '(sans titre)')
+            + '</button>';
+    }).join('');
+}
+
+function infobulleEcheance(tache) {
+    var texte = 'Échéance : ' + formatEcheance(tache.echeance);
+    if (!aUnCreneau(tache)) return texte + ' — aucun créneau posé.';
+    if (planifieApresEcheance(tache)) {
+        return texte + ' — mais le créneau est le ' + formatEcheance(tache.creneauJour) + ', après.';
+    }
+    return texte + ' — créneau le ' + formatEcheance(tache.creneauJour) + ' à ' + tache.creneauHeure + '.';
+}
+
+function blocCreneau(element, plage) {
+    var tache = element.tache;
+    var haut = ((element.debut - plage.debut) / 60) * HAUTEUR_HEURE;
+    var hauteur = Math.max(18, ((element.fin - element.debut) / 60) * HAUTEUR_HEURE);
+    var largeur = 100 / element.nbVoies;
+
+    var classe = 'semaine-bloc';
+    if (tache.faite) classe += ' semaine-bloc--faite';
+    else if (creneauManque(tache, aujourdhui(), heureCourante())) classe += ' semaine-bloc--manque';
+    else if (tache.important) classe += ' semaine-bloc--important';
+    if (planifieApresEcheance(tache)) classe += ' semaine-bloc--debordee';
+
+    return '<button type="button" class="' + classe + '"'
+        + ' style="top:' + haut + 'px;height:' + hauteur + 'px;'
+        +   'left:' + (element.voie * largeur) + '%;width:' + largeur + '%"'
+        + ' onclick="ouvrirModale(\'' + jsAttr(tache.id) + '\')"'
+        + ' title="' + escapeAttr(infobulleCreneau(tache, element)) + '">'
+        + '<span class="semaine-bloc-heure">' + escapeHtml(heureDeMinutes(element.debut)) + '</span>'
+        + '<span class="semaine-bloc-titre">' + escapeHtml(tache.titre || '(sans titre)') + '</span>'
+        + '</button>';
+}
+
+function infobulleCreneau(tache, element) {
+    var texte = heureDeMinutes(element.debut) + ' – ' + heureDeMinutes(element.fin)
+        + ' · ' + (tache.titre || '(sans titre)');
+    if (isoValide(tache.echeance)) {
+        texte += '\nÉchéance : ' + formatEcheance(tache.echeance);
+        if (planifieApresEcheance(tache)) texte += ' — le créneau est APRÈS.';
+    }
+    return texte;
+}
+
+// L'heure courante, pour savoir si un créneau est passé. Isolée dans sa
+// propre fonction pour que les tests puissent la piloter, comme
+// `aujourdhui()`.
+function heureCourante() {
+    var maintenant = new Date();
+    var h = String(maintenant.getHours());
+    var m = String(maintenant.getMinutes());
+    if (h.length < 2) h = '0' + h;
+    if (m.length < 2) m = '0' + m;
+    return h + ':' + m;
+}
+
+// ------------------------------------------------------------
+// 8. Poser une tâche sur un créneau
+// ------------------------------------------------------------
+// Clic pour placer, et non glisser-déposer : le glisser tient mal au
+// doigt — or c'est sur le téléphone qu'on replanifie —, et il serait
+// intestable hors navigateur.
+function ouvrirChoixTache(jour, heure) {
+    creneauEnCours = { jour: jour, heure: heure };
+
+    var candidates = taches.filter(function(t) { return !t.faite && !aUnCreneau(t); });
+    var ajd = aujourdhui();
+    // Le même ordre que la liste : ce qui brûle en premier, sinon on
+    // planifierait au hasard de l'ordre de Firestore.
+    var rangement = rangerParBloc(candidates, ajd);
+    var ordonnees = rangement.retard.concat(rangement.urgent, rangement.important, rangement.reste);
+
+    document.getElementById('choix-creneau').textContent =
+        libelleJourCourt(jour) + ' à ' + heure;
+
+    var liste = document.getElementById('choix-liste');
+    liste.innerHTML = ordonnees.length
+        ? ordonnees.map(function(tache) {
+            var bouts = [];
+            if (isoValide(tache.echeance)) {
+                bouts.push(estEnRetard(tache, ajd)
+                    ? '<span class="badge badge-retard">en retard</span>'
+                    : '<span class="badge">' + escapeHtml(libelleEcheance(tache.echeance, ajd)) + '</span>');
+            }
+            if (tache.important) bouts.push('<span class="badge badge-important">important</span>');
+            return '<button type="button" class="choix-item"'
+                + ' onclick="planifierTache(\'' + jsAttr(tache.id) + '\')">'
+                + '<span class="choix-item-titre">' + escapeHtml(tache.titre || '(sans titre)') + '</span>'
+                + '<span class="choix-item-meta">' + bouts.join(' ') + '</span>'
+                + '</button>';
+        }).join('')
+        : '<p class="bloc-vide">Aucune tâche à placer : tout ce qui reste ouvert a déjà son créneau.</p>';
+
+    document.getElementById('choix-overlay').style.display = 'flex';
+}
+
+function fermerChoixTache() {
+    document.getElementById('choix-overlay').style.display = 'none';
+    creneauEnCours = null;
+}
+
+function planifierTache(id) {
+    if (!creneauEnCours) return;
+    var jour = creneauEnCours.jour;
+    var heure = creneauEnCours.heure;
+    fermerChoixTache();
+
+    ecrire(id, {
+        creneauJour: jour,
+        creneauHeure: heure,
+        creneauDuree: DUREE_DEFAUT
+    }, 'Placée ' + libelleJourCourt(jour) + ' à ' + heure + '.');
+}
+
+// Déplanifier n'est PAS reporter : on retire une décision, on ne
+// repousse pas une contrainte. Le compteur de reports ne bouge donc pas.
+function deplanifierTache(id) {
+    ecrire(id, { creneauJour: '', creneauHeure: '', creneauDuree: 0 }, 'Créneau retiré.');
+}
+
+// ------------------------------------------------------------
+// 9. Clôture et report
 // ------------------------------------------------------------
 function trouverTache(id) {
     for (var i = 0; i < taches.length; i++) {
@@ -384,7 +778,7 @@ function ecrire(id, donnees, message) {
 }
 
 // ------------------------------------------------------------
-// 7. Modale
+// 10. Modale
 // ------------------------------------------------------------
 // Les sujets proposables : les projets du hub ET les sites, filtrés par
 // les droits. Même mécanique qu'au carnet d'idées, et pour la même
@@ -436,6 +830,24 @@ function remplirSelectProjet(valeurCourante) {
     select.value = valeurCourante || '';
 }
 
+// Durées en liste fermée : personne ne planifie 37 minutes, et un champ
+// libre inviterait à une précision qu'on n'a pas.
+function remplirSelectDuree(valeurCourante) {
+    var select = document.getElementById('f-creneau-duree');
+    if (!select) return;
+    select.innerHTML = DUREES.map(function(minutes) {
+        return '<option value="' + minutes + '">' + escapeHtml(libelleDuree(minutes)) + '</option>';
+    }).join('');
+    select.value = String(valeurCourante || DUREE_DEFAUT);
+}
+
+function libelleDuree(minutes) {
+    if (minutes < 60) return minutes + ' min';
+    var heures = Math.floor(minutes / 60);
+    var reste = minutes % 60;
+    return heures + ' h' + (reste ? String(reste) : '');
+}
+
 function ouvrirModale(id) {
     idEnEdition = id || null;
     var tache = id ? trouverTache(id) : null;
@@ -446,12 +858,18 @@ function ouvrirModale(id) {
     document.getElementById('f-important').value    = (tache && tache.important) ? 'oui' : 'non';
     document.getElementById('f-echeance').value     = (tache && isoValide(tache.echeance)) ? tache.echeance : '';
     document.getElementById('f-urgent-force').checked = !!(tache && tache.urgentForce);
+    document.getElementById('f-creneau-jour').value  = (tache && isoValide(tache.creneauJour)) ? tache.creneauJour : '';
+    document.getElementById('f-creneau-heure').value = (tache && heureValide(tache.creneauHeure)) ? tache.creneauHeure : '';
+    remplirSelectDuree(tache ? dureeCreneau(tache) : DUREE_DEFAUT);
     remplirSelectProjet(tache ? (tache.projet || '') : '');
 
     var meta = document.getElementById('f-meta');
     if (tache) {
         var texte = 'Créée le ' + formatDateFr(tache.createdAt);
         if (tache.nbReports) texte += ' — ' + titreReports(tache).toLowerCase();
+        if (planifieApresEcheance(tache)) {
+            texte += ' — ⚠ le créneau est posé APRÈS l\'échéance.';
+        }
         meta.textContent = texte;
         meta.style.display = 'block';
     } else {
@@ -477,13 +895,28 @@ function sauverTache() {
     }
 
     var echeance = document.getElementById('f-echeance').value;
+
+    // Un créneau n'existe que si le jour ET l'heure sont là. Une heure
+    // sans jour ne veut rien dire, et un jour sans heure serait une
+    // seconde échéance déguisée — exactement la confusion qu'on évite.
+    var creneauJour = document.getElementById('f-creneau-jour').value;
+    var creneauHeure = document.getElementById('f-creneau-heure').value;
+    var creneauComplet = isoValide(creneauJour) && heureValide(creneauHeure);
+    if ((creneauJour || creneauHeure) && !creneauComplet) {
+        showToast('Un créneau demande un jour ET une heure.', 'error');
+        return;
+    }
+
     var donnees = {
-        titre:       titre,
-        detail:      document.getElementById('f-detail').value.trim(),
-        projet:      document.getElementById('f-projet').value.trim(),
-        important:   document.getElementById('f-important').value === 'oui',
-        urgentForce: document.getElementById('f-urgent-force').checked,
-        updatedAt:   firebase.firestore.FieldValue.serverTimestamp()
+        titre:        titre,
+        detail:       document.getElementById('f-detail').value.trim(),
+        projet:       document.getElementById('f-projet').value.trim(),
+        important:    document.getElementById('f-important').value === 'oui',
+        urgentForce:  document.getElementById('f-urgent-force').checked,
+        creneauJour:  creneauComplet ? creneauJour : '',
+        creneauHeure: creneauComplet ? creneauHeure : '',
+        creneauDuree: creneauComplet ? Number(document.getElementById('f-creneau-duree').value) || DUREE_DEFAUT : 0,
+        updatedAt:    firebase.firestore.FieldValue.serverTimestamp()
     };
 
     var operation;
@@ -519,7 +952,7 @@ function sauverTache() {
 }
 
 // ------------------------------------------------------------
-// 8. Suppression
+// 11. Suppression
 // ------------------------------------------------------------
 function ouvrirModaleSuppression() {
     document.getElementById('delete-overlay').style.display = 'flex';
@@ -544,7 +977,7 @@ function confirmerSuppression() {
 }
 
 // ------------------------------------------------------------
-// 9. Export JSON (le filet de sauvegarde)
+// 12. Export JSON (le filet de sauvegarde)
 // ------------------------------------------------------------
 // Firestore sur le plan gratuit n'offre ni sauvegarde automatique ni
 // restauration à un instant T. Ce bouton est la seule protection contre
@@ -574,6 +1007,9 @@ function exporterJson() {
                 urgentForce:      !!t.urgentForce,
                 echeance:         t.echeance || '',
                 echeanceInitiale: t.echeanceInitiale || '',
+                creneauJour:      t.creneauJour || '',
+                creneauHeure:     t.creneauHeure || '',
+                creneauDuree:     t.creneauDuree || 0,
                 nbReports:        t.nbReports || 0,
                 faite:            !!t.faite,
                 faiteLe:          t.faiteLe || '',
@@ -601,13 +1037,17 @@ function exporterJson() {
 }
 
 // ------------------------------------------------------------
-// 10. Raccourcis clavier
+// 13. Raccourcis clavier
 // ------------------------------------------------------------
 document.addEventListener('keydown', function(evenement) {
     if (evenement.key !== 'Escape') return;
+    // Du plus profond au plus superficiel : Échap ne doit fermer qu'une
+    // couche à la fois.
     if (document.getElementById('delete-overlay').style.display === 'flex') {
         fermerModaleSuppression();
     } else if (document.getElementById('modal-overlay').style.display === 'flex') {
         fermerModale();
+    } else if (document.getElementById('choix-overlay').style.display === 'flex') {
+        fermerChoixTache();
     }
 });

@@ -39,26 +39,41 @@
              qui ose dire qu'une tâche est morte. -->
         <div class="avertissement avertissement--info" id="note-enlisement" style="display:none"></div>
 
-        <div class="toolbar">
-            <div class="search">
-                <i class="fa-solid fa-magnifying-glass search__icon"></i>
-                <input type="text" id="search-input" class="search__input"
-                       placeholder="Rechercher (titre, détail, projet…)" oninput="renderTaches()">
-                <button type="button" class="search__clear" id="search-clear" onclick="clearSearch()" style="display:none">
-                    <i class="fa-solid fa-xmark"></i>
-                </button>
+        <!-- Le trou de la planification : ça brûle, rien n'est décidé.
+             Ni une liste seule ni un calendrier seul ne peuvent le dire. -->
+        <div class="avertissement avertissement--info" id="note-sans-creneau" style="display:none"></div>
+
+        <!-- Liste | Semaine — la même donnée, deux regards. -->
+        <nav id="selecteur-vues" class="selecteur-vues"></nav>
+
+        <!-- Recherche et filtres ne valent que pour la liste : filtrer
+             une grille en masquerait des cases sans le dire. -->
+        <div id="outils-liste">
+            <div class="toolbar">
+                <div class="search">
+                    <i class="fa-solid fa-magnifying-glass search__icon"></i>
+                    <input type="text" id="search-input" class="search__input"
+                           placeholder="Rechercher (titre, détail, projet…)" oninput="renderTaches()">
+                    <button type="button" class="search__clear" id="search-clear" onclick="clearSearch()" style="display:none">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div id="etat-filter" class="filter-row"></div>
+            <div id="result-count" class="result-count"></div>
+        </div>
+
+        <div id="vue-liste">
+            <div id="taches-blocs"></div>
+
+            <div class="empty-state" id="empty-state" style="display:none">
+                <i class="fa-solid fa-mug-hot"></i>
+                <p>Rien à faire dans ce filtre.</p>
             </div>
         </div>
 
-        <div id="etat-filter" class="filter-row"></div>
-        <div id="result-count" class="result-count"></div>
-
-        <div id="taches-blocs"></div>
-
-        <div class="empty-state" id="empty-state" style="display:none">
-            <i class="fa-solid fa-mug-hot"></i>
-            <p>Rien à faire dans ce filtre.</p>
-        </div>
+        <div id="vue-semaine" style="display:none"></div>
 
     </div>
 
@@ -97,6 +112,28 @@
                     </label>
                     <small class="field-hint">Pour l'urgence qu'aucune date ne dit.</small>
                 </div>
+                <!-- LE CRÉNEAU N'EST PAS L'ÉCHÉANCE. L'échéance dit avant
+                     quand ça doit être fait ; le créneau, quand on s'y
+                     colle. Les fondre en un seul champ, c'est refaire
+                     Google Calendar — voir l'en-tête de taches-calcul.js. -->
+                <div class="field field--full">
+                    <label class="field-groupe">Créneau — quand je m'y colle</label>
+                </div>
+                <div class="field">
+                    <label for="f-creneau-jour">Jour</label>
+                    <input type="date" id="f-creneau-jour">
+                </div>
+                <div class="field field--duo">
+                    <div>
+                        <label for="f-creneau-heure">Heure</label>
+                        <input type="time" id="f-creneau-heure" step="900">
+                    </div>
+                    <div>
+                        <label for="f-creneau-duree">Durée</label>
+                        <select id="f-creneau-duree"></select>
+                    </div>
+                </div>
+
                 <div class="field field--full">
                     <label for="f-detail">Détail</label>
                     <textarea id="f-detail" rows="4" placeholder="Le contexte, le numéro à rappeler, ce qu'il faut avoir sous la main…"></textarea>
@@ -107,6 +144,23 @@
                 <button type="button" id="btn-delete" class="modal-btn modal-btn-danger" style="display:none" onclick="ouvrirModaleSuppression()">Supprimer</button>
                 <button type="button" class="modal-btn" onclick="fermerModale()">Fermer</button>
                 <button type="button" id="btn-enregistrer" class="modal-btn modal-btn-primary" onclick="sauverTache()">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Choix de la tâche à poser sur un créneau cliqué -->
+    <div id="choix-overlay" class="modal-overlay" style="display:none">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="choix-titre">
+            <h2 class="modal-title" id="choix-titre">
+                Poser une tâche — <span id="choix-creneau"></span>
+            </h2>
+            <p class="modal-desc">
+                Dans l'ordre de priorité de la liste. Seules les tâches ouvertes
+                et pas encore planifiées apparaissent ici.
+            </p>
+            <div class="choix-liste" id="choix-liste"></div>
+            <div class="modal-actions">
+                <button type="button" class="modal-btn" style="margin-right:0" onclick="fermerChoixTache()">Annuler</button>
             </div>
         </div>
     </div>

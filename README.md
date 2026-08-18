@@ -485,6 +485,55 @@ tâche due demain est faux. D'où :
 
 Bénéfice secondaire, la saisie tombe à trois gestes : un titre, une case, une date.
 
+#### ⚠ L'échéance et le créneau sont deux choses, et c'est tout le sujet
+
+`echeance` répond à **avant quand** ça doit être fait : c'est une contrainte, et elle n'a
+pas d'heure. `creneauJour` + `creneauHeure` répondent à **quand je m'y colle** : c'est une
+décision, et elle en a une.
+
+Les confondre est la maladie exacte de Google Calendar — la contrainte y devient un
+événement à 14 h, et si on ne le fait pas à 14 h, il passe, sans rien dire. Coller une
+heure sur `echeance` aurait d'ailleurs cassé le mécanisme de retard : « en retard » serait
+redevenu une question d'instant, et le bloc de tête se serait mis à clignoter à midi pour
+une tâche qu'on a jusqu'au soir.
+
+Séparés, les deux champs font apparaître **trois signaux qu'aucun des deux outils ne sait
+donner** :
+
+| Signal | Ce qu'il dit |
+|---|---|
+| **Planifié après l'échéance** | Le créneau est jeudi, c'était dû mardi. Un calendrier ne le voit pas, une liste non plus |
+| **Urgent sans créneau** | Ça brûle et aucun moment n'est décidé — le vrai trou de la planification |
+| **Créneau manqué** | L'heure est passée, la tâche est ouverte. **Ce n'est pas un retard** : l'échéance tient peut-être encore, c'est une replanification à faire |
+
+Aucun des trois ne change le bloc de la tâche : ce sont des alertes, pas une cinquième
+priorité. Diluer les quatre blocs les aurait rendus muets.
+
+#### La vue Semaine
+
+Second onglet de la même page — même donnée, deux regards : la liste dit *dans quel ordre*,
+la grille dit *quand*. Construite à la main, sans librairie : sept colonnes, des blocs
+positionnés au pixel depuis des minutes. FullCalendar passerait la CSP mais pèserait plus
+lourd que tout le hub réuni.
+
+Deux étages, et leur séparation **est** le sujet de la vue : les **échéances** en bandeau
+au-dessus de la grille (une contrainte n'a pas d'horaire, la poser dans les heures serait
+lui en inventer un), les **créneaux** en blocs dans les heures.
+
+On pose une tâche en **cliquant une case vide** — pas en glissant : le glisser-déposer tient
+mal au doigt, or c'est sur le téléphone qu'on replanifie, et il serait intestable hors
+navigateur. Les tâches proposées sont les ouvertes non encore planifiées, dans l'ordre de
+priorité de la liste.
+
+Deux créneaux qui se chevauchent se répartissent en **voies parallèles**, comptées par
+grappe de chevauchements et non par journée : un doublon à 9 h ne doit pas rétrécir tout le
+reste de la journée, qui n'y est pour rien. Et la plage horaire s'étend d'elle-même si un
+créneau tombe hors des bornes — une tâche planifiée à 6 h ne doit pas devenir invisible.
+
+Sur téléphone, la grille **défile horizontalement** plutôt que de passer à une vue « un jour
+à la fois » : du code en moins, et la semaine reste sous les yeux au moment précis où on
+planifie.
+
 #### Quatre blocs, dans cet ordre, et le retard passe devant
 
 **En retard** → **Urgent** → **Important non urgent** → **Le reste**. L'ordre de la
@@ -530,7 +579,10 @@ compteur échoue, il se tait — il ne doit jamais emporter l'accueil avec lui.
 | `projet` | string | Libellé, liste fermée filtrée par les droits (comme `idees`) |
 | `important` | bool | La seule qualification saisie à la main |
 | `urgentForce` | bool | « Urgent tout de suite », pour l'urgence sans date |
-| `echeance` | string | **`AAAA-MM-JJ`, pas un Timestamp** — voir ci-dessous |
+| `echeance` | string | **`AAAA-MM-JJ`, pas un Timestamp** — la contrainte, voir ci-dessous |
+| `creneauJour` | string | `AAAA-MM-JJ` — la décision : quand je m'y colle |
+| `creneauHeure` | string | `HH:MM`, chaîne locale sans fuseau |
+| `creneauDuree` | int | Minutes, liste fermée (15 → 480) |
 | `faite` / `faiteLe` | bool / string | `faiteLe` est **vidé** à la réouverture, sinon le badge ment |
 | `nbReports` | int | Combien de fois l'échéance a été repoussée |
 | `echeanceInitiale` | string | La toute première date visée, écrite une seule fois |
@@ -558,6 +610,17 @@ se conçoivent mieux une fois la liste vivante. Rien dans le modèle ne les emp�
 **Aucun pont avec le carnet d'idées.** La tentation existe — une idée passée « à faire »
 ferait une jolie tâche — mais on ne saurait plus où est la vérité. Les deux collections
 n'ont d'ailleurs pas le même modèle de partage : `idees` se lit à plusieurs, `taches` non.
+
+**Aucun pont avec Google Calendar non plus.** Deux outils qui se recopient finissent
+toujours par diverger, et c'est l'un des deux qu'on cesse de tenir à jour. Le hub est la
+source de vérité de la planif. Si le besoin revient : un export `.ics` est faisable
+côté client (mais c'est un instantané, pas un abonnement), et une écriture via l'API Google
+l'est aussi — `googleapis.com` passe déjà la CSP et l'authentification Google est déjà là —
+au prix d'un scope supplémentaire et de la gestion des doublons et des suppressions.
+
+**Pas de vue Mois.** Les horaires n'y tiennent pas : on y verrait des pastilles, pas des
+créneaux. Elle s'ajoutera sans rien casser le jour où le volume la rendra utile — le calcul
+ne connaît que des jours et des minutes, il ne présuppose aucune grille.
 
 ### Projet `cueillette` — le calendrier du Haut-Doubs
 

@@ -2037,3 +2037,212 @@ body.login-page {
     vertical-align: middle;
     font-size: 0.72rem;
 }
+
+/* ---------- 14.5 Grille de semaine ---------- */
+/* Construite à la main : sept colonnes, des blocs positionnés au pixel
+   depuis des minutes. Une librairie de calendrier passerait la CSP mais
+   pèserait plus lourd que tout le hub réuni. */
+.semaine-barre {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-sm);
+    flex-wrap: wrap;
+    margin-bottom: var(--spacing-md);
+}
+.semaine-nav { display: flex; gap: 4px; }
+.semaine-nav .tache-btn { margin: 0; }
+
+.semaine-titre {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    font-weight: 500;
+    color: var(--color-text-secondary);
+}
+.semaine-compte {
+    padding: 1px 8px;
+    background: var(--color-surface);
+    border-radius: 10px;
+    font-size: 0.78rem;
+    font-weight: 400;
+    color: var(--color-text-muted);
+}
+
+/* Sept colonnes ne tiennent pas sur un téléphone. Plutôt qu'une vue
+   « un jour à la fois » — du code en plus, et la semaine perdue de vue
+   justement quand on planifie —, la grille défile horizontalement. */
+.semaine-defilement { overflow-x: auto; padding-bottom: var(--spacing-xs); }
+.semaine-grille {
+    display: flex;
+    min-width: 640px;
+    background: #fff;
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+}
+
+.semaine-colonne { flex: 1; min-width: 0; border-left: 1px solid var(--color-border-light); }
+.semaine-colonne:first-child { border-left: none; }
+.semaine-colonne--heures { flex: 0 0 52px; background: var(--color-bg); }
+.semaine-colonne--aujourdhui { background: #F7FBFA; }
+
+.semaine-entete {
+    padding: 6px 4px;
+    border-bottom: 1px solid var(--color-border-light);
+    font-size: 0.78rem;
+    font-weight: 500;
+    text-align: center;
+    color: var(--color-text-secondary);
+    text-transform: capitalize;
+}
+.semaine-colonne--aujourdhui .semaine-entete { color: var(--color-accent); font-weight: 700; }
+
+/* Le bandeau des échéances, HORS de la grille horaire : une contrainte
+   n'a pas d'heure, la poser dans les heures serait lui en inventer une. */
+.semaine-bandeau {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-height: 22px;
+    padding: 3px;
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-surface);
+}
+
+.semaine-echeance {
+    display: block;
+    width: 100%;
+    padding: 2px 5px;
+    background: #FFF3C4;
+    border: none;
+    border-left: 3px solid #8D6708;
+    border-radius: 3px;
+    color: #6B4E00;
+    font-family: inherit;
+    font-size: 0.68rem;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+}
+.semaine-echeance--important { background: #FEE4E4; border-left-color: #A63030; color: #A63030; font-weight: 700; }
+.semaine-echeance--debordee  { background: #FDECEA; border-left-color: #A63030; }
+
+.semaine-heures { position: relative; }
+
+/* Les cases cliquables vivent SOUS les blocs : elles remplissent la
+   colonne, les créneaux se posent par-dessus. Une case par heure — la
+   modale de pose laisse de toute façon choisir l'heure exacte. */
+.semaine-case {
+    display: block;
+    width: 100%;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--color-border-light);
+    cursor: pointer;
+    transition: background var(--transition-fast);
+}
+.semaine-case:hover { background: #EAF6F4; }
+
+.semaine-heure {
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-end;
+    padding-right: 6px;
+    border-bottom: 1px solid var(--color-border-light);
+    font-size: 0.68rem;
+    color: var(--color-text-muted);
+}
+.semaine-heure span { transform: translateY(-6px); background: var(--color-bg); padding: 0 2px; }
+
+.semaine-bloc {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    overflow: hidden;
+    padding: 3px 5px;
+    background: #E3EDF5;
+    border: none;
+    border-left: 3px solid var(--color-primary);
+    border-radius: 3px;
+    color: #23394D;
+    font-family: inherit;
+    font-size: 0.72rem;
+    line-height: 1.2;
+    text-align: left;
+    cursor: pointer;
+}
+.semaine-bloc-heure { font-size: 0.64rem; opacity: 0.75; }
+.semaine-bloc-titre { overflow: hidden; text-overflow: ellipsis; }
+
+.semaine-bloc--important { background: #FEE4E4; border-left-color: #A63030; color: #A63030; }
+.semaine-bloc--faite     { opacity: 0.5; }
+.semaine-bloc--faite .semaine-bloc-titre { text-decoration: line-through; }
+
+/* Un créneau passé sans que la tâche soit close. CE N'EST PAS UN RETARD :
+   l'échéance tient peut-être encore, c'est une replanification à faire. */
+.semaine-bloc--manque { background: #F0F2F4; border-left-color: var(--color-text-disabled); color: #5A6470; }
+.semaine-bloc--debordee { border-left-style: dashed; border-left-width: 4px; }
+
+.semaine-legende {
+    margin: var(--spacing-sm) 0 0;
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+}
+.semaine-legende i { margin-right: 4px; }
+
+/* ---------- 14.6 Badges de planification ---------- */
+.badge-creneau        { background: #E3EDF5; color: #2C4A63; }
+.badge-creneau-manque { background: #F0F2F4; color: #5A6470; font-style: italic; }
+.badge-sans-creneau   { background: #FFF7E6; color: #7A5200; font-weight: 700; }
+.badge-debordee       { background: #FDECEA; color: #A63030; }
+
+/* ---------- 14.7 Choix de la tâche à poser ---------- */
+.choix-liste {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 46vh;
+    overflow-y: auto;
+    margin: var(--spacing-sm) 0;
+}
+
+.choix-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-sm);
+    flex-wrap: wrap;
+    width: 100%;
+    padding: 8px 10px;
+    background: #fff;
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-size: 0.88rem;
+    text-align: left;
+    cursor: pointer;
+    transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+.choix-item:hover { background: var(--color-surface); border-color: var(--color-border); }
+.choix-item-titre { flex: 1; min-width: 0; color: var(--color-text); }
+.choix-item-meta { display: flex; gap: 4px; flex-wrap: wrap; }
+
+/* Le sous-titre qui ouvre le groupe « Créneau » dans la modale : il
+   sépare deux dates que tout invite à confondre. */
+.field-groupe {
+    padding-top: var(--spacing-xs);
+    border-top: 1px solid var(--color-border-light);
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.field--duo { display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm); }
+.field--duo > div { display: flex; flex-direction: column; gap: 2px; }

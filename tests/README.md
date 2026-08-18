@@ -14,7 +14,7 @@ d'étape de build.
 | `test-idees.js` | La page Idées : tri, filtres, échappement, export JSON, **droits par auteur et liste fermée des projets** |
 | `test-exterieur.js` | Le pilotage du chantier : analyseur `.eml`, camp et relances, regroupement des devis, recherche, écritures |
 | `test-cueillette.js` | Le calendrier de cueillette : calcul des statuts, **isolation des forçages par saison**, cohérence du référentiel |
-| `test-taches.js` | La to-do priorisée : calendrier, urgence déduite, ordre des blocs, **compteur de reports**, cloisonnement en lecture |
+| `test-taches.js` | La to-do priorisée : calendrier, urgence déduite, ordre des blocs, **compteur de reports**, créneaux et grille de semaine, cloisonnement en lecture |
 
 ### `test-taches.js` — un compteur qui ne doit pas mentir
 
@@ -46,6 +46,26 @@ montre trois.
 Cinq assertions relisent enfin `firestore.rules`, dont une qui échoue si une clause
 `superadmin()` réapparaît dans le bloc `taches` : c'est le seul lot du hub sans passe-droit,
 et l'exception doit rester volontaire.
+
+**La planification** ajoute une trentaine d'assertions autour d'une seule idée : l'échéance
+et le créneau sont deux choses. Deux d'entre elles la verrouillent directement — poser un
+créneau ne doit changer ni le bloc de la tâche ni son nombre de jours de retard. Les trois
+signaux qu'ouvre cette séparation sont testés deux fois : au calcul, puis **au rendu**, parce
+que les calculer sans les afficher est le genre de fil qui casse en silence.
+
+« Créneau manqué » n'est **pas** un retard, et une assertion l'affirme sur la même tâche :
+son heure est passée, son échéance tient encore. Les confondre reviendrait à crier au loup
+un jour trop tôt.
+
+Le piège figé côté semaine est le **lundi d'un dimanche** : `getUTCDay()` rend 0 le
+dimanche, et sans le décalage la semaine commencerait le lendemain — le bug classique de
+tout calendrier maison. Côté grille, les voies parallèles se comptent par grappe de
+chevauchements : une assertion vérifie qu'un doublon à 9 h ne rétrécit pas l'après-midi, qui
+n'y est pour rien.
+
+Enfin, un jour de créneau sans heure doit être **refusé sans qu'aucune écriture ne parte** :
+ce serait une seconde échéance déguisée, exactement la confusion que toute cette conception
+cherche à éviter.
 
 ### `test-cueillette.js` — une machine à dates
 
