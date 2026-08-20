@@ -24,6 +24,24 @@ var FIREBASE_CONFIG = {
 // DOIT etre identique a proprietaire() dans firestore.rules.
 var SUPERADMIN_EMAIL = 'cyril.samson41@gmail.com';
 
+// --- 2 bis. Le notifieur -------------------------------------
+// L'identite MACHINE du notifieur Telegram (dossier notifieur/). Ce
+// n'est pas une personne : c'est un compte email/mot de passe cree a la
+// main dans Firebase Auth, dont le mot de passe vit dans un secret
+// Cloudflare et nulle part ailleurs.
+//
+// Il n'a AUCUNE fiche dans la collection membres, et n'en a pas besoin :
+// son seul droit vient de la fonction notifieur() de firestore.rules,
+// qui le reconnait a cette adresse et ne lui ouvre que la LECTURE de
+// « taches ». Toutes les autres collections l'ignorent, et il ne peut
+// rien ecrire nulle part.
+//
+// DOIT etre identique a notifieur() dans firestore.rules. Un test le
+// verifie, comme il le fait deja pour SUPERADMIN_EMAIL : les deux
+// fichiers se contrediraient en silence, et le notifieur se tairait
+// sans que personne le remarque.
+var NOTIFIEUR_EMAIL = 'notifieur@ofildudoubs.fr';
+
 // Les autres acces ne sont plus ici : ils vivent dans la collection
 // Firestore « membres », geree depuis la page Membres.
 

@@ -26,6 +26,7 @@ dans Firestore.
 | — | [collections.ofildudoubs.fr](https://collections.ofildudoubs.fr) est un **site** à part : seul son droit d'accès se coche ici, dans la liste des sites |
 | `style.css` | Feuille de styles unique |
 | `firestore.rules` | Règles de sécurité à publier dans la console Firebase |
+| `notifieur/` | **Worker Cloudflare** — rappels Telegram du projet `taches`. Déployé à part, pas servi par GitHub Pages |
 | `tests/` | Tests hors navigateur — `node tests/run-tests.js` |
 | `CNAME` | Domaine custom GitHub Pages |
 
@@ -622,6 +623,36 @@ Les écarts de jours passent par `Date.UTC`, jamais par une soustraction de date
 deux fois par an, le changement d'heure rend 23 heures et ferait afficher « en retard de
 0 j » à une tâche qui l'est d'un jour. Deux assertions le figent.
 
+#### Les rappels Telegram — `notifieur/`
+
+Le compteur sur la tuile ne parle que si l'on ouvre l'accueil ; une alerte qui suppose qu'on
+aille la chercher n'est pas une alerte. Un **Worker Cloudflare** réveillé toutes les 5
+minutes comble ce trou : digest à 07:30 (créneaux du jour, retards, urgences sans créneau)
+et rappel 15 minutes avant chaque créneau. Mise en place complète dans
+[`notifieur/README.md`](notifieur/README.md).
+
+Il **réutilise `taches/taches-calcul.js`** plutôt que de recopier les règles — même argument
+que pour le compteur d'accueil, avec un enjeu plus fort : une divergence de l'affichage
+finit par se voir, une divergence du notifieur reste muette. Le fichier sert donc les deux
+mondes, balise `<script>` et bundler, via un export gardé par `typeof module`.
+`comparerDansBloc` et `rangerParBloc` en sont **volontairement exclus** : ils dépendent de
+`toDate()`, absent du Worker.
+
+**⚠ Pourquoi un compte robot et pas une clé de compte de service.** Le Worker se connecte
+comme un utilisateur ordinaire, avec un compte email/mot de passe créé pour lui seul, et
+subit donc les règles : `notifieur()` ne lui ouvre que la **lecture** de `taches`. Une clé
+de compte de service aurait été plus courte à écrire — et les permissions IAM de Firestore
+ne descendant pas au niveau de la collection, elle aurait lu `fournisseurs`, donc des mots
+de passe en clair, pour envoyer un message Telegram.
+
+L'adresse du robot vit dans `config.js` (`NOTIFIEUR_EMAIL`) **et** dans `firestore.rules`.
+Un test échoue si les deux divergent : Firestore refuserait le robot, qui se tairait — ce
+qui ressemble exactement à « rien à signaler ».
+
+Le digest part **même les jours vides**, une ligne suffit. Sans ça, le silence voudrait dire
+à la fois « rien à faire » et « le notifieur est cassé », et c'est précisément l'ambiguïté
+que ce projet combat.
+
 #### Ce qui n'y est pas, et pourquoi
 
 **Les tâches récurrentes** (impôts, révision, ramonage) sont hors périmètre v1 : la
@@ -634,10 +665,14 @@ n'ont d'ailleurs pas le même modèle de partage : `idees` se lit à plusieurs, 
 
 **Aucun pont avec Google Calendar non plus.** Deux outils qui se recopient finissent
 toujours par diverger, et c'est l'un des deux qu'on cesse de tenir à jour. Le hub est la
-source de vérité de la planif. Si le besoin revient : un export `.ics` est faisable
-côté client (mais c'est un instantané, pas un abonnement), et une écriture via l'API Google
-l'est aussi — `googleapis.com` passe déjà la CSP et l'authentification Google est déjà là —
-au prix d'un scope supplémentaire et de la gestion des doublons et des suppressions.
+source de vérité de la planif — et depuis les rappels Telegram, la raison d'y retourner a
+disparu. Si le besoin revenait : un export `.ics` est faisable côté client (mais c'est un
+instantané, pas un abonnement), et une écriture via l'API Google l'est aussi, au prix d'un
+scope supplémentaire et de la gestion des doublons et des suppressions.
+
+**Pas de notification par membre.** Le notifieur écrit dans une seule conversation. Passer
+au multi-membre demanderait un champ sur la fiche membre et un flux d'appairage, pour des
+personnes qui n'ont pas encore le projet coché.
 
 **Pas de vue Mois.** Les horaires n'y tiennent pas : on y verrait des pastilles, pas des
 créneaux. Elle s'ajoutera sans rien casser le jour où le volume la rendra utile — le calcul

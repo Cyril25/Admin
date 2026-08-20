@@ -1,0 +1,36 @@
+# ============================================================
+# wrangler.toml — Le notifieur Telegram du projet « taches »
+# ============================================================
+# Deploiement :  cd notifieur && npx wrangler deploy
+# Voir README.md de ce dossier pour la mise en place complete.
+#
+# ⚠ AUCUN SECRET DANS CE FICHIER. Il est versionne dans un depot
+# PUBLIC. Les secrets se posent avec « wrangler secret put », qui les
+# range chez Cloudflare et jamais dans git.
+# ============================================================
+
+name = "ofildudoubs-notifieur"
+main = "worker.js"
+compatibility_date = "2026-08-19"
+
+# Toutes les 5 minutes. Le rappel de creneau part 15 minutes avant
+# l'heure : trois occasions de tomber dans la fenetre, donc un tick
+# manque ne fait pas manquer le rappel.
+#
+# Cout : 288 reveils par jour, sur 100 000 requetes offertes. Descendre
+# a la minute ne gagnerait rien et userait la marge pour rien.
+[triggers]
+crons = ["*/5 * * * *"]
+
+# La memoire des envois : sans elle, le rappel de 9 h 00 repartirait a
+# 8 h 45, 8 h 50 et 8 h 55. Creer le namespace une fois avec
+#   npx wrangler kv namespace create ENVOIS
+# puis recopier l'identifiant rendu ci-dessous.
+[[kv_namespaces]]
+binding = "ENVOIS"
+id = "A_REMPLACER_PAR_L_ID_RENDU_PAR_WRANGLER"
+
+# Valeur publique : c'est deja celle de config.js, qui part dans le
+# navigateur. Elle est ici pour que le Worker n'ait pas a la deviner.
+[vars]
+FIREBASE_PROJECT_ID = "ofildudoubs-hub"

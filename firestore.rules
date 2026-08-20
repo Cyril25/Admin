@@ -60,6 +60,35 @@ service cloud.firestore {
       return proprietaire() || (membreActif() && docMembre().role == 'superadmin');
     }
 
+    // --- Le notifieur Telegram ----------------------------------
+    // Une identité MACHINE, pas une personne : le Worker Cloudflare qui
+    // envoie les rappels du projet « taches » (dossier notifieur/).
+    //
+    // ⚠ VOLONTAIREMENT SANS `connecte()`. Cette fonction-là exige
+    // `email_verified == true`, ce qu'un compte email/mot de passe créé à
+    // la main dans Firebase Auth n'a pas — et ne peut pas obtenir, faute
+    // de boîte aux lettres derrière. On vérifie donc l'authentification
+    // et l'adresse, rien de plus.
+    //
+    // Ce que ça ouvre est volontairement minuscule : la LECTURE de
+    // `taches`, et rien d'autre. Aucune autre collection ne nomme cette
+    // fonction, donc le catch-all final les lui ferme toutes ; et elle
+    // n'apparaît dans aucun `allow write`, donc il ne peut rien écrire,
+    // pas même sur les tâches qu'il lit.
+    //
+    // L'alternative écartée était une clé de compte de service Google.
+    // Elle aurait contourné ces règles entièrement, et comme les
+    // permissions IAM de Firestore ne descendent pas au niveau de la
+    // collection, elle aurait lu `fournisseurs` — donc des mots de passe
+    // en clair — pour envoyer un message Telegram.
+    //
+    // DOIT être identique à NOTIFIEUR_EMAIL dans config.js.
+    function notifieur() {
+      return request.auth != null
+          && request.auth.token.email != null
+          && request.auth.token.email.lower() == 'notifieur@ofildudoubs.fr';
+    }
+
     // Un membre accède à un projet si sa fiche le liste.
     function aAcces(projet) {
       return superadmin() || (membreActif() && projet in docMembre().projets);
@@ -142,8 +171,13 @@ service cloud.firestore {
     // `where('creePar', '==', <son email>)`, sinon Firestore rejette la
     // requête en bloc et l'écran est entièrement vide.
     match /taches/{document} {
-      allow read: if aAcces('taches')
-                  && resource.data.creePar == idAppelant();
+      // Le notifieur lit tout `taches` : il doit savoir ce qui arrive
+      // avant de pouvoir le dire. Sa clause est document-indépendante,
+      // donc sa requête n'a pas besoin du `where` ci-dessous — c'est la
+      // seule identité dans ce cas, et la seule qui ne soit personne.
+      allow read: if notifieur()
+                  || (aAcces('taches')
+                      && resource.data.creePar == idAppelant());
 
       // Comparé au jeton RÉEL : une tâche saisie sous impersonation est
       // enregistrée au nom de qui la saisit vraiment.

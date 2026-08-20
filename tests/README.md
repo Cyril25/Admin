@@ -15,6 +15,37 @@ d'étape de build.
 | `test-exterieur.js` | Le pilotage du chantier : analyseur `.eml`, camp et relances, regroupement des devis, recherche, écritures |
 | `test-cueillette.js` | Le calendrier de cueillette : calcul des statuts, **isolation des forçages par saison**, cohérence du référentiel |
 | `test-taches.js` | La to-do priorisée : calendrier, urgence déduite, ordre des blocs, **compteur de reports**, créneaux et grille de semaine, cloisonnement en lecture |
+| `test-notifieur.js` | Le notifieur Telegram : fenêtres d'envoi, **déduplication**, échappement HTML, cohérence config / règles / Worker |
+
+### `test-notifieur.js` — ce qui ne part pas
+
+Un notifieur se juge sur ce qu'il envoie **et** sur ce qu'il n'envoie pas, et le second cas
+est invisible : personne ne se dit « tiens, je n'ai rien reçu à 8 h 45 ». C'est la panne
+silencieuse par excellence, celle contre laquelle tout ce projet a été écrit — il serait
+absurde que son notifieur en soit atteint.
+
+Le cas à ne jamais casser est la **clé de déduplication**. Le cron tourne toutes les 5
+minutes : sans mémoire, le rappel de 9 h repartirait à 8 h 45, 8 h 50 et 8 h 55. Mais si
+cette clé ne portait que l'identifiant de la tâche, une tâche **replanifiée** de mardi à
+jeudi resterait marquée « déjà prévenu » et passerait sous silence. Deux assertions figent
+le fait que changer l'heure — ou le jour — change la clé.
+
+Les fenêtres sont vérifiées à leurs bords : le rappel part pile à 15 minutes, plus rien une
+fois l'heure passée (« dans -3 min » ne veut rien dire), et le digest se tait passé la
+fenêtre du matin, sans quoi un Worker déployé à 23 h enverrait aussitôt celui du jour. Le
+cas qui tombe **entre deux jours** est figé aussi : un créneau à 00:05 doit être rappelé à
+23:50 la veille, soit à une minute négative dans le repère de la journée.
+
+L'échappement HTML n'est pas cosmétique — un titre contenant `<` ou `&` ferait *rejeter*
+l'envoi par l'API Telegram, donc un rappel perdu en silence sur la tâche la plus mal
+nommée. Les balises du gabarit, elles, doivent survivre.
+
+Enfin, une dizaine d'assertions relisent `config.js`, `firestore.rules`, `worker.js` et
+`wrangler.toml` ensemble : que l'adresse du robot soit **la même** des deux côtés (sinon
+Firestore le refuse et il se tait, ce qui ressemble à « rien à signaler »), qu'il ne puisse
+**rien écrire**, que `notifieur()` ne soit nommé nulle part ailleurs, que le Worker calcule
+l'heure de Paris et non celle du Worker, qu'il marque un envoi **après** coup et jamais
+avant — et que `wrangler.toml`, versionné dans un dépôt public, ne contienne aucun secret.
 
 ### `test-taches.js` — un compteur qui ne doit pas mentir
 

@@ -518,3 +518,62 @@ function champsDeReport(tache, nouvelleEcheance) {
     }
     return champs;
 }
+
+// ------------------------------------------------------------
+// 9. Un seul fichier, deux mondes
+// ------------------------------------------------------------
+// Ce fichier est chargé de deux façons :
+//   - par une balise <script> dans le navigateur — la page des tâches,
+//     et l'accueil pour son compteur de retards — où tout ce qui précède
+//     est déjà global ;
+//   - par le bundler du notifieur Cloudflare (dossier notifieur/), qui a
+//     besoin d'un export explicite.
+//
+// Le garde `typeof module` fait que le navigateur ignore ce bloc, et le
+// contexte `vm` des tests aussi. C'est la seule façon de servir les deux
+// sans étape de build côté site — contrainte que ce projet n'a jamais eue
+// et ne prendra pas pour un envoi de messages.
+//
+// POURQUOI PARTAGER PLUTÔT QUE RECOPIER : le notifieur doit dire « en
+// retard » et « ça commence bientôt » exactement comme la page. Deux
+// définitions auraient fini par diverger, et cette divergence-là serait
+// muette — un message qui ne part pas ne se remarque pas. C'est le même
+// argument qui a mis ce fichier à part pour le compteur d'accueil.
+//
+// ⚠ `comparerDansBloc` et `rangerParBloc` NE SONT PAS exportés. Ils
+// dépendent de `toDate()`, qui vit dans hub-utils.js et n'existe pas dans
+// le Worker : les appeler là-bas planterait à 7 h 30 du matin, sans
+// personne pour le voir. Un test gèle cette liste.
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        // Constantes
+        JOURS_URGENCE: JOURS_URGENCE,
+        REPORTS_ENLISEMENT: REPORTS_ENLISEMENT,
+        DUREE_DEFAUT: DUREE_DEFAUT,
+        // Calendrier
+        isoValide: isoValide,
+        joursEntre: joursEntre,
+        ajouterJours: ajouterJours,
+        // Heures
+        heureValide: heureValide,
+        minutesDeHeure: minutesDeHeure,
+        heureDeMinutes: heureDeMinutes,
+        // Les deux axes
+        estEnRetard: estEnRetard,
+        joursDeRetard: joursDeRetard,
+        estUrgente: estUrgente,
+        estEnlisee: estEnlisee,
+        blocDe: blocDe,
+        compterEnRetard: compterEnRetard,
+        // Créneaux
+        aUnCreneau: aUnCreneau,
+        dureeCreneau: dureeCreneau,
+        bornesCreneau: bornesCreneau,
+        creneauxDuJour: creneauxDuJour,
+        echeancesDuJour: echeancesDuJour,
+        // Les trois signaux
+        planifieApresEcheance: planifieApresEcheance,
+        sansCreneauAlorsQueProche: sansCreneauAlorsQueProche,
+        creneauManque: creneauManque
+    };
+}
