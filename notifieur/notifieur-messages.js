@@ -157,15 +157,22 @@ function cleDigest(ajd) {
     return 'digest:' + ajd;
 }
 
-function digestDuMatin(taches, ajd, heure) {
+// Sortie a part, parce que le Worker s'en sert AVANT de lire Firestore :
+// hors de cette fenetre, il sait qu'il n'aura pas besoin de la liste
+// complete et se contente des creneaux du jour. Une lecture de moins,
+// 287 fois par jour.
+//
+// Avant l'heure, ce n'est pas l'heure. Après la fenêtre, ce n'est plus
+// le matin — mieux vaut sauter un jour que mentir sur l'heure.
+function dansLaFenetreDuDigest(heure) {
     var maintenant = calcul.minutesDeHeure(heure);
     var ouverture = calcul.minutesDeHeure(HEURE_DIGEST);
-    if (maintenant === null || ouverture === null) return null;
+    if (maintenant === null || ouverture === null) return false;
+    return maintenant >= ouverture && maintenant <= ouverture + FENETRE_DIGEST_MINUTES;
+}
 
-    // Avant l'heure, ce n'est pas l'heure. Après la fenêtre, ce n'est
-    // plus le matin — mieux vaut sauter un jour que mentir sur l'heure.
-    if (maintenant < ouverture) return null;
-    if (maintenant > ouverture + FENETRE_DIGEST_MINUTES) return null;
+function digestDuMatin(taches, ajd, heure) {
+    if (!dansLaFenetreDuDigest(heure)) return null;
 
     var duJour = calcul.creneauxDuJour(taches, ajd)
         .filter(function(tache) { return !tache.faite; })
@@ -262,10 +269,20 @@ function jourEnLettres(iso) {
 // KV du Worker. Cette fonction dit ce qui est DÛ ; le Worker retire ce
 // qui est déjà PARTI. Séparer les deux est ce qui permet de tester la
 // décision sans inventer un faux stockage.
-function messagesDus(taches, ajd, heure) {
+// ⚠ `avecDigest` n'est PAS une commodite. Le Worker ne lit la liste
+// complete que lorsqu'un digest est possible ; le reste du temps il n'a
+// en main que les creneaux d'aujourd'hui et demain. Calculer un digest
+// sur cette liste tronquee annoncerait « 0 en retard » avec aplomb.
+//
+// La dedup du KV le rattraperait — le digest du jour est deja parti —
+// mais se reposer dessus reviendrait a produire un message faux et a
+// esperer que personne ne le lise. Le refus est donc explicite.
+function messagesDus(taches, ajd, heure, avecDigest) {
     var messages = [];
-    var digest = digestDuMatin(taches, ajd, heure);
-    if (digest) messages.push(digest);
+    if (avecDigest !== false) {
+        var digest = digestDuMatin(taches, ajd, heure);
+        if (digest) messages.push(digest);
+    }
     return messages.concat(rappelsCreneaux(taches, ajd, heure));
 }
 
@@ -279,6 +296,7 @@ module.exports = {
     echapper: echapper,
     cleRappel: cleRappel,
     cleDigest: cleDigest,
+    dansLaFenetreDuDigest: dansLaFenetreDuDigest,
     rappelsCreneaux: rappelsCreneaux,
     digestDuMatin: digestDuMatin,
     messagesDus: messagesDus

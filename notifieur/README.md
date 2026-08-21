@@ -30,6 +30,34 @@ ambiguïté en moins : sinon le silence voudrait dire à la fois « rien à fair
 notifieur est cassé ». `DIGEST_MEME_SI_VIDE = false` en haut de `notifieur-messages.js` si
 la ligne quotidienne agace.
 
+## Ce qu'il lit, et ce qu'il ne lit pas
+
+Le plan Spark de Firestore offre **50 000 lectures par jour**. Lire la base entière à
+chacun des 288 réveils ferait dépendre le plafond du nombre *total* de tâches — or les
+tâches faites s'accumulent indéfiniment. Le notifieur se serait tu un après-midi, deux ans
+plus tard, sans que rien ne l'annonce.
+
+Deux requêtes, donc, choisies selon le tour :
+
+| Quand | Ce qui est lu |
+|---|---|
+| Presque tous les tours | Les créneaux d'**aujourd'hui et demain** seulement. Le rappel n'anticipe que de 15 min : au plus loin, ce soir à 23:50 pour un créneau demain à 00:05 |
+| Fenêtre du digest, digest pas encore parti | Toutes les tâches **ouvertes**. Une fois par jour |
+
+Le KV est interrogé **avant** Firestore : si le digest du jour est déjà parti, la lecture
+complète n'a pas lieu du tout.
+
+Ordre de grandeur pour 40 tâches : environ **3 000 lectures/jour** au lieu de 11 500. Et le
+plafond ne dépend plus du nombre total de tâches, mais du nombre de créneaux posés sur deux
+jours.
+
+**⚠ Chaque requête ne porte que sur un seul champ.** Dès qu'on mélange une égalité et une
+plage sur deux champs différents, Firestore réclame un **index composite** — donc une étape
+manuelle de plus dans la console, et une panne le jour où on l'oublie. C'est pourquoi
+`faite` se filtre côté Worker dans la requête des créneaux : l'y ajouter coûterait cet
+index pour écarter une poignée de documents. Un test échoue si les deux champs se
+retrouvent dans la même requête.
+
 ## ⚠ Le compte robot, et pourquoi pas une clé de service
 
 Le Worker se connecte à Firebase **comme un utilisateur ordinaire**, avec un compte

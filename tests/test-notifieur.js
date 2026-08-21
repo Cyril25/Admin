@@ -131,6 +131,16 @@ verifie('...et changer de jour aussi',
   !== messages.cleRappel(Object.assign({}, aNeufHeures, { creneauJour: '2026-08-21' })));
 verifie('la cle du digest porte le jour', messages.cleDigest(AJD) === 'digest:' + AJD);
 
+// La fenetre est sortie a part pour que le Worker la consulte AVANT de
+// lire Firestore : hors d'elle, il se contente des creneaux du jour.
+verifie('la fenetre du digest se consulte sans les taches',
+  messages.dansLaFenetreDuDigest('07:30') === true
+  && messages.dansLaFenetreDuDigest('07:00') === false
+  && messages.dansLaFenetreDuDigest('12:00') === false);
+verifie('un digest refuse explicitement ne part pas',
+  messages.messagesDus([], AJD, '07:30', false).length === 0
+  && messages.messagesDus([], AJD, '07:30', true).length === 1);
+
 // --- 4. La fenetre du digest -----------------------------------------
 console.log('\n4. La fenetre du digest');
 const rien = [];
@@ -257,6 +267,28 @@ verifie('la fonction n\'exige pas email_verified, qu\'un compte robot n\'a pas',
 // montage, et elle se perdrait au premier « simplifions ».
 verifie('les regles expliquent pourquoi pas une cle de compte de service',
   regles.indexOf('compte de service') !== -1);
+
+// ⚠ LE QUOTA. Le plan Spark offre 50 000 lectures/jour ; lire toute la
+// base a chacun des 288 reveils ferait dependre le plafond du nombre
+// TOTAL de taches, et les taches faites s'accumulent pour toujours.
+verifie('le digest lit les taches OUVERTES, pas toutes',
+  /fieldPath: 'faite'[\s\S]{0,120}booleanValue: false/.test(workerSource));
+verifie('les rappels ne lisent que les creneaux du jour et du lendemain',
+  /GREATER_THAN_OR_EQUAL/.test(workerSource) && /LESS_THAN_OR_EQUAL/.test(workerSource)
+  && /jourSuivant/.test(workerSource));
+// Le KV repond avant Firestore : hors fenetre du digest, ou digest deja
+// parti, la lecture complete n'a pas lieu du tout.
+verifie('le KV est consulte AVANT de choisir la requete',
+  workerSource.indexOf('dansLaFenetreDuDigest') < workerSource.indexOf('lireTachesOuvertes(env, jeton)'));
+// Une liste tronquee ne doit jamais produire un digest : il annoncerait
+// « 0 en retard » avec aplomb.
+verifie('le digest est refuse quand la liste est tronquee',
+  /messagesDus\(taches, maintenant\.jour, maintenant\.heure, digestPossible\)/.test(workerSource));
+// Deux clauses sur DEUX champs differents reclameraient un index
+// composite, donc une etape manuelle de plus et une panne le jour ou on
+// l'oublie. Chaque requete ne porte que sur un champ.
+verifie('aucune requete ne melange faite et creneauJour',
+  !/fieldPath: 'faite'[\s\S]{0,400}fieldPath: 'creneauJour'/.test(workerSource));
 
 verifie('le Worker lit bien la collection taches',
   /collectionId: 'taches'/.test(workerSource));

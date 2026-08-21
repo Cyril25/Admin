@@ -90,11 +90,33 @@ async function tourDeGarde(env, aBlanc = false) {
         bilan.jour = maintenant.jour;
         bilan.heure = maintenant.heure;
 
+        // ⚠ ON NE LIT PAS TOUT, ET SURTOUT PAS TOUT LE TEMPS.
+        //
+        // Le plan Spark offre 50 000 lectures Firestore par jour. Lire la
+        // base entière à chacun des 288 réveils ferait dépendre le plafond
+        // du nombre TOTAL de tâches — et les tâches faites s'accumulent
+        // pour toujours. Le notifieur se serait taire un après-midi, deux
+        // ans plus tard, sans que rien ne l'annonce.
+        //
+        // Presque tous les tours n'ont qu'un travail : trouver les
+        // créneaux qui commencent dans le quart d'heure. Aujourd'hui et
+        // demain suffisent. Seul le digest a besoin de la liste complète,
+        // et une fois par jour — d'où la question posée au KV AVANT
+        // d'interroger Firestore.
+        const digestPossible = messages.dansLaFenetreDuDigest(maintenant.heure)
+            && !(await dejaEnvoye(env, messages.cleDigest(maintenant.jour)));
+        bilan.lecture = digestPossible ? 'complete' : 'creneaux';
+
         const jeton = await connexionFirebase(env);
-        const taches = await lireTaches(env, jeton);
+        const taches = digestPossible
+            ? await lireTachesOuvertes(env, jeton)
+            : await lireCreneauxProches(env, jeton, maintenant.jour);
         bilan.tachesLues = taches.length;
 
-        const dus = messages.messagesDus(taches, maintenant.jour, maintenant.heure);
+        // Le digest est refusé explicitement quand la liste est tronquée :
+        // le calculer sur les seuls créneaux du jour annoncerait
+        // « 0 en retard » avec aplomb.
+        const dus = messages.messagesDus(taches, maintenant.jour, maintenant.heure, digestPossible);
         bilan.dus = dus.map((m) => m.cle);
 
         const aEnvoyer = [];
@@ -192,12 +214,71 @@ async function connexionFirebase(env) {
 // ------------------------------------------------------------
 // 4. Firestore : lire les tâches
 // ------------------------------------------------------------
-// AUCUN `where` ici, contrairement à la page — et ce n'est pas un oubli.
-// La règle de la page exige `creePar == idAppelant()`, ce qui force le
-// client à filtrer ; la clause du notifieur, elle, ne regarde pas le
-// document, donc la requête complète passe. C'est la seule identité du
-// hub dans ce cas, et c'est justement parce qu'elle n'est personne.
-async function lireTaches(env, jeton) {
+// Le `where` du notifieur ne sert PAS à la sécurité, contrairement à
+// celui de la page. La règle de la page exige `creePar == idAppelant()`,
+// ce qui force le client à filtrer ou à se voir tout refuser ; la clause
+// du notifieur ne regarde pas le document, donc n'importe quelle forme
+// de requête passe. Ici, filtrer sert à ne pas gaspiller le quota.
+//
+// ⚠ CHAQUE REQUÊTE NE PORTE QUE SUR UN SEUL CHAMP. C'est délibéré :
+// dès qu'on mélange une égalité et une plage sur deux champs
+// différents, Firestore réclame un index composite — donc une étape
+// manuelle de plus dans la console, et une panne le jour où on l'oublie.
+
+// Pour le digest : tout ce qui est encore ouvert. Les tâches faites
+// n'ont plus rien à raconter, et elles seront un jour la majorité.
+async function lireTachesOuvertes(env, jeton) {
+    return interroger(env, jeton, {
+        where: {
+            fieldFilter: {
+                field: { fieldPath: 'faite' },
+                op: 'EQUAL',
+                value: { booleanValue: false }
+            }
+        }
+    });
+}
+
+// Pour les rappels : les créneaux d'aujourd'hui et de demain, rien de
+// plus. Le rappel n'anticipe que de 15 minutes — au plus loin, ce soir à
+// 23:50 pour un créneau demain à 00:05. Jamais au-delà.
+//
+// Deux bornes sur le MÊME champ : c'est une plage simple, pas un index
+// composite. Les tâches sans créneau portent une chaîne vide, qui tombe
+// sous la borne basse et sort d'elle-même.
+//
+// `faite` n'entre pas dans la requête et se filtre ici : l'y ajouter
+// réclamerait justement l'index qu'on évite, pour écarter une poignée de
+// documents.
+async function lireCreneauxProches(env, jeton, ajd) {
+    const demain = jourSuivant(ajd);
+    const lignes = await interroger(env, jeton, {
+        where: {
+            compositeFilter: {
+                op: 'AND',
+                filters: [
+                    { fieldFilter: { field: { fieldPath: 'creneauJour' },
+                        op: 'GREATER_THAN_OR_EQUAL', value: { stringValue: ajd } } },
+                    { fieldFilter: { field: { fieldPath: 'creneauJour' },
+                        op: 'LESS_THAN_OR_EQUAL', value: { stringValue: demain } } }
+                ]
+            }
+        },
+        orderBy: [{ field: { fieldPath: 'creneauJour' }, direction: 'ASCENDING' }]
+    });
+    return lignes.filter((tache) => !tache.faite);
+}
+
+// Arithmétique de dates en UTC, comme partout ailleurs dans ce projet :
+// une soustraction locale rend 23 ou 25 heures deux fois par an.
+function jourSuivant(iso) {
+    const bouts = String(iso).split('-');
+    const lendemain = new Date(Date.UTC(
+        Number(bouts[0]), Number(bouts[1]) - 1, Number(bouts[2]) + 1));
+    return lendemain.toISOString().slice(0, 10);
+}
+
+async function interroger(env, jeton, complements) {
     const url = 'https://firestore.googleapis.com/v1/projects/'
         + encodeURIComponent(env.FIREBASE_PROJECT_ID)
         + '/databases/(default)/documents:runQuery';
@@ -209,7 +290,10 @@ async function lireTaches(env, jeton) {
             authorization: 'Bearer ' + jeton
         },
         body: JSON.stringify({
-            structuredQuery: { from: [{ collectionId: 'taches' }] }
+            structuredQuery: Object.assign(
+                { from: [{ collectionId: 'taches' }] },
+                complements
+            )
         })
     });
 
