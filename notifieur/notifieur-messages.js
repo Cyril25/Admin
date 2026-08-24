@@ -77,9 +77,9 @@ function minutesDepuisAujourdhui(ajd, jour, heure) {
     return jours * 1440 + minutes;
 }
 
-function debutCreneau(tache, ajd) {
-    if (!calcul.aUnCreneau(tache)) return null;
-    return minutesDepuisAujourdhui(ajd, tache.creneauJour, tache.creneauHeure);
+function debutHeure(tache, ajd) {
+    if (!calcul.aUneHeure(tache)) return null;
+    return minutesDepuisAujourdhui(ajd, tache.echeance, tache.echeanceHeure);
 }
 
 // ------------------------------------------------------------
@@ -107,14 +107,18 @@ function libelleDuree(minutes) {
 }
 
 // ------------------------------------------------------------
-// 4. Rappel avant un créneau
+// 4. Rappel avant l'heure d'une tâche
 // ------------------------------------------------------------
-// La clé porte le créneau lui-même, pas seulement la tâche : replanifier
-// doit redonner droit à un rappel. Sans le jour et l'heure dedans, une
-// tâche déplacée de mardi à jeudi resterait marquée « déjà prévenu » et
-// passerait sous silence.
+// Seules les tâches À HEURE FIXE en reçoivent un. Une tâche due un jour
+// sans heure précise n'a pas de moment à anticiper : elle figure au
+// digest du matin, et c'est tout.
+//
+// La clé porte la date ET l'heure, pas seulement la tâche : repousser
+// doit redonner droit à un rappel. Sans elles, une tâche déplacée de
+// mardi à jeudi resterait marquée « déjà prévenu » et passerait sous
+// silence.
 function cleRappel(tache) {
-    return 'creneau:' + tache.id + ':' + tache.creneauJour + 'T' + tache.creneauHeure;
+    return 'heure:' + tache.id + ':' + tache.echeance + 'T' + tache.echeanceHeure;
 }
 
 function rappelsCreneaux(taches, ajd, heure) {
@@ -122,11 +126,11 @@ function rappelsCreneaux(taches, ajd, heure) {
     if (maintenant === null) return [];
 
     return (taches || []).filter(function(tache) {
-        if (tache.faite || !calcul.aUnCreneau(tache)) return false;
-        var debut = debutCreneau(tache, ajd);
+        if (tache.faite || !calcul.aUneHeure(tache)) return false;
+        var debut = debutHeure(tache, ajd);
         if (debut === null) return false;
-        // Fenêtre fermée à droite : passé l'heure de début, ce n'est plus
-        // un rappel mais un constat, et « dans -3 min » ne veut rien dire.
+        // Fenêtre fermée à droite : passé l'heure, ce n'est plus un
+        // rappel mais un constat, et « dans -3 min » ne veut rien dire.
         return (debut - MINUTES_AVANT_CRENEAU) <= maintenant && maintenant < debut;
     }).map(function(tache) {
         return { cle: cleRappel(tache), texte: texteRappel(tache, ajd, heure) };
@@ -134,25 +138,19 @@ function rappelsCreneaux(taches, ajd, heure) {
 }
 
 function texteRappel(tache, ajd, heure) {
-    var debut = debutCreneau(tache, ajd);
+    var debut = debutHeure(tache, ajd);
     var dans = debut - calcul.minutesDeHeure(heure);
-    var bornes = calcul.bornesCreneau(tache);
+    var bornes = calcul.bornesHeure(tache);
 
     var lignes = [];
     lignes.push('⏰ <b>Dans ' + dans + ' min</b> — ' + titreDe(tache));
     lignes.push(calcul.heureDeMinutes(bornes.debut) + ' – ' + calcul.heureDeMinutes(bornes.fin)
-        + ' · ' + libelleDuree(calcul.dureeCreneau(tache)));
+        + ' · ' + libelleDuree(calcul.dureeEcheance(tache)));
 
     if (tache.projet) lignes.push('📁 ' + echapper(tache.projet));
     if (tache.detail) {
         lignes.push('');
         lignes.push(echapper(tache.detail));
-    }
-
-    // Le créneau posé après l'échéance : c'est le moment de le dire, pas
-    // à la relecture du planning trois semaines plus tard.
-    if (calcul.planifieApresEcheance(tache)) {
-        lignes.push('⚠️ Ce créneau est APRÈS l\'échéance du ' + echapper(tache.echeance) + '.');
     }
     return lignes.join('\n');
 }
@@ -285,10 +283,10 @@ function sectionSejours(sejours, ajd, etat, mode) {
 function digestDuMatin(taches, ajd, heure, sejours, etat) {
     if (!dansLaFenetreDuDigest(heure)) return null;
 
-    var duJour = calcul.creneauxDuJour(taches, ajd)
+    var duJour = calcul.avecHeureLeJour(taches, ajd)
         .filter(function(tache) { return !tache.faite; })
         .sort(function(a, b) {
-            return calcul.minutesDeHeure(a.creneauHeure) - calcul.minutesDeHeure(b.creneauHeure);
+            return calcul.minutesDeHeure(a.echeanceHeure) - calcul.minutesDeHeure(b.echeanceHeure);
         });
 
     var retards = (taches || []).filter(function(tache) {
@@ -297,27 +295,26 @@ function digestDuMatin(taches, ajd, heure, sejours, etat) {
         return calcul.joursDeRetard(b, ajd) - calcul.joursDeRetard(a, ajd);
     });
 
-    // Les retards sont EXCLUS de cette section : ils ont déjà la leur,
-    // et pour une tâche en retard c'est le retard qui est le titre, pas
-    // l'absence de créneau. Sur une carte, deux badges cohabitent très
-    // bien ; dans un message qu'on lit d'un œil au réveil, la même tâche
-    // citée deux fois se lit comme un bug.
-    var sansCreneau = (taches || []).filter(function(tache) {
-        return calcul.sansCreneauAlorsQueProche(tache, ajd)
-            && !calcul.estEnRetard(tache, ajd);
+    // Les tâches dues aujourd'hui SANS heure fixée. Elles n'étaient
+    // visibles nulle part avant la fusion des dates, puisque le digest ne
+    // montrait que les créneaux — or ce sont les plus nombreuses.
+    // Retards exclus : ils ont déjà leur section, et une même tâche citée
+    // deux fois dans un message qu'on lit d'un œil se lit comme un bug.
+    var sansHeure = calcul.sansHeureLeJour(taches, ajd).filter(function(tache) {
+        return !calcul.estEnRetard(tache, ajd);
     });
 
     var gite = sectionSejours(sejours, ajd, etat, 'annonce');
 
-    if (!duJour.length && !retards.length && !sansCreneau.length && !gite.length
+    if (!duJour.length && !retards.length && !sansHeure.length && !gite.length
         && !DIGEST_MEME_SI_VIDE) {
         return null;
     }
 
-    return { cle: cleDigest(ajd), texte: texteDigest(ajd, duJour, retards, sansCreneau, gite) };
+    return { cle: cleDigest(ajd), texte: texteDigest(ajd, duJour, retards, sansHeure, gite) };
 }
 
-function texteDigest(ajd, duJour, retards, sansCreneau, gite) {
+function texteDigest(ajd, duJour, retards, sansHeure, gite) {
     var lignes = ['☀️ <b>' + echapper(jourEnLettres(ajd)) + '</b>'];
 
     // Le gîte EN TÊTE : c'est la seule chose du digest qui engage
@@ -329,9 +326,9 @@ function texteDigest(ajd, duJour, retards, sansCreneau, gite) {
         lignes.push('');
         lignes.push('<b>Au programme</b>');
         duJour.forEach(function(tache) {
-            var bornes = calcul.bornesCreneau(tache);
+            var bornes = calcul.bornesHeure(tache);
             lignes.push('• ' + calcul.heureDeMinutes(bornes.debut) + ' — ' + titreDe(tache)
-                + ' <i>(' + libelleDuree(calcul.dureeCreneau(tache)) + ')</i>');
+                + ' <i>(' + libelleDuree(calcul.dureeEcheance(tache)) + ')</i>');
         });
     }
 
@@ -350,18 +347,17 @@ function texteDigest(ajd, duJour, retards, sansCreneau, gite) {
         });
     }
 
-    if (sansCreneau.length) {
+    if (sansHeure.length) {
         lignes.push('');
-        lignes.push('📌 <b>Sans créneau (' + sansCreneau.length + ')</b>');
-        lignes.push('<i>Ça arrive, et aucun moment n\'est décidé.</i>');
-        sansCreneau.forEach(function(tache) {
+        lignes.push('📌 <b>Aujourd\'hui, sans heure fixée (' + sansHeure.length + ')</b>');
+        sansHeure.forEach(function(tache) {
             lignes.push('• ' + titreDe(tache));
         });
     }
 
     // Le cas vide est un message à part entière, pas une omission : le
     // silence ne doit jamais vouloir dire deux choses à la fois.
-    if (!duJour.length && !retards.length && !sansCreneau.length && !(gite || []).length) {
+    if (!duJour.length && !retards.length && !sansHeure.length && !(gite || []).length) {
         lignes.push('');
         lignes.push('Rien au programme, rien en retard. 🌱');
     }
@@ -415,19 +411,20 @@ function bilanDuSoir(taches, ajd, heure, sejours, etat) {
         return !tache.faite && tache.echeance === ajd;
     });
 
-    // Les créneaux du JOUR seulement. Ceux des jours précédents ont déjà
-    // été annoncés le soir venu ; les répéter chaque soir jusqu'à ce
-    // qu'on cède ne serait plus un rappel mais du harcèlement.
+    // Les heures du JOUR seulement, passées et toujours ouvertes. Celles
+    // des jours précédents sont devenues des retards et ont leur propre
+    // section ; les répéter ici jusqu'à ce qu'on cède ne serait plus un
+    // rappel mais du harcèlement.
     var nonTenus = (taches || []).filter(function(tache) {
-        return tache.creneauJour === ajd && calcul.creneauManque(tache, ajd, heure);
+        return calcul.heureDepassee(tache, ajd, heure);
     }).sort(function(a, b) {
-        return calcul.minutesDeHeure(a.creneauHeure) - calcul.minutesDeHeure(b.creneauHeure);
+        return calcul.minutesDeHeure(a.echeanceHeure) - calcul.minutesDeHeure(b.echeanceHeure);
     });
 
-    var demain = calcul.creneauxDuJour(taches, calcul.ajouterJours(ajd, 1))
+    var demain = calcul.avecHeureLeJour(taches, calcul.ajouterJours(ajd, 1))
         .filter(function(tache) { return !tache.faite; })
         .sort(function(a, b) {
-            return calcul.minutesDeHeure(a.creneauHeure) - calcul.minutesDeHeure(b.creneauHeure);
+            return calcul.minutesDeHeure(a.echeanceHeure) - calcul.minutesDeHeure(b.echeanceHeure);
         });
 
     // Le filet du gîte : « le message est-il parti ? ». Voir lignesSejour
@@ -461,9 +458,9 @@ function texteBilan(ajd, basculent, nonTenus, demain, gite) {
 
     if (nonTenus.length) {
         lignes.push('');
-        lignes.push('↩️ <b>Créneaux non tenus (' + nonTenus.length + ')</b>');
+        lignes.push('↩️ <b>Heures passées, pas faites (' + nonTenus.length + ')</b>');
         nonTenus.forEach(function(tache) {
-            lignes.push('• ' + echapper(tache.creneauHeure) + ' — ' + titreDe(tache));
+            lignes.push('• ' + echapper(tache.echeanceHeure) + ' — ' + titreDe(tache));
         });
     }
 
@@ -471,9 +468,9 @@ function texteBilan(ajd, basculent, nonTenus, demain, gite) {
         lignes.push('');
         lignes.push('📋 <b>Demain</b>');
         demain.forEach(function(tache) {
-            var bornes = calcul.bornesCreneau(tache);
+            var bornes = calcul.bornesHeure(tache);
             lignes.push('• ' + calcul.heureDeMinutes(bornes.debut) + ' — ' + titreDe(tache)
-                + ' <i>(' + libelleDuree(calcul.dureeCreneau(tache)) + ')</i>');
+                + ' <i>(' + libelleDuree(calcul.dureeEcheance(tache)) + ')</i>');
         });
     }
 
@@ -527,7 +524,7 @@ module.exports = {
     FENETRE_DIGEST_MINUTES: FENETRE_DIGEST_MINUTES,
     DIGEST_MEME_SI_VIDE: DIGEST_MEME_SI_VIDE,
     minutesDepuisAujourdhui: minutesDepuisAujourdhui,
-    debutCreneau: debutCreneau,
+    debutHeure: debutHeure,
     echapper: echapper,
     cleRappel: cleRappel,
     cleDigest: cleDigest,

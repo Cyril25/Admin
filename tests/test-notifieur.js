@@ -34,7 +34,7 @@ const AJD = '2026-08-19';
 const tache = (extra) => Object.assign({
   id: 't' + Math.random().toString(36).slice(2, 8),
   titre: 'Tache', detail: '', projet: '', important: false, urgentForce: false,
-  echeance: '', creneauJour: '', creneauHeure: '', creneauDuree: 0,
+  echeance: '', echeanceHeure: '', echeanceDuree: 0,
   faite: false, faiteLe: '', nbReports: 0,
   creePar: 'cyril.samson41@gmail.com',
 }, extra || {});
@@ -47,7 +47,7 @@ console.log('\n1. Le coeur de calcul est partage, pas recopie');
 // deux definitions divergeraient un jour — et cette divergence-la serait
 // muette, contrairement a celle de l'affichage qu'on finirait par voir.
 verifie('taches-calcul.js s\'exporte pour le Worker',
-  typeof calcul.estEnRetard === 'function' && typeof calcul.aUnCreneau === 'function');
+  typeof calcul.estEnRetard === 'function' && typeof calcul.aUneHeure === 'function');
 
 // ⚠ Ces deux-la dependent de toDate(), qui vit dans hub-utils.js et
 // n'existe pas dans le Worker. Les exporter inviterait a les appeler,
@@ -75,33 +75,38 @@ try {
 verifie('...et le fichier se charge encore sans `module` (le navigateur)',
   chargementNavigateurOk && typeof bacASable.estEnRetard === 'function');
 
-// --- 2. Le rappel avant un creneau -----------------------------------
-console.log('\n2. Le rappel avant un creneau');
+// --- 2. Le rappel avant l'heure d'une tache --------------------------
+console.log('\n2. Le rappel avant l\'heure d\'une tache');
+// Seules les taches A HEURE FIXE en recoivent un. Une tache due un jour
+// sans heure precise n'a pas de moment a anticiper : elle figure au
+// digest du matin, et c'est tout.
 const aNeufHeures = tache({ id: 'c1', titre: 'Appeler le couvreur',
-  creneauJour: AJD, creneauHeure: '09:00', creneauDuree: 60 });
+  echeance: AJD, echeanceHeure: '09:00', echeanceDuree: 60 });
 
 verifie('rien 20 min avant', messages.rappelsCreneaux([aNeufHeures], AJD, '08:40').length === 0);
 verifie('le rappel part pile a 15 min',
   messages.rappelsCreneaux([aNeufHeures], AJD, '08:45').length === 1);
 verifie('...et encore a 5 min', messages.rappelsCreneaux([aNeufHeures], AJD, '08:55').length === 1);
 // Passe l'heure, ce n'est plus un rappel mais un constat : « dans -3 min »
-// ne veut rien dire, et le creneau manque a sa propre vue dans la page.
+// ne veut rien dire, et le bilan du soir le reprendra.
 verifie('plus rien une fois l\'heure passee',
   messages.rappelsCreneaux([aNeufHeures], AJD, '09:00').length === 0);
-verifie('ni pendant le creneau', messages.rappelsCreneaux([aNeufHeures], AJD, '09:30').length === 0);
+verifie('ni pendant', messages.rappelsCreneaux([aNeufHeures], AJD, '09:30').length === 0);
 
 verifie('une tache faite ne rappelle rien',
   messages.rappelsCreneaux([Object.assign({}, aNeufHeures, { faite: true })], AJD, '08:50').length === 0);
-verifie('une tache sans creneau non plus',
+// ⚠ UNE TACHE SANS HEURE N'A PAS DE RAPPEL. Elle est due ce jour-la,
+// sans moment precis : il n'y a rien a anticiper d'un quart d'heure.
+verifie('une tache SANS heure ne declenche aucun rappel',
   messages.rappelsCreneaux([tache({ echeance: AJD })], AJD, '08:50').length === 0);
-verifie('un creneau d\'un autre jour non plus',
-  messages.rappelsCreneaux([tache({ creneauJour: '2026-08-25', creneauHeure: '09:00' })], AJD, '08:50').length === 0);
+verifie('une tache d\'un autre jour non plus',
+  messages.rappelsCreneaux([tache({ echeance: '2026-08-25', echeanceHeure: '09:00' })], AJD, '08:50').length === 0);
 
-// LE CAS QUI TOMBE ENTRE DEUX JOURS. Un creneau a 00:05 demain doit etre
-// rappele a 23:50 CE SOIR — soit une minute « negative » dans le repere
+// LE CAS QUI TOMBE ENTRE DEUX JOURS. Une tache a 00:05 demain doit etre
+// rappelee a 23:50 CE SOIR — soit une minute « negative » dans le repere
 // de la journee. Sans les minutes signees, ce rappel n'existerait jamais.
-const justeApresMinuit = tache({ creneauJour: '2026-08-20', creneauHeure: '00:05' });
-verifie('un creneau juste apres minuit est rappele la veille au soir',
+const justeApresMinuit = tache({ echeance: '2026-08-20', echeanceHeure: '00:05' });
+verifie('une tache juste apres minuit est rappelee la veille au soir',
   messages.rappelsCreneaux([justeApresMinuit], AJD, '23:55').length === 1,
   'rappel absent a 23:55');
 verifie('...et pas trop tot', messages.rappelsCreneaux([justeApresMinuit], AJD, '23:40').length === 0);
@@ -109,7 +114,7 @@ verifie('...et pas trop tot', messages.rappelsCreneaux([justeApresMinuit], AJD, 
 const texte = messages.rappelsCreneaux([aNeufHeures], AJD, '08:50')[0].texte;
 verifie('le message annonce le bon delai', texte.indexOf('Dans 10 min') !== -1, texte.split('\n')[0]);
 verifie('...le titre', texte.indexOf('Appeler le couvreur') !== -1);
-verifie('...et les bornes du creneau', texte.indexOf('09:00 – 10:00') !== -1, texte);
+verifie('...et les bornes horaires', texte.indexOf('09:00 – 10:00') !== -1, texte);
 
 // --- 3. La cle de deduplication --------------------------------------
 console.log('\n3. La cle de deduplication');
@@ -123,13 +128,13 @@ verifie('la cle est stable d\'un tour a l\'autre',
 // Si la cle ne portait que l'identifiant de la tache, une tache deplacee
 // de mardi a jeudi resterait marquee « deja prevenu » et passerait sous
 // silence — exactement la panne muette qu'on cherche a eviter.
-const deplacee = Object.assign({}, aNeufHeures, { creneauHeure: '14:00' });
-verifie('replanifier change la cle, donc redonne droit a un rappel',
+const deplacee = Object.assign({}, aNeufHeures, { echeanceHeure: '14:00' });
+verifie('changer l\'heure change la cle, donc redonne droit a un rappel',
   messages.cleRappel(aNeufHeures) !== messages.cleRappel(deplacee),
   messages.cleRappel(aNeufHeures));
 verifie('...et changer de jour aussi',
   messages.cleRappel(aNeufHeures)
-  !== messages.cleRappel(Object.assign({}, aNeufHeures, { creneauJour: '2026-08-21' })));
+  !== messages.cleRappel(Object.assign({}, aNeufHeures, { echeance: '2026-08-21' })));
 verifie('la cle du digest porte le jour', messages.cleDigest(AJD) === 'digest:' + AJD);
 
 // La fenetre est sortie a part pour que le Worker la consulte AVANT de
@@ -162,17 +167,17 @@ verifie('un jour vide produit quand meme un message',
 // --- 5. Le contenu du digest -----------------------------------------
 console.log('\n5. Le contenu du digest');
 const journee = [
-  tache({ id: 'd1', titre: 'Rendez-vous couvreur', creneauJour: AJD, creneauHeure: '14:00', creneauDuree: 90 }),
-  tache({ id: 'd2', titre: 'Coup de fil matinal', creneauJour: AJD, creneauHeure: '09:00', creneauDuree: 15 }),
+  tache({ id: 'd1', titre: 'Rendez-vous couvreur', echeance: AJD, echeanceHeure: '14:00', echeanceDuree: 90 }),
+  tache({ id: 'd2', titre: 'Coup de fil matinal', echeance: AJD, echeanceHeure: '09:00', echeanceDuree: 15 }),
   tache({ id: 'd3', titre: 'Relancer assurance', echeance: '2026-08-05' }),
   tache({ id: 'd4', titre: 'Ranger le garage', echeance: '2026-08-15', nbReports: 4 }),
-  tache({ id: 'd5', titre: 'Declarer les impots', echeance: '2026-08-21' }),
+  tache({ id: 'd5', titre: 'Sortir les poubelles', echeance: AJD }),
   tache({ id: 'd6', titre: 'Un jour peut-etre', echeance: '' }),
-  tache({ id: 'd7', titre: 'Deja reglee', creneauJour: AJD, creneauHeure: '11:00', faite: true }),
+  tache({ id: 'd7', titre: 'Deja reglee', echeance: AJD, echeanceHeure: '11:00', faite: true }),
 ];
 const digest = messages.digestDuMatin(journee, AJD, '07:30').texte;
 
-verifie('les creneaux du jour sont la, dans l\'ordre horaire',
+verifie('les taches a heure fixe sont la, dans l\'ordre horaire',
   digest.indexOf('09:00 — Coup de fil matinal') < digest.indexOf('14:00 — Rendez-vous couvreur')
   && digest.indexOf('09:00 — Coup de fil matinal') !== -1, digest);
 verifie('une tache faite ne figure pas au programme', digest.indexOf('Deja reglee') === -1);
@@ -183,14 +188,19 @@ verifie('...le plus ancien en tete',
 // constat qui autorise a abandonner une tache.
 verifie('l\'enlisement se dit aussi dans le message',
   digest.indexOf('reportée 4 fois') !== -1, digest);
-verifie('l\'urgence sans creneau est signalee', digest.indexOf('Declarer les impots') !== -1);
-verifie('ce qui n\'est ni urgent ni en retard reste dehors',
+
+// ⚠ SECTION NEE DE LA FUSION DES DATES. Les taches dues aujourd'hui SANS
+// heure n'apparaissaient nulle part avant : le digest ne montrait que
+// les creneaux, or ce sont les plus nombreuses.
+verifie('les taches du jour SANS heure ont leur section',
+  digest.indexOf('Sortir les poubelles') !== -1
+  && digest.indexOf('sans heure fixée') !== -1, digest);
+verifie('ce qui n\'est pas du aujourd\'hui reste dehors',
   digest.indexOf('Un jour peut-etre') === -1);
 
-// ⚠ PAS DEUX FOIS LA MEME TACHE. Sur une carte, « en retard » et « sans
-// creneau » cohabitent tres bien ; dans un message lu d'un oeil au
-// reveil, la meme tache citee deux fois se lit comme un bug.
-verifie('une tache en retard n\'est pas repetee sous « sans creneau »',
+// ⚠ PAS DEUX FOIS LA MEME TACHE. Dans un message lu d'un oeil au reveil,
+// la meme tache citee deux fois se lit comme un bug.
+verifie('une tache en retard n\'est pas repetee sous « sans heure »',
   (digest.match(/Relancer assurance/g) || []).length === 1,
   (digest.match(/Relancer assurance/g) || []).length + ' occurrences');
 
@@ -200,7 +210,7 @@ console.log('\n6. L\'echappement HTML');
 // « & » ferait REJETER l'envoi par l'API Telegram. Donc un rappel perdu,
 // en silence, sur la tache la plus mal nommee.
 const piegee = tache({ id: 'x', titre: 'Devis <b>gros</b> & cie',
-  creneauJour: AJD, creneauHeure: '09:00' });
+  echeance: AJD, echeanceHeure: '09:00' });
 const rappelPiege = messages.rappelsCreneaux([piegee], AJD, '08:50')[0].texte;
 verifie('les chevrons du titre sont echappes',
   rappelPiege.indexOf('&lt;b&gt;gros&lt;/b&gt;') !== -1, rappelPiege);
@@ -210,24 +220,13 @@ verifie('le gras du gabarit reste du HTML', rappelPiege.indexOf('<b>Dans') !== -
 verifie('echapper() ne touche pas au texte ordinaire',
   messages.echapper('Rien de special') === 'Rien de special');
 
-// --- 7. Le creneau pose apres l'echeance -----------------------------
-console.log('\n7. Le creneau pose apres l\'echeance');
-// Le dire au moment du rappel, et pas a la relecture du planning trois
-// semaines plus tard, quand il est trop tard pour en faire quelque chose.
-const debordee = tache({ id: 'z', titre: 'Trop tard', echeance: '2026-08-10',
-  creneauJour: AJD, creneauHeure: '09:00' });
-verifie('le rappel avertit que le creneau est apres l\'echeance',
-  messages.rappelsCreneaux([debordee], AJD, '08:50')[0].texte.indexOf('APRÈS l\'échéance') !== -1);
-verifie('...et se tait quand tout est en ordre',
-  messages.rappelsCreneaux([aNeufHeures], AJD, '08:50')[0].texte.indexOf('APRÈS') === -1);
-
 // --- 8. Tout ce qui est du en un tour --------------------------------
 console.log('\n8. Tout ce qui est du en un tour');
 const tour = messages.messagesDus(journee, AJD, '07:30');
 verifie('le digest passe en tete, avant les rappels',
   tour.length > 0 && tour[0].cle.indexOf('digest:') === 0, cles(tour));
 verifie('hors fenetre du digest, il ne reste que les rappels',
-  messages.messagesDus(journee, AJD, '13:50').every((m) => m.cle.indexOf('creneau:') === 0),
+  messages.messagesDus(journee, AJD, '13:50').every((m) => m.cle.indexOf('heure:') === 0),
   cles(messages.messagesDus(journee, AJD, '13:50')));
 verifie('a une heure creuse, rien ne part',
   messages.messagesDus(journee, AJD, '17:00').length === 0,
@@ -241,10 +240,10 @@ console.log('\n9. Le bilan du soir');
 const SOIR = '20:00';
 const journeeDuSoir = [
   tache({ id: 'b1', titre: 'Declarer les impots', echeance: AJD, important: true }),
-  tache({ id: 'b2', titre: 'Appeler le garagiste', creneauJour: AJD, creneauHeure: '14:00' }),
-  tache({ id: 'b3', titre: 'Rendez-vous couvreur', creneauJour: '2026-08-20', creneauHeure: '09:30', creneauDuree: 90 }),
-  tache({ id: 'b4', titre: 'Deja reglee', creneauJour: AJD, creneauHeure: '10:00', faite: true }),
-  tache({ id: 'b5', titre: 'Vieux creneau', creneauJour: '2026-08-17', creneauHeure: '11:00' }),
+  tache({ id: 'b2', titre: 'Appeler le garagiste', echeance: AJD, echeanceHeure: '14:00' }),
+  tache({ id: 'b3', titre: 'Rendez-vous couvreur', echeance: '2026-08-20', echeanceHeure: '09:30', echeanceDuree: 90 }),
+  tache({ id: 'b4', titre: 'Deja reglee', echeance: AJD, echeanceHeure: '10:00', faite: true }),
+  tache({ id: 'b5', titre: 'Vieille heure', echeance: '2026-08-17', echeanceHeure: '11:00' }),
   tache({ id: 'b6', titre: 'Echeance lointaine', echeance: '2026-09-30' }),
 ];
 
@@ -273,18 +272,18 @@ verifie('les echeances qui basculent cette nuit sont annoncees',
 verifie('...et une echeance lointaine n\'y figure pas',
   texteBilan.indexOf('Echeance lointaine') === -1);
 
-verifie('les creneaux non tenus du jour sont listes',
+verifie('les heures passees du jour sont listees',
   texteBilan.indexOf('Appeler le garagiste') !== -1
-  && texteBilan.indexOf('non tenus') !== -1);
+  && texteBilan.indexOf('Heures passées') !== -1);
 verifie('...mais pas une tache deja reglee', texteBilan.indexOf('Deja reglee') === -1);
 
-// ⚠ LE CAS A NE PAS CASSER. Les creneaux des jours PRECEDENTS ont deja
-// ete annonces le soir venu. Les repeter chaque soir jusqu'a ce qu'on
+// ⚠ LE CAS A NE PAS CASSER. Une heure d'un jour PRECEDENT est devenue
+// un RETARD et a sa propre section. La reprendre ici jusqu'a ce qu'on
 // cede ne serait plus un rappel mais du harcelement.
-verifie('un creneau d\'un jour PRECEDENT n\'est pas repete tous les soirs',
-  texteBilan.indexOf('Vieux creneau') === -1);
+verifie('une heure d\'un jour PRECEDENT n\'est pas repetee tous les soirs',
+  texteBilan.indexOf('Vieille heure') === -1);
 
-verifie('les creneaux de demain sont annonces',
+verifie('les taches a heure fixe de demain sont annoncees',
   texteBilan.indexOf('Rendez-vous couvreur') !== -1 && texteBilan.indexOf('Demain') !== -1);
 
 verifie('la cle du bilan porte le jour et differe de celle du digest',
@@ -396,7 +395,7 @@ const digestGite = messages.digestDuMatin([], '2026-08-27', '07:30', lus, etatGi
 // En tete parce que c'est la seule chose du digest qui engage quelqu'un
 // d'autre que soi, et la seule qu'on ne rattrape pas le lendemain.
 const digestMixte = messages.digestDuMatin(
-  [tache({ titre: 'Une tache du jour', creneauJour: '2026-08-27', creneauHeure: '09:00' })],
+  [tache({ titre: 'Une tache du jour', echeance: '2026-08-27', echeanceHeure: '09:00' })],
   '2026-08-27', '07:30', lus, etatGite).texte;
 verifie('la section gite passe AVANT le programme des taches',
   digestMixte.indexOf('Arrivée demain') < digestMixte.indexOf('Au programme')

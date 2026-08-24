@@ -23,9 +23,9 @@ remarque pas.
 
 | Quand | Quoi | Question posée |
 |---|---|---|
-| **07:30** | Digest du matin — créneaux du jour, retards, urgences sans créneau | Qu'est-ce qui m'attend ? |
-| **15 min avant chaque créneau** | Un rappel, une seule fois | — |
-| **20:00** | Bilan du soir — échéances qui basculent cette nuit, créneaux non tenus, programme de demain | Qu'est-ce qui a glissé, et que fais-je de demain ? |
+| **07:30** | Digest du matin — tâches à heure fixe, retards, tâches du jour sans heure | Qu'est-ce qui m'attend ? |
+| **15 min avant chaque heure fixée** | Un rappel, une seule fois. Une tâche sans heure n'en reçoit pas : il n'y a pas de moment à anticiper | — |
+| **20:00** | Bilan du soir — échéances qui basculent cette nuit, heures passées sans être faites, programme de demain | Qu'est-ce qui a glissé, et que fais-je de demain ? |
 
 **Les deux résumés** portent en plus, en tête, les arrivées et départs du gîte de
 Labergement prévus le lendemain : le matin les annonce (« envoyer le message d'arrivée »),
@@ -74,11 +74,11 @@ Deux requêtes, donc, choisies selon le tour :
 
 | Quand | Ce qui est lu |
 |---|---|
-| Presque tous les tours | Les créneaux d'**aujourd'hui et demain** seulement. Le rappel n'anticipe que de 15 min : au plus loin, ce soir à 23:50 pour un créneau demain à 00:05 |
+| Presque tous les tours | Les tâches à heure fixe d'**aujourd'hui et demain** seulement. Le rappel n'anticipe que de 15 min : au plus loin, ce soir à 23:50 pour une tâche demain à 00:05 |
 | Fenêtre d'un résumé, résumé pas encore parti | Toutes les tâches **ouvertes**. Deux fois par jour au plus |
 
 Le bilan du soir a besoin de la liste complète autant que le digest : les échéances qui
-basculent cette nuit n'ont pas de créneau, elles seraient invisibles dans la lecture
+basculent cette nuit n'ont pas forcément d'heure, elles seraient invisibles dans la lecture
 courte.
 
 Le KV est interrogé **avant** Firestore : si le digest du jour est déjà parti, la lecture

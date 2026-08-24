@@ -39,9 +39,9 @@
              qui ose dire qu'une tâche est morte. -->
         <div class="avertissement avertissement--info" id="note-enlisement" style="display:none"></div>
 
-        <!-- Le trou de la planification : ça brûle, rien n'est décidé.
-             Ni une liste seule ni un calendrier seul ne peuvent le dire. -->
-        <div class="avertissement avertissement--info" id="note-sans-creneau" style="display:none"></div>
+        <!-- Bascule vers la date unique. Temporaire : à retirer une fois
+             que plus aucune tâche ne porte d'ancien créneau. -->
+        <div class="avertissement avertissement--info" id="note-fusion" style="display:none"></div>
 
         <!-- Liste | Semaine — la même donnée, deux regards. -->
         <nav id="selecteur-vues" class="selecteur-vues"></nav>
@@ -100,6 +100,24 @@
                     <label for="f-echeance">Échéance</label>
                     <input type="date" id="f-echeance">
                 </div>
+                <div class="field field--duo">
+                    <div>
+                        <!-- L'heure est FACULTATIVE : la première option du
+                             sélecteur est vide, et c'est le cas par défaut.
+                             La plupart des tâches sont dues un jour, sans
+                             moment précis dans la journée. -->
+                        <label for="f-echeance-h">Heure (facultative)</label>
+                        <div class="champ-heure">
+                            <select id="f-echeance-h" aria-label="Heure"></select>
+                            <span class="champ-heure-separateur">:</span>
+                            <select id="f-echeance-m" aria-label="Minutes"></select>
+                        </div>
+                    </div>
+                    <div>
+                        <label for="f-echeance-duree">Durée</label>
+                        <select id="f-echeance-duree"></select>
+                    </div>
+                </div>
                 <div class="field">
                     <label for="f-projet">Projet</label>
                     <!-- Liste fermée, comme au carnet d'idées : on ne note
@@ -112,35 +130,6 @@
                     </label>
                     <small class="field-hint">Pour l'urgence qu'aucune date ne dit.</small>
                 </div>
-                <!-- LE CRÉNEAU N'EST PAS L'ÉCHÉANCE. L'échéance dit avant
-                     quand ça doit être fait ; le créneau, quand on s'y
-                     colle. Les fondre en un seul champ, c'est refaire
-                     Google Calendar — voir l'en-tête de taches-calcul.js. -->
-                <div class="field field--full">
-                    <label class="field-groupe">Créneau — quand je m'y colle</label>
-                </div>
-                <div class="field">
-                    <label for="f-creneau-jour">Jour</label>
-                    <input type="date" id="f-creneau-jour">
-                </div>
-                <div class="field field--duo">
-                    <div>
-                        <!-- Deux listes fermées plutôt qu'un <input type="time"> :
-                             celui-ci laissait saisir n'importe quelle minute et
-                             ouvrait, selon le navigateur, la liste des soixante. -->
-                        <label for="f-creneau-h">Heure</label>
-                        <div class="champ-heure">
-                            <select id="f-creneau-h" aria-label="Heure"></select>
-                            <span class="champ-heure-separateur">:</span>
-                            <select id="f-creneau-m" aria-label="Minutes"></select>
-                        </div>
-                    </div>
-                    <div>
-                        <label for="f-creneau-duree">Durée</label>
-                        <select id="f-creneau-duree"></select>
-                    </div>
-                </div>
-
                 <div class="field field--full">
                     <label for="f-detail">Détail</label>
                     <textarea id="f-detail" rows="4" placeholder="Le contexte, le numéro à rappeler, ce qu'il faut avoir sous la main…"></textarea>

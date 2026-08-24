@@ -104,15 +104,24 @@ Cinq assertions relisent enfin `firestore.rules`, dont une qui échoue si une cl
 `superadmin()` réapparaît dans le bloc `taches` : c'est le seul lot du hub sans passe-droit,
 et l'exception doit rester volontaire.
 
-**La planification** ajoute une trentaine d'assertions autour d'une seule idée : l'échéance
-et le créneau sont deux choses. Deux d'entre elles la verrouillent directement — poser un
-créneau ne doit changer ni le bloc de la tâche ni son nombre de jours de retard. Les trois
-signaux qu'ouvre cette séparation sont testés deux fois : au calcul, puis **au rendu**, parce
-que les calculer sans les afficher est le genre de fil qui casse en silence.
+**La fusion des deux dates** (24 août 2026) a remplacé la trentaine d'assertions qui
+verrouillaient la séparation échéance / créneau. Ce qui reste figé est le défaut qu'elle a
+corrigé : une tâche à faire **cet après-midi** doit être *urgente*, pas rangée dans « Le
+reste » — c'était le cas avant, parce que le créneau ne pesait rien sur la priorité.
 
-« Créneau manqué » n'est **pas** un retard, et une assertion l'affirme sur la même tâche :
-son heure est passée, son échéance tient encore. Les confondre reviendrait à crier au loup
-un jour trop tôt.
+Deux assertions vérifient que `planifieApresEcheance` et `sansCreneauAlorsQueProche` ont
+bien **disparu** de la surface exportée : elles n'ont plus d'objet, une date ne pouvant pas
+être en retard sur elle-même.
+
+« Heure passée » n'est **pas** un retard, et une assertion l'affirme sur la même tâche : son
+heure est derrière nous, la journée n'est pas finie. Les confondre reviendrait à crier au
+loup un jour trop tôt. Le signal est testé deux fois — au calcul, puis **au rendu**, parce
+que le calculer sans l'afficher est le genre de fil qui casse en silence.
+
+La **bascule** a sa propre section : que seules les tâches portant un ancien `creneauJour`
+soient reprises, que le créneau l'emporte quand les deux dates diffèrent, et surtout que les
+trois anciens champs soient **supprimés** du document — laissés à traîner, la bannière ne
+s'éteindrait jamais.
 
 Le piège figé côté semaine est le **lundi d'un dimanche** : `getUTCDay()` rend 0 le
 dimanche, et sans le décalage la semaine commencerait le lendemain — le bug classique de
@@ -120,12 +129,12 @@ tout calendrier maison. Côté grille, les voies parallèles se comptent par gra
 chevauchements : une assertion vérifie qu'un doublon à 9 h ne rétrécit pas l'après-midi, qui
 n'y est pour rien.
 
-Côté saisie, c'est **le jour qui crée le créneau** : une heure choisie sans jour ne doit
-écrire aucun des trois champs — ce serait une seconde échéance déguisée, exactement la
-confusion que toute cette conception cherche à éviter. Le cas à ne pas perdre est la
-**minute héritée** : une valeur du temps de l'`<input type="time">` (14:37) doit rester dans
-la liste des quarts d'heure plutôt que d'être arrondie en silence à la simple ouverture de
-la modale — même piège, et même remède, que le projet « hérité » du carnet d'idées.
+Côté saisie, l'heure est **facultative et vide par défaut** : une nouvelle tâche ne doit pas
+s'ouvrir sur une heure inventée, et une heure choisie sans date ne doit pas être écrite. Le
+cas à ne pas perdre est la **minute héritée** : une valeur du temps de l'`<input
+type="time">` (14:37) doit rester dans la liste des quarts d'heure plutôt que d'être
+arrondie en silence à la simple ouverture de la modale — même piège, et même remède, que le
+projet « hérité » du carnet d'idées.
 
 ### `test-cueillette.js` — une machine à dates
 

@@ -68,6 +68,15 @@ const FakeURL = {
 const ecritures = [];
 const requetes = [];
 const fauxDb = {
+  // La bascule vers la date unique ecrit en LOT : sans batch(), le test
+  // ne verrait rien partir.
+  batch() {
+    const operations = [];
+    return {
+      update(ref, data) { operations.push({ type: 'update', id: ref.id, data }); },
+      commit() { operations.forEach((o) => ecritures.push(o)); return Promise.resolve(); },
+    };
+  },
   collection(nom) {
     return {
       where(champ, operateur, valeur) {
@@ -92,7 +101,12 @@ const sandbox = {
   document, console, Blob: FakeBlob, URL: FakeURL, JSON, Date, Promise,
   Object, Array, String, Number, Math, RegExp, isNaN,
   firebase: { firestore: Object.assign(() => fauxDb, {
-    FieldValue: { serverTimestamp: () => ({ __serveur: true }) },
+    FieldValue: {
+      serverTimestamp: () => ({ __serveur: true }),
+      // La bascule EFFACE les anciens champs plutot que de les vider :
+      // un champ vide traine, un champ supprime disparait.
+      delete: () => ({ __efface: true }),
+    },
   }) },
   window: { location: { pathname: '/taches/', search: '', hostname: 'admin.ofildudoubs.fr' } },
 };
@@ -257,51 +271,38 @@ verifie('une tache sans date passe apres celles qui en ont une',
   range2.reste.map((t) => t.id).join(',') === 'lointain,sans-date',
   range2.reste.map((t) => t.id).join(','));
 
-// LE BUG SIGNALE. Deux taches importantes, l'une planifiee a 12:45 et
-// l'autre a 19:00, sortaient dans l'ordre de leur CREATION : le tri ne
-// regardait que l'echeance et ignorait completement le creneau. A
-// contrainte egale, c'est pourtant lui qui dit dans quel ordre les
-// choses vont reellement s'enchainer.
+// LE BUG SIGNALE EN AOUT. Deux taches importantes du meme jour, l'une a
+// 12:45 et l'autre a 19:00, sortaient dans l'ordre de leur CREATION :
+// le tri ne regardait que la date et ignorait l'heure. A date egale,
+// c'est pourtant elle qui dit dans quel ordre les choses s'enchainent.
 const memeJournee = [
-  tache({ id: 'soir', important: true, creneauJour: AJD, creneauHeure: '19:00',
+  tache({ id: 'soir', important: true, echeance: AJD, echeanceHeure: '19:00',
           createdAt: new Date('2026-08-01T08:00:00Z') }),
-  tache({ id: 'midi', important: true, creneauJour: AJD, creneauHeure: '12:45',
+  tache({ id: 'midi', important: true, echeance: AJD, echeanceHeure: '12:45',
           createdAt: new Date('2026-08-02T08:00:00Z') }),
 ];
-verifie('a echeance egale, le creneau le plus tot passe devant',
-  sandbox.rangerParBloc(memeJournee, AJD).important.map((t) => t.id).join(',') === 'midi,soir',
-  sandbox.rangerParBloc(memeJournee, AJD).important.map((t) => t.id).join(','));
+verifie('a date egale, l\'heure la plus tot passe devant',
+  sandbox.rangerParBloc(memeJournee, AJD).urgent.map((t) => t.id).join(',') === 'midi,soir',
+  sandbox.rangerParBloc(memeJournee, AJD).urgent.map((t) => t.id).join(','));
 
-// Le jour compte avant l'heure : 09:00 demain vient apres 19:00 ce soir.
-const deuxJours = [
-  tache({ id: 'demain-tot', important: true, creneauJour: '2026-08-19', creneauHeure: '09:00' }),
-  tache({ id: 'ce-soir', important: true, creneauJour: AJD, creneauHeure: '19:00' }),
-];
-verifie('le jour du creneau passe avant son heure',
-  sandbox.rangerParBloc(deuxJours, AJD).important.map((t) => t.id).join(',') === 'ce-soir,demain-tot',
-  sandbox.rangerParBloc(deuxJours, AJD).important.map((t) => t.id).join(','));
-
-// Non planifiee en dernier, comme une tache sans echeance : n'avoir
-// aucun moment decide n'est pas un rang.
+// Sans heure en dernier, comme une tache sans date : n'avoir pas decide
+// d'un moment n'est pas un rang.
 const avecEtSans = [
-  tache({ id: 'sans-creneau', important: true }),
-  tache({ id: 'planifiee', important: true, creneauJour: '2026-12-31', creneauHeure: '23:00' }),
+  tache({ id: 'sans-heure', important: true, echeance: AJD }),
+  tache({ id: 'a-heure', important: true, echeance: AJD, echeanceHeure: '23:00' }),
 ];
-verifie('une tache non planifiee passe apres les planifiees',
-  sandbox.rangerParBloc(avecEtSans, AJD).important.map((t) => t.id).join(',') === 'planifiee,sans-creneau',
-  sandbox.rangerParBloc(avecEtSans, AJD).important.map((t) => t.id).join(','));
+verifie('une tache sans heure passe apres celles qui en ont une',
+  sandbox.rangerParBloc(avecEtSans, AJD).urgent.map((t) => t.id).join(',') === 'a-heure,sans-heure',
+  sandbox.rangerParBloc(avecEtSans, AJD).urgent.map((t) => t.id).join(','));
 
-// L'echeance reste prioritaire sur le creneau : c'est la contrainte qui
-// commande, le creneau ne fait que departager a contrainte egale.
-// Les deux echeances sont volontairement au-dela de J+7, sinon les
-// taches changeraient de BLOC et ne se compareraient jamais entre elles.
-const contrainteDAbord = [
-  tache({ id: 'due-tard', important: true, echeance: '2026-10-01', creneauJour: AJD, creneauHeure: '08:00' }),
-  tache({ id: 'due-tot', important: true, echeance: '2026-09-01', creneauJour: AJD, creneauHeure: '20:00' }),
+// La DATE commande, l'heure ne fait que departager a date egale.
+const dateDAbord = [
+  tache({ id: 'due-tard', important: true, echeance: '2026-10-01', echeanceHeure: '08:00' }),
+  tache({ id: 'due-tot', important: true, echeance: '2026-09-01', echeanceHeure: '20:00' }),
 ];
-verifie('l\'echeance commande, le creneau ne fait que departager',
-  sandbox.rangerParBloc(contrainteDAbord, AJD).important.map((t) => t.id).join(',') === 'due-tot,due-tard',
-  sandbox.rangerParBloc(contrainteDAbord, AJD).important.map((t) => t.id).join(','));
+verifie('la date commande, l\'heure ne fait que departager',
+  sandbox.rangerParBloc(dateDAbord, AJD).important.map((t) => t.id).join(',') === 'due-tot,due-tard',
+  sandbox.rangerParBloc(dateDAbord, AJD).important.map((t) => t.id).join(','));
 
 verifie('rangerParBloc rend toujours les cinq cles, meme vides',
   ['retard', 'urgent', 'important', 'reste', 'faites']
@@ -576,101 +577,82 @@ verifie('les horodatages sortent en ISO lisible',
 
 sandbox.aujourdhui = vraiAujourdhui;
 
-// --- 12. Les creneaux ------------------------------------------------
-console.log('\n12. Le creneau, qui n\'est PAS l\'echeance');
-// LA DECISION CENTRALE DE LA PLANIF. `echeance` dit avant quand ca doit
-// etre fait, `creneauJour`/`creneauHeure` disent quand on s'y colle.
-// Les confondre, c'est refaire Google Calendar : la contrainte devient
-// un evenement a 14 h, et si on ne le fait pas a 14 h, il passe.
+// --- 12. Une seule date, avec une heure facultative -------------------
+console.log('\n12. Une seule date, avec une heure facultative');
+// ⚠ LE RETOURNEMENT DU 24 AOUT 2026. Le projet separait `echeance` (la
+// contrainte) et `creneauJour`/`creneauHeure` (la decision). L'usage a
+// tranche contre : sur 38 taches reelles, 20 des 26 qui portaient les
+// deux avaient LA MEME date, et aucune n'a jamais eu un creneau seul.
+// Il ne reste qu'une date, avec une heure facultative.
 sandbox.aujourdhui = () => AJD;
 
-verifie('un creneau demande un jour ET une heure',
-  sandbox.aUnCreneau(tache({ creneauJour: AJD, creneauHeure: '14:00' }))
-  && !sandbox.aUnCreneau(tache({ creneauJour: AJD, creneauHeure: '' }))
-  && !sandbox.aUnCreneau(tache({ creneauJour: '', creneauHeure: '14:00' })));
+verifie('une heure demande une date',
+  sandbox.aUneHeure(tache({ echeance: AJD, echeanceHeure: '14:00' }))
+  && !sandbox.aUneHeure(tache({ echeance: '', echeanceHeure: '14:00' }))
+  && !sandbox.aUneHeure(tache({ echeance: AJD, echeanceHeure: '' })));
 verifie('une heure invalide est refusee',
-  !sandbox.heureValide('25:00') && !sandbox.heureValide('9:00')
-  && !sandbox.heureValide('14:60') && sandbox.heureValide('09:05'));
-verifie('minutes <-> heure font l\'aller-retour',
-  sandbox.heureDeMinutes(sandbox.minutesDeHeure('14:30')) === '14:30');
-verifie('un creneau ne franchit pas minuit',
-  sandbox.bornesCreneau(tache({ creneauJour: AJD, creneauHeure: '23:00', creneauDuree: 240 })).fin === 1440,
-  String(sandbox.bornesCreneau(tache({ creneauJour: AJD, creneauHeure: '23:00', creneauDuree: 240 })).fin));
+  !sandbox.heureValide('25:00') && !sandbox.heureValide('9:00') && sandbox.heureValide('09:05'));
+verifie('une tache ne franchit pas minuit',
+  sandbox.bornesHeure(tache({ echeance: AJD, echeanceHeure: '23:00', echeanceDuree: 240 })).fin === 1440);
 verifie('une duree absente retombe sur la valeur par defaut',
-  sandbox.dureeCreneau(tache({ creneauJour: AJD, creneauHeure: '09:00' })) === sandbox.DUREE_DEFAUT);
+  sandbox.dureeEcheance(tache({ echeance: AJD, echeanceHeure: '09:00' })) === sandbox.DUREE_DEFAUT);
 
-// L'echeance reste un JOUR : poser un creneau ne doit rien changer au
-// calcul du retard, sinon on aurait casse le mecanisme en l'enrichissant.
-const planifieeTard = tache({ echeance: '2026-08-11', creneauJour: '2026-08-25', creneauHeure: '10:00' });
-verifie('poser un creneau ne change pas le bloc de la tache',
-  sandbox.blocDe(planifieeTard, AJD) === 'retard', sandbox.blocDe(planifieeTard, AJD));
-verifie('...ni le nombre de jours de retard',
-  sandbox.joursDeRetard(planifieeTard, AJD) === 7);
+// ⚠ LE DEFAUT QUE LA FUSION CORRIGE. Avant, une tache qu'on faisait dans
+// deux heures tombait dans « Le reste » : le creneau ne pesait rien sur
+// la priorite, seule l'echeance comptait. Maintenant sa date EST son
+// echeance, donc elle est urgente et elle remonte.
+verifie('une tache a faire cet apres-midi est URGENTE, pas « le reste »',
+  sandbox.blocDe(tache({ echeance: AJD, echeanceHeure: '16:00' }), AJD) === 'urgent',
+  sandbox.blocDe(tache({ echeance: AJD, echeanceHeure: '16:00' }), AJD));
+verifie('...et une tache a faire demain aussi',
+  sandbox.blocDe(tache({ echeance: '2026-08-19', echeanceHeure: '09:00' }), AJD) === 'urgent');
+// L'heure ne change RIEN au classement : c'est la date qui decide.
+verifie('poser une heure ne change pas le bloc',
+  sandbox.blocDe(tache({ echeance: '2026-12-01' }), AJD)
+  === sandbox.blocDe(tache({ echeance: '2026-12-01', echeanceHeure: '09:00' }), AJD));
 
-// --- 13. Les trois signaux -------------------------------------------
-console.log('\n13. Les trois signaux que la separation rend possibles');
-verifie('PLANIFIE APRES L\'ECHEANCE se detecte',
-  sandbox.planifieApresEcheance(planifieeTard));
-verifie('...et pas quand le creneau precede l\'echeance',
-  !sandbox.planifieApresEcheance(tache({ echeance: '2026-08-25', creneauJour: '2026-08-20', creneauHeure: '10:00' })));
-verifie('...ni le jour meme de l\'echeance',
-  !sandbox.planifieApresEcheance(tache({ echeance: '2026-08-25', creneauJour: '2026-08-25', creneauHeure: '10:00' })));
-verifie('...ni sur une tache faite',
-  !sandbox.planifieApresEcheance(Object.assign({}, planifieeTard, { faite: true })));
+// --- 13. L'heure passee ----------------------------------------------
+console.log('\n13. L\'heure passee');
+// Seul survivant des trois signaux que la separation permettait. Les
+// deux autres — « planifie apres l'echeance » et « urgent sans
+// creneau » — n'ont plus d'objet : une date ne peut pas etre en retard
+// sur elle-meme.
+verifie('planifieApresEcheance a bien disparu',
+  sandbox.planifieApresEcheance === undefined);
+verifie('sansCreneauAlorsQueProche aussi', sandbox.sansCreneauAlorsQueProche === undefined);
 
-verifie('URGENT SANS CRENEAU se detecte',
-  sandbox.sansCreneauAlorsQueProche(tache({ echeance: '2026-08-20' }), AJD));
-verifie('...y compris sur un retard',
-  sandbox.sansCreneauAlorsQueProche(tache({ echeance: '2026-08-01' }), AJD));
-verifie('...mais pas quand le creneau est pose',
-  !sandbox.sansCreneauAlorsQueProche(tache({ echeance: '2026-08-20', creneauJour: AJD, creneauHeure: '09:00' }), AJD));
-verifie('...ni sur une tache lointaine, qui a le temps',
-  !sandbox.sansCreneauAlorsQueProche(tache({ echeance: '2026-12-01', important: true }), AJD));
-
-// CRENEAU MANQUE n'est PAS un retard : l'echeance tient peut-etre encore.
-// Les confondre reviendrait a crier au loup un jour trop tot.
-const creneauHier = tache({ echeance: '2026-12-01', creneauJour: '2026-08-17', creneauHeure: '09:00' });
-verifie('CRENEAU MANQUE se detecte la veille',
-  sandbox.creneauManque(creneauHier, AJD, '12:00'));
-verifie('...et la tache n\'est pas pour autant en retard',
-  !sandbox.estEnRetard(creneauHier, AJD));
-const creneauCeMatin = tache({ creneauJour: AJD, creneauHeure: '09:00', creneauDuree: 60 });
-verifie('un creneau du matin est manque l\'apres-midi',
-  sandbox.creneauManque(creneauCeMatin, AJD, '14:00'));
-verifie('...mais pas pendant qu\'il court',
-  !sandbox.creneauManque(creneauCeMatin, AJD, '09:30'));
-verifie('...ni avant qu\'il commence',
-  !sandbox.creneauManque(creneauCeMatin, AJD, '08:00'));
-verifie('un creneau a venir n\'est jamais manque',
-  !sandbox.creneauManque(tache({ creneauJour: '2026-08-25', creneauHeure: '09:00' }), AJD, '23:59'));
+const ceMatin = tache({ echeance: AJD, echeanceHeure: '09:00', echeanceDuree: 60 });
+verifie('une heure du matin est passee l\'apres-midi',
+  sandbox.heureDepassee(ceMatin, AJD, '14:00'));
+verifie('...mais pas pendant qu\'elle court', !sandbox.heureDepassee(ceMatin, AJD, '09:30'));
+verifie('...ni avant qu\'elle commence', !sandbox.heureDepassee(ceMatin, AJD, '08:00'));
+// ⚠ CE N'EST PAS UN RETARD : la tache est due AUJOURD'HUI, la journee
+// n'est pas finie. Les confondre reviendrait a crier au loup un jour
+// trop tot.
+verifie('une heure passee n\'est PAS un retard',
+  sandbox.heureDepassee(ceMatin, AJD, '14:00') && !sandbox.estEnRetard(ceMatin, AJD));
+verifie('une tache d\'un autre jour n\'a pas d\'heure passee aujourd\'hui',
+  !sandbox.heureDepassee(tache({ echeance: '2026-08-25', echeanceHeure: '09:00' }), AJD, '23:00'));
+verifie('une tache faite non plus',
+  !sandbox.heureDepassee(Object.assign({}, ceMatin, { faite: true }), AJD, '14:00'));
 verifie('sans heure courante exploitable, aucun signal n\'est invente',
-  !sandbox.creneauManque(creneauCeMatin, AJD, 'plus tard'));
+  !sandbox.heureDepassee(ceMatin, AJD, 'plus tard'));
 
-// Les trois signaux doivent SE VOIR : les calculer sans les afficher ne
-// servirait a rien, et c'est le genre de fil qui casse en silence.
-sandbox.heureCourante = () => '12:00';
+// Les badges correspondants doivent SE VOIR : les calculer sans les
+// afficher est le genre de fil qui casse en silence.
+sandbox.heureCourante = () => '14:00';
 sandbox.vue = 'liste';
 sandbox.filtreEtat = 'toutes';
 sandbox.taches = [
-  planifieeTard,
-  tache({ id: 's1', titre: 'Rien de decide', echeance: '2026-08-20' }),
-  creneauHier,
-  tache({ id: 'ok', titre: 'Bien calee', echeance: '2026-08-25', creneauJour: '2026-08-20', creneauHeure: '10:00' }),
+  tache({ id: 'h1', titre: 'Heure passee', echeance: AJD, echeanceHeure: '09:00' }),
+  tache({ id: 'h2', titre: 'Heure a venir', echeance: AJD, echeanceHeure: '18:00' }),
 ];
 sandbox.renderVue();
-const htmlSignaux = el('taches-blocs').innerHTML;
-verifie('le badge « planifie apres l\'echeance » s\'affiche',
-  htmlSignaux.indexOf('badge-debordee') !== -1);
-verifie('le badge « sans creneau » s\'affiche', htmlSignaux.indexOf('badge-sans-creneau') !== -1);
-verifie('le badge « creneau manque » s\'affiche', htmlSignaux.indexOf('badge-creneau-manque') !== -1);
-verifie('un creneau normal s\'affiche sans alarme',
-  htmlSignaux.indexOf('badge-creneau"') !== -1);
-verifie('le bouton Deplanifier n\'apparait que sur les taches planifiees',
-  (htmlSignaux.match(/deplanifierTache\(/g) || []).length === 3,
-  (htmlSignaux.match(/deplanifierTache\(/g) || []).length + ' pour 3 taches avec creneau');
-verifie('l\'avertissement « sans creneau » du haut de page se declenche',
-  el('note-sans-creneau').innerHTML.indexOf('sans créneau') !== -1,
-  el('note-sans-creneau').innerHTML.slice(0, 60));
+const htmlHeures = el('taches-blocs').innerHTML;
+verifie('le badge d\'heure passee s\'affiche', htmlHeures.indexOf('badge-heure-passee') !== -1);
+verifie('...et celui d\'une heure a venir aussi', htmlHeures.indexOf('badge-heure"') !== -1);
+verifie('le bouton « Retirer l\'heure » n\'apparait que sur les taches a heure',
+  (htmlHeures.match(/retirerHeure\(/g) || []).length === 2);
 
 // --- 14. La semaine ---------------------------------------------------
 console.log('\n14. La semaine');
@@ -692,44 +674,47 @@ verifie('...et franchit un changement de mois',
   sandbox.joursDeLaSemaine('2026-08-31')[6]);
 
 const semaine = [
-  tache({ id: 'c1', creneauJour: '2026-08-18', creneauHeure: '09:00' }),
-  tache({ id: 'c2', creneauJour: '2026-08-19', creneauHeure: '09:00' }),
+  tache({ id: 'c1', echeance: '2026-08-18', echeanceHeure: '09:00' }),
+  tache({ id: 'c2', echeance: '2026-08-19', echeanceHeure: '09:00' }),
   tache({ id: 'e1', echeance: '2026-08-18' }),
   tache({ id: 'ef', echeance: '2026-08-18', faite: true }),
 ];
-verifie('les creneaux du jour sont isoles',
-  sandbox.creneauxDuJour(semaine, '2026-08-18').map((t) => t.id).join(',') === 'c1');
-verifie('les echeances du jour aussi, taches faites exclues',
-  sandbox.echeancesDuJour(semaine, '2026-08-18').map((t) => t.id).join(',') === 'e1',
-  sandbox.echeancesDuJour(semaine, '2026-08-18').map((t) => t.id).join(','));
+// Deux populations distinctes dans la grille : celles qui ont une heure
+// vont dans les blocs, les autres en bandeau. Une tache sans heure
+// posee dans la grille se verrait inventer un horaire.
+verifie('les taches a heure fixe du jour sont isolees',
+  sandbox.avecHeureLeJour(semaine, '2026-08-18').map((t) => t.id).join(',') === 'c1');
+verifie('celles sans heure aussi, taches faites exclues',
+  sandbox.sansHeureLeJour(semaine, '2026-08-18').map((t) => t.id).join(',') === 'e1',
+  sandbox.sansHeureLeJour(semaine, '2026-08-18').map((t) => t.id).join(','));
 
 // --- 15. Les voies paralleles ----------------------------------------
 console.log('\n15. Les voies paralleles');
 // Empiles, deux creneaux qui se chevauchent se cachent l'un l'autre et
 // on planifie par-dessus sans le voir.
 let voies = sandbox.repartirEnVoies([
-  tache({ id: 'a', creneauJour: AJD, creneauHeure: '09:00', creneauDuree: 60 }),
-  tache({ id: 'b', creneauJour: AJD, creneauHeure: '09:30', creneauDuree: 60 }),
+  tache({ id: 'a', echeance: AJD, echeanceHeure: '09:00', echeanceDuree: 60 }),
+  tache({ id: 'b', echeance: AJD, echeanceHeure: '09:30', echeanceDuree: 60 }),
 ]);
-verifie('deux creneaux qui se chevauchent prennent deux voies',
+verifie('deux taches qui se chevauchent prennent deux voies',
   voies[0].voie === 0 && voies[1].voie === 1);
 verifie('...et se partagent la largeur',
   voies.every((v) => v.nbVoies === 2), voies.map((v) => v.nbVoies).join(','));
 
 voies = sandbox.repartirEnVoies([
-  tache({ id: 'a', creneauJour: AJD, creneauHeure: '09:00', creneauDuree: 60 }),
-  tache({ id: 'b', creneauJour: AJD, creneauHeure: '10:00', creneauDuree: 60 }),
+  tache({ id: 'a', echeance: AJD, echeanceHeure: '09:00', echeanceDuree: 60 }),
+  tache({ id: 'b', echeance: AJD, echeanceHeure: '10:00', echeanceDuree: 60 }),
 ]);
-verifie('deux creneaux qui se suivent restent pleine largeur',
+verifie('deux taches qui se suivent restent pleine largeur',
   voies.every((v) => v.nbVoies === 1 && v.voie === 0),
   voies.map((v) => v.voie + '/' + v.nbVoies).join(' '));
 
 // LE CAS QUI COMPTE : les voies se comptent par GRAPPE. Un doublon a 9 h
 // ne doit pas retrecir tout le reste de la journee, qui n'y est pour rien.
 voies = sandbox.repartirEnVoies([
-  tache({ id: 'a', creneauJour: AJD, creneauHeure: '09:00', creneauDuree: 60 }),
-  tache({ id: 'b', creneauJour: AJD, creneauHeure: '09:30', creneauDuree: 60 }),
-  tache({ id: 'seul', creneauJour: AJD, creneauHeure: '15:00', creneauDuree: 60 }),
+  tache({ id: 'a', echeance: AJD, echeanceHeure: '09:00', echeanceDuree: 60 }),
+  tache({ id: 'b', echeance: AJD, echeanceHeure: '09:30', echeanceDuree: 60 }),
+  tache({ id: 'seul', echeance: AJD, echeanceHeure: '15:00', echeanceDuree: 60 }),
 ]);
 const isole = voies.find((v) => v.tache.id === 'seul');
 verifie('un chevauchement du matin ne retrecit pas l\'apres-midi',
@@ -737,11 +722,11 @@ verifie('un chevauchement du matin ne retrecit pas l\'apres-midi',
 
 // Une tache planifiee a 6 h ne doit pas devenir invisible sous pretexte
 // que la grille commence a 7 h.
-const plage = sandbox.plageHoraire([tache({ creneauJour: AJD, creneauHeure: '06:15', creneauDuree: 30 })]);
+const plage = sandbox.plageHoraire([tache({ echeance: AJD, echeanceHeure: '06:15', echeanceDuree: 30 })]);
 verifie('la plage s\'etend pour couvrir un creneau matinal',
   plage.debut === 6 * 60, String(plage.debut));
 verifie('...et reste arrondie a l\'heure pleine', plage.debut % 60 === 0 && plage.fin % 60 === 0);
-verifie('sans creneau, la plage garde les bornes par defaut',
+verifie('sans aucune heure, la plage garde les bornes par defaut',
   sandbox.plageHoraire([]).debut === sandbox.HEURE_DEBUT_GRILLE * 60
   && sandbox.plageHoraire([]).fin === sandbox.HEURE_FIN_GRILLE * 60);
 
@@ -751,48 +736,25 @@ sandbox.heureCourante = () => '12:00';
 sandbox.lundiAffiche = '2026-08-17';
 sandbox.vue = 'semaine';
 sandbox.taches = [
-  tache({ id: 'g1', titre: 'Appeler le couvreur', creneauJour: '2026-08-18', creneauHeure: '09:00', creneauDuree: 60 }),
+  tache({ id: 'g1', titre: 'Appeler le couvreur', echeance: '2026-08-18', echeanceHeure: '09:00', echeanceDuree: 60 }),
   tache({ id: 'g2', titre: 'Devis chauffage', echeance: '2026-08-19' }),
-  tache({ id: 'g3', titre: 'Trop tard', echeance: '2026-08-18', creneauJour: '2026-08-21', creneauHeure: '14:00' }),
 ];
 sandbox.renderSemaine();
 const grille = el('vue-semaine').innerHTML;
 verifie('les sept colonnes sont rendues',
   (grille.match(/class="semaine-colonne/g) || []).length === 8,
   (grille.match(/class="semaine-colonne/g) || []).length + ' (7 jours + la colonne des heures)');
-verifie('le creneau apparait comme bloc dans la grille',
+// Deux etages, et leur separation EST le sujet de la vue : ce qui a une
+// heure va dans la grille, ce qui n'en a pas reste en bandeau. Poser une
+// tache sans heure dans les heures lui en inventerait une.
+verifie('une tache A HEURE FIXE apparait comme bloc dans la grille',
   grille.indexOf('semaine-bloc') !== -1 && grille.indexOf('Appeler le couvreur') !== -1);
-verifie('l\'echeance apparait dans le BANDEAU, hors des heures',
+verifie('une tache SANS heure reste dans le bandeau',
   grille.indexOf('semaine-echeance') !== -1 && grille.indexOf('Devis chauffage') !== -1);
-verifie('un creneau pose apres l\'echeance est marque',
-  grille.indexOf('semaine-bloc--debordee') !== -1);
 verifie('les cases vides sont cliquables',
   (grille.match(/ouvrirChoixTache\(/g) || []).length > 0);
 verifie('le jour courant est distingue',
   grille.indexOf('semaine-colonne--aujourdhui') !== -1);
-
-// L'AUTRE BUG SIGNALE : « certains titres apparaissent et d'autres pas ».
-// Sur un creneau court, deux lignes ne tenaient pas et c'est le TITRE qui
-// debordait — donc la seule chose qui identifie la tache. Un creneau de
-// 15 min devenait une pastille muette.
-sandbox.taches = [
-  tache({ id: 'court', titre: 'Coup de fil rapide', creneauJour: '2026-08-18', creneauHeure: '11:00', creneauDuree: 15 }),
-  tache({ id: 'long', titre: 'Rendez-vous couvreur', creneauJour: '2026-08-18', creneauHeure: '14:00', creneauDuree: 120 }),
-];
-sandbox.renderSemaine();
-const grilleCourts = el('vue-semaine').innerHTML;
-verifie('le titre d\'un creneau COURT est present dans le rendu',
-  grilleCourts.indexOf('Coup de fil rapide') !== -1);
-verifie('...et son bloc passe en mode compact',
-  grilleCourts.indexOf('semaine-bloc--compact') !== -1);
-verifie('un creneau long garde les deux lignes',
-  (grilleCourts.match(/semaine-bloc--compact/g) || []).length === 1,
-  (grilleCourts.match(/semaine-bloc--compact/g) || []).length + ' bloc(s) compact(s) pour 1 creneau court');
-verifie('aucun bloc ne descend sous la hauteur d\'une ligne lisible',
-  (grilleCourts.match(/height:(\d+(?:\.\d+)?)px/g) || [])
-    .map((m) => Number(m.replace(/[^\d.]/g, '')))
-    .filter((h) => h !== sandbox.HAUTEUR_HEURE)
-    .every((h) => h >= sandbox.HAUTEUR_BLOC_MINI));
 
 const onclicksGrille = [];
 grille.replace(/onclick="([^"]*)"/g, (m, code) => { onclicksGrille.push(code); return m; });
@@ -806,123 +768,184 @@ verifie('chaque onclick de la grille est du JavaScript valide',
   grilleValides === onclicksGrille.length && onclicksGrille.length > 0,
   grilleValides + '/' + onclicksGrille.length);
 
-// --- 17. Poser et retirer un creneau ---------------------------------
-console.log('\n17. Poser et retirer un creneau');
+// « Certains titres apparaissent et d'autres pas » : sous 34 px, l'heure
+// et le titre ne tenaient pas tous les deux, et c'est le TITRE qui
+// debordait — donc la seule chose qui identifie la tache.
+sandbox.taches = [
+  tache({ id: 'court', titre: 'Coup de fil rapide', echeance: '2026-08-18', echeanceHeure: '11:00', echeanceDuree: 15 }),
+  tache({ id: 'long', titre: 'Rendez-vous couvreur', echeance: '2026-08-18', echeanceHeure: '14:00', echeanceDuree: 120 }),
+];
+sandbox.renderSemaine();
+const grilleCourts = el('vue-semaine').innerHTML;
+verifie('le titre d\'une tache COURTE est present dans le rendu',
+  grilleCourts.indexOf('Coup de fil rapide') !== -1);
+verifie('...et son bloc passe en mode compact',
+  grilleCourts.indexOf('semaine-bloc--compact') !== -1);
+verifie('un bloc long garde les deux lignes',
+  (grilleCourts.match(/semaine-bloc--compact/g) || []).length === 1,
+  (grilleCourts.match(/semaine-bloc--compact/g) || []).length + ' bloc(s) compact(s) pour 1 tache courte');
+verifie('aucun bloc ne descend sous la hauteur d\'une ligne lisible',
+  (grilleCourts.match(/height:(\d+(?:\.\d+)?)px/g) || [])
+    .map((m) => Number(m.replace(/[^\d.]/g, '')))
+    .filter((h) => h !== sandbox.HAUTEUR_HEURE)
+    .every((h) => h >= sandbox.HAUTEUR_BLOC_MINI));
+
+// --- 17. Poser et retirer une heure ----------------------------------
+console.log('\n17. Poser et retirer une heure');
 ecritures.length = 0;
 sandbox.taches = [
-  tache({ id: 'libre', titre: 'A placer', echeance: '2026-08-20' }),
-  tache({ id: 'deja', titre: 'Deja placee', creneauJour: '2026-08-19', creneauHeure: '10:00' }),
+  tache({ id: 'libre', titre: 'A placer', echeance: '2026-08-25' }),
+  tache({ id: 'deja', titre: 'Deja a l heure', echeance: '2026-08-19', echeanceHeure: '10:00' }),
   tache({ id: 'close', titre: 'Reglee', faite: true }),
 ];
 sandbox.ouvrirChoixTache('2026-08-20', '14:00');
-verifie('seules les taches ouvertes ET non planifiees sont proposees',
+verifie('seules les taches ouvertes ET sans heure sont proposees',
   el('choix-liste').innerHTML.indexOf('A placer') !== -1
-  && el('choix-liste').innerHTML.indexOf('Deja placee') === -1
+  && el('choix-liste').innerHTML.indexOf('Deja a l heure') === -1
   && el('choix-liste').innerHTML.indexOf('Reglee') === -1);
 
 sandbox.planifierTache('libre');
 const pose = ecritures.find((e) => e.type === 'update');
-verifie('poser une tache ecrit le jour, l\'heure et une duree',
-  pose && pose.data.creneauJour === '2026-08-20' && pose.data.creneauHeure === '14:00'
-  && pose.data.creneauDuree === sandbox.DUREE_DEFAUT,
+verifie('poser une heure ecrit l\'heure et une duree',
+  pose && pose.data.echeanceHeure === '14:00' && pose.data.echeanceDuree === sandbox.DUREE_DEFAUT,
   pose && JSON.stringify(pose.data));
-verifie('...et ne touche PAS a l\'echeance',
-  pose && pose.data.echeance === undefined);
+// ⚠ DEPUIS LA FUSION, POSER UNE HEURE DEPLACE LA DATE. Il n'y en a plus
+// qu'une : choisir « jeudi 14 h » dans la grille, c'est dire que la
+// tache est due jeudi.
+verifie('...et DEPLACE la date, puisqu\'il n\'y en a plus qu\'une',
+  pose && pose.data.echeance === '2026-08-20', pose && pose.data.echeance);
+// La date recule ici (du 25 au 20) : ce n'est pas un report, et le
+// compteur ne doit pas bouger.
+verifie('avancer la date en posant une heure ne compte pas un report',
+  pose && pose.data.nbReports === 0, pose && String(pose.data.nbReports));
 
-// Deplanifier n'est pas reporter : on retire une decision, on ne
-// repousse pas une contrainte. Le compteur ne doit pas bouger.
+// Repousser, en revanche, en compte un.
 ecritures.length = 0;
-sandbox.deplanifierTache('deja');
-const retire = ecritures.find((e) => e.type === 'update');
-verifie('deplanifier vide les trois champs de creneau',
-  retire && retire.data.creneauJour === '' && retire.data.creneauHeure === ''
-  && retire.data.creneauDuree === 0);
-verifie('...sans compter un report ni toucher a l\'echeance',
-  retire && retire.data.nbReports === undefined && retire.data.echeance === undefined);
+sandbox.taches = [tache({ id: 'libre', titre: 'A placer', echeance: '2026-08-19' })];
+sandbox.ouvrirChoixTache('2026-08-26', '09:00');
+sandbox.planifierTache('libre');
+const repousse = ecritures.find((e) => e.type === 'update');
+verifie('repousser la date en posant une heure compte un report',
+  repousse && repousse.data.nbReports === 1, repousse && String(repousse.data.nbReports));
 
-// Une heure illisible avec un jour pose ne doit RIEN ecrire : mieux
-// vaut un refus clair qu'un creneau a moitie enregistre.
+// Retirer l'heure n'est PAS reporter : la tache reste due le meme jour,
+// on renonce seulement au moment precis.
+ecritures.length = 0;
+sandbox.taches = [tache({ id: 'deja', echeance: '2026-08-19', echeanceHeure: '10:00', echeanceDuree: 60 })];
+sandbox.retirerHeure('deja');
+const retire = ecritures.find((e) => e.type === 'update');
+verifie('retirer l\'heure vide l\'heure et la duree',
+  retire && retire.data.echeanceHeure === '' && retire.data.echeanceDuree === 0);
+verifie('...sans toucher a la date ni au compteur de reports',
+  retire && retire.data.echeance === undefined && retire.data.nbReports === undefined);
+
+// Une heure sans date ne veut rien dire : on la laisse tomber en
+// silence plutot que de refuser la saisie, l'heure etant facultative.
 ecritures.length = 0;
 sandbox.taches = [];
 sandbox.idEnEdition = null;
-el('f-titre').value = 'Creneau incomplet';
+el('f-titre').value = 'Sans date';
 el('f-echeance').value = '';
-el('f-creneau-jour').value = '2026-08-20';
-el('f-creneau-h').value = '';
-el('f-creneau-m').value = '';
+el('f-echeance-h').value = '14';
+el('f-echeance-m').value = '30';
+el('f-echeance-duree').value = '90';
 sandbox.sauverTache();
-verifie('un jour avec une heure illisible est refuse, et rien ne part en base',
-  ecritures.length === 0, ecritures.length + ' ecriture(s)');
+const sansDate = ecritures.find((e) => e.type === 'add');
+verifie('une heure sans date n\'est pas ecrite',
+  sansDate && sansDate.data.echeanceHeure === '' && sansDate.data.echeanceDuree === 0,
+  sansDate && JSON.stringify(sansDate.data));
 
-el('f-creneau-h').value = '14';
-el('f-creneau-m').value = '30';
-el('f-creneau-duree').value = '90';
-sandbox.sauverTache();
-const avecCreneau = ecritures.find((e) => e.type === 'add');
-verifie('un creneau complet part avec sa duree',
-  avecCreneau && avecCreneau.data.creneauJour === '2026-08-20'
-  && avecCreneau.data.creneauHeure === '14:30' && avecCreneau.data.creneauDuree === 90,
-  avecCreneau && JSON.stringify(avecCreneau.data));
-
-// SANS JOUR, PAS DE CRENEAU. L'heure a beau etre choisie — les listes en
-// ont toujours une —, elle ne doit pas partir seule : ce serait une
-// seconde echeance deguisee, la confusion que tout ceci evite.
 ecritures.length = 0;
-el('f-creneau-jour').value = '';
+el('f-echeance').value = '2026-08-20';
 sandbox.sauverTache();
-const sansJour = ecritures.find((e) => e.type === 'add');
-verifie('une heure choisie sans jour n\'ecrit aucun creneau',
-  sansJour && sansJour.data.creneauJour === '' && sansJour.data.creneauHeure === ''
-  && sansJour.data.creneauDuree === 0,
-  sansJour && JSON.stringify(sansJour.data));
+const avecHeure = ecritures.find((e) => e.type === 'add');
+verifie('une date avec heure part complete',
+  avecHeure && avecHeure.data.echeance === '2026-08-20'
+  && avecHeure.data.echeanceHeure === '14:30' && avecHeure.data.echeanceDuree === 90,
+  avecHeure && JSON.stringify(avecHeure.data));
+
+el('f-echeance').value = '';
+el('f-echeance-h').value = '';
 
 // --- 17bis. La saisie de l'heure -------------------------------------
 console.log('\n17bis. La saisie de l\'heure');
-// Le « : » d'un <input type="time"> laissait entrer 14:37 et ouvrait,
-// selon le navigateur, la liste des soixante minutes.
-verifie('l\'heure pleine suivante arrondit vers le haut',
-  sandbox.heurePleineSuivante('14:20') === '15:00', sandbox.heurePleineSuivante('14:20'));
-verifie('...meme pile a l\'heure', sandbox.heurePleineSuivante('14:00') === '15:00');
-verifie('passe 23 h, on propose le lendemain matin plutot qu\'un 00:00 absurde',
-  sandbox.heurePleineSuivante('23:30') === '09:00', sandbox.heurePleineSuivante('23:30'));
-verifie('...et une heure illisible retombe sur la meme valeur sure',
-  sandbox.heurePleineSuivante('') === '09:00');
+// Deux listes fermees plutot qu'un <input type="time">, qui acceptait
+// n'importe quelle minute et ouvrait, selon le navigateur, la liste des
+// soixante.
 verifie('seuls les quarts d\'heure sont proposes',
   sandbox.MINUTES_CRENEAU.join(',') === '00,15,30,45');
 
-// Une NOUVELLE tache s'ouvre sur l'heure pleine suivante, minutes a 00 :
-// c'est ce qu'on corrigeait a la main a chaque saisie.
-sandbox.heureCourante = () => '10:20';
+// ⚠ DEPUIS LA FUSION, L'HEURE EST FACULTATIVE ET VIDE PAR DEFAUT.
+// Avant, le champ proposait d'emblee l'heure pleine suivante : c'etait
+// juste pour un creneau qu'on posait exprès, ce serait inventer une
+// heure a chaque saisie maintenant que la plupart des taches sont dues
+// un jour, sans moment precis.
 sandbox.remplirSelectsHeure('');
-verifie('une nouvelle tache s\'ouvre sur l\'heure pleine suivante',
-  el('f-creneau-h').value === '11' && el('f-creneau-m').value === '00',
-  el('f-creneau-h').value + ':' + el('f-creneau-m').value);
-verifie('les 24 heures sont proposees',
-  (el('f-creneau-h').innerHTML.match(/<option/g) || []).length === 24,
-  (el('f-creneau-h').innerHTML.match(/<option/g) || []).length + ' options');
+verifie('une nouvelle tache s\'ouvre SANS heure',
+  el('f-echeance-h').value === '', '[' + el('f-echeance-h').value + ']');
+verifie('la liste des heures offre une option vide, puis les 24 heures',
+  (el('f-echeance-h').innerHTML.match(/<option/g) || []).length === 25,
+  (el('f-echeance-h').innerHTML.match(/<option/g) || []).length + ' options');
+verifie('heureSaisie rend une chaine vide quand aucune heure n\'est choisie',
+  sandbox.heureSaisie() === '', '[' + sandbox.heureSaisie() + ']');
 
 // LE CAS A NE PAS PERDRE : une minute heritee du temps de l'<input
 // type="time"> ne doit pas se faire arrondir en silence a la simple
 // ouverture de la modale.
 sandbox.remplirSelectsHeure('14:37');
 verifie('une minute heritee est conservee, pas arrondie',
-  el('f-creneau-m').value === '37', el('f-creneau-m').value);
+  el('f-echeance-m').value === '37', el('f-echeance-m').value);
 verifie('...et vient s\'ajouter aux quatre quarts',
-  (el('f-creneau-m').innerHTML.match(/<option/g) || []).length === 5);
+  (el('f-echeance-m').innerHTML.match(/<option/g) || []).length === 5);
+verifie('...et l\'heure suit', el('f-echeance-h').value === '14');
 
 sandbox.remplirSelectsHeure('09:30');
 verifie('une minute normale n\'ajoute pas d\'option',
-  (el('f-creneau-m').innerHTML.match(/<option/g) || []).length === 4
-  && el('f-creneau-h').value === '09',
-  el('f-creneau-h').value + ':' + el('f-creneau-m').value);
+  (el('f-echeance-m').innerHTML.match(/<option/g) || []).length === 4);
+verifie('heureSaisie recompose bien HH:MM', sandbox.heureSaisie() === '09:30', sandbox.heureSaisie());
 
-verifie('heureSaisie recompose bien HH:MM',
-  sandbox.heureSaisie() === '09:30', sandbox.heureSaisie());
+el('f-echeance-h').value = '';
 
-sandbox.heureCourante = () => '12:00';
-el('f-creneau-jour').value = '';
+// --- 17ter. La bascule vers la date unique ---------------------------
+console.log('\n17ter. La bascule vers la date unique');
+// ⚠ RATTRAPAGE TEMPORAIRE. Les taches d'avant la fusion portent encore
+// `creneauJour`, un second champ de date que le modele n'a plus : leur
+// heure serait invisible tant qu'elles ne sont pas basculees.
+sandbox.db = fauxDb;
+sandbox.taches = [
+  tache({ id: 'v1', echeance: '2026-08-20', creneauJour: '2026-08-20', creneauHeure: '14:00', creneauDuree: 30 }),
+  tache({ id: 'v2', echeance: '2026-10-11', creneauJour: '2026-09-01', creneauHeure: '10:00', creneauDuree: 15 }),
+  tache({ id: 'v3', echeance: '2026-08-30' }),
+];
+verifie('seules les taches portant un ancien creneau sont a basculer',
+  sandbox.tachesAFusionner().map((t) => t.id).join(',') === 'v1,v2',
+  sandbox.tachesAFusionner().map((t) => t.id).join(','));
 
-sandbox.aujourdhui = vraiAujourdhui;
+ecritures.length = 0;
+sandbox.fusionnerLesDates();
+const bascules = ecritures.filter((e) => e.type === 'update');
+verifie('les deux partent en un seul lot', bascules.length === 2, bascules.length + ' ecritures');
+
+const v1 = bascules.find((e) => e.id === 'v1');
+verifie('quand les deux dates coincident, rien ne change de jour',
+  v1 && v1.data.echeance === '2026-08-20' && v1.data.echeanceHeure === '14:00'
+  && v1.data.echeanceDuree === 30, v1 && JSON.stringify(v1.data));
+
+// ⚠ LE CRENEAU GAGNE quand les deux different : c'est la date qu'on
+// avait decidee, elle porte l'heure, et c'est toujours la plus proche —
+// rien ne risque d'etre decouvert trop tard.
+const v2 = bascules.find((e) => e.id === 'v2');
+verifie('quand elles different, c\'est le CRENEAU qui devient la date',
+  v2 && v2.data.echeance === '2026-09-01', v2 && v2.data.echeance);
+verifie('...avec son heure et sa duree',
+  v2 && v2.data.echeanceHeure === '10:00' && v2.data.echeanceDuree === 15);
+
+// Les anciens champs doivent DISPARAITRE, pas rester a trainer : sinon
+// la banniere de bascule ne s'eteindrait jamais et on la verrait tous
+// les jours sans savoir quoi en faire.
+verifie('les trois anciens champs sont supprimes du document',
+  bascules.every((e) => e.data.creneauJour !== undefined
+    && e.data.creneauHeure !== undefined && e.data.creneauDuree !== undefined));
 
 // --- 18. Coherence avec les regles et le reste du hub -----------------
 console.log('\n18. Coherence avec les regles Firestore');

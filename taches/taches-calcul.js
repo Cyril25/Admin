@@ -27,29 +27,42 @@
 // plombier avant qu'il ne parte »).
 //
 // ------------------------------------------------------------
-// L'ÉCHÉANCE ET LE CRÉNEAU SONT DEUX CHOSES, ET C'EST TOUT LE SUJET
+// UNE SEULE DATE, ET POURQUOI ON EST REVENU EN ARRIÈRE
 // ------------------------------------------------------------
-// `echeance` répond à « AVANT QUAND ça doit être fait » : c'est une
-// contrainte, et elle n'a pas d'heure.
-// `creneauJour` + `creneauHeure` répondent à « QUAND JE M'Y COLLE » :
-// c'est une décision, et elle en a une.
+// Ce projet a d'abord séparé deux dates : `echeance` (avant quand ça
+// doit être fait) et `creneauJour` + `creneauHeure` (quand je m'y
+// colle). L'argument était solide sur le papier — les confondre est la
+// maladie de Google Calendar, où une contrainte devient un rendez-vous
+// et passe sans rien dire.
 //
-// Les confondre est la maladie exacte de Google Calendar : la contrainte
-// y devient un événement à 14 h, et si on ne le fait pas à 14 h, il
-// passe — sans rien dire. Coller une heure sur `echeance` aurait
-// d'ailleurs casse le mécanisme de retard construit ici : « en retard »
-// serait redevenu une question d'instant, et le bloc de tête se serait
-// mis à clignoter à midi pour une tâche qu'on a jusqu'au soir.
+// ⚠ L'USAGE A TRANCHÉ CONTRE. Sur 38 tâches réelles au 24 août 2026 :
+//   - 26 portaient les deux dates, dont 20 LA MÊME (77 %) ;
+//   - 0 tâche n'a JAMAIS eu un créneau sans échéance ;
+//   - 6 seulement différaient, dont 3 encore ouvertes.
 //
-// Séparés, les deux champs font au contraire apparaître trois signaux
-// qu'aucun des deux outils ne sait donner :
-//   - PLANIFIÉ APRÈS L'ÉCHÉANCE — le créneau est jeudi, c'était dû mardi ;
-//   - URGENT SANS CRÉNEAU       — ça brûle et on n'a pas décidé quand ;
-//   - CRÉNEAU MANQUÉ            — l'heure est passée, la tâche est ouverte.
+// Autrement dit : le formulaire demandait deux dates, et on répondait
+// deux fois la même. La distinction était juste en théorie et vide en
+// pratique — pire, elle donnait l'impression d'un doublon à chaque
+// saisie, ce qui est exactement ce qu'elle était devenue.
 //
-// Aucun des trois ne change le bloc de la tâche : ce sont des alertes,
-// pas une cinquième priorité. Diluer les quatre blocs les aurait rendus
-// muets, ce qui est exactement ce qu'on cherche à éviter.
+// Il reste donc UNE date, avec une HEURE FACULTATIVE :
+//   echeance       'AAAA-MM-JJ'  quand c'est dû, ou quand je le fais
+//   echeanceHeure  'HH:MM' ou '' l'heure, si on en a décidé une
+//   echeanceDuree  minutes       pour la grille de semaine
+//
+// CE QU'ON A PERDU, et qu'il faut assumer plutôt que redécouvrir :
+//   - « dû vendredi, je le fais mardi » n'est plus exprimable ;
+//   - les signaux « planifié après l'échéance » et « urgent sans
+//     créneau » n'ont plus d'objet et ont été supprimés.
+//
+// CE QU'ON A GAGNÉ, et qui n'était pas prévu : le classement se répare
+// tout seul. Avant, une tâche qu'on faisait dans deux heures tombait
+// dans « Le reste », parce que le créneau ne pesait rien sur la
+// priorité — seule l'échéance comptait. Maintenant sa date EST son
+// échéance : elle est urgente, et elle remonte.
+//
+// ⚠ NE PAS REFAIRE LA SÉPARATION sans nouvelles données d'usage. Elle a
+// été essayée, mesurée, et retirée pour cette raison-là.
 //
 // ------------------------------------------------------------
 // POURQUOI UNE CHAÎNE 'AAAA-MM-JJ' ET PAS UN TIMESTAMP FIRESTORE
@@ -219,29 +232,22 @@ function comparerDansBloc(a, b) {
     var eb = isoValide(b.echeance) ? b.echeance : '￿';
     if (ea !== eb) return ea < eb ? -1 : 1;
 
-    // Puis le CRÉNEAU. À contrainte égale, c'est lui qui dit dans quel
-    // ordre les choses vont réellement s'enchaîner : deux tâches du même
-    // jour, l'une à 12 h 45 et l'autre à 19 h, doivent se lire dans cet
-    // ordre-là. Sans cette comparaison elles retombaient sur leur date de
-    // création, c'est-à-dire sur rien.
+    // Puis l'HEURE, quand il y en a une. Deux tâches du même jour, l'une
+    // à 12 h 45 et l'autre à 19 h, doivent se lire dans cet ordre-là.
+    // Sans cette comparaison elles retombaient sur leur date de création,
+    // c'est-à-dire sur rien.
     //
-    // Jour ET heure d'un coup : les deux chaînes concaténées se comparent
-    // dans l'ordre chronologique, comme chacune le fait séparément.
-    // Non planifiée en dernier, pour la même raison qu'une tâche sans
-    // échéance — n'avoir pas de moment décidé n'est pas un rang.
-    var ka = ordreCreneau(a);
-    var kb = ordreCreneau(b);
-    if (ka !== kb) return ka < kb ? -1 : 1;
+    // Sans heure en dernier, pour la même raison qu'une tâche sans date :
+    // n'avoir pas décidé d'un moment n'est pas un rang.
+    var ha = heureValide(a.echeanceHeure) ? a.echeanceHeure : '￿';
+    var hb = heureValide(b.echeanceHeure) ? b.echeanceHeure : '￿';
+    if (ha !== hb) return ha < hb ? -1 : 1;
 
     // À égalité stricte, la plus ancienne : elle attend depuis plus
     // longtemps.
     var ca = toDate(a.createdAt);
     var cb = toDate(b.createdAt);
     return (ca ? ca.getTime() : 0) - (cb ? cb.getTime() : 0);
-}
-
-function ordreCreneau(tache) {
-    return aUnCreneau(tache) ? (tache.creneauJour + ' ' + tache.creneauHeure) : '￿';
 }
 
 // Range une liste de tâches par bloc, chaque bloc déjà trié. Rend un
@@ -278,11 +284,14 @@ function compterEnRetard(taches, ajd) {
 }
 
 // ------------------------------------------------------------
-// 4. Les créneaux — l'heure, elle, est une heure
+// 4. L'heure de l'échéance — facultative
 // ------------------------------------------------------------
-// Même parti pris que pour l'échéance : une chaîne locale 'HH:MM', pas
-// un instant. On planifie « mardi 14 h », pas « mardi 12 h UTC », et
-// personne ne veut voir son planning se décaler en changeant de fuseau.
+// Même parti pris que pour la date : une chaîne locale 'HH:MM', pas un
+// instant. On dit « mardi 14 h », pas « mardi 12 h UTC », et personne ne
+// veut voir son planning se décaler en changeant de fuseau.
+//
+// Une tâche sans heure reste une tâche parfaitement valable : elle est
+// due ce jour-là, sans moment précis. C'est même le cas le plus courant.
 
 // La plage affichée par défaut. Elle s'étend d'elle-même si un créneau
 // tombe en dehors : une tâche planifiee a 6 h ne doit pas devenir
@@ -302,19 +311,6 @@ var DUREES = [15, 30, 45, 60, 90, 120, 240, 480];
 // nul : on ne planifie pas à 14 h 37.
 var MINUTES_CRENEAU = ['00', '15', '30', '45'];
 
-// L'heure pleine suivante, à partir d'une heure de référence. Sert de
-// valeur par défaut à la saisie : on ne planifie jamais « maintenant »,
-// et des minutes à 00 évitent d'avoir à les corriger à chaque fois.
-//
-// Passé 23 h, la prochaine occasion réelle est le lendemain matin — le
-// champ du jour est vide de toute façon, autant proposer une heure
-// crédible plutôt qu'un 00:00 qui n'a de sens pour personne.
-function heurePleineSuivante(heureReference) {
-    var minutes = minutesDeHeure(heureReference);
-    if (minutes === null) return '09:00';
-    var suivante = (Math.floor(minutes / 60) + 1) * 60;
-    return suivante > 23 * 60 ? '09:00' : heureDeMinutes(suivante);
-}
 
 function heureValide(hhmm) {
     return /^([01]\d|2[0-3]):[0-5]\d$/.test(String(hhmm || ''));
@@ -339,50 +335,39 @@ function heureDeMinutes(minutes) {
     return h + ':' + m;
 }
 
-function aUnCreneau(tache) {
-    return !!tache && isoValide(tache.creneauJour) && heureValide(tache.creneauHeure);
+function aUneHeure(tache) {
+    return !!tache && isoValide(tache.echeance) && heureValide(tache.echeanceHeure);
 }
 
-function dureeCreneau(tache) {
-    var duree = tache && Number(tache.creneauDuree);
+function dureeEcheance(tache) {
+    var duree = tache && Number(tache.echeanceDuree);
     return (duree && duree > 0) ? duree : DUREE_DEFAUT;
 }
 
-// Début et fin en minutes depuis minuit. null si la tâche n'est pas
-// planifiée — une absence doit se voir comme une absence.
-function bornesCreneau(tache) {
-    if (!aUnCreneau(tache)) return null;
-    var debut = minutesDeHeure(tache.creneauHeure);
-    return { debut: debut, fin: Math.min(1440, debut + dureeCreneau(tache)) };
+// Début et fin en minutes depuis minuit. null si la tâche n'a pas
+// d'heure — une absence doit se voir comme une absence.
+function bornesHeure(tache) {
+    if (!aUneHeure(tache)) return null;
+    var debut = minutesDeHeure(tache.echeanceHeure);
+    return { debut: debut, fin: Math.min(1440, debut + dureeEcheance(tache)) };
 }
 
 // ------------------------------------------------------------
-// 5. Les trois signaux que la separation rend possibles
+// 5. L'heure passée
 // ------------------------------------------------------------
+// Seul survivant des trois signaux que la séparation échéance/créneau
+// permettait. Les deux autres — « planifié après l'échéance » et
+// « urgent sans créneau » — n'ont plus d'objet : il n'y a plus qu'une
+// date, elle ne peut pas être en retard sur elle-même.
+//
+// ⚠ CE N'EST PAS UN RETARD. La tâche est due AUJOURD'HUI : l'heure
+// qu'on s'était fixée est passée, mais la journée n'est pas finie. Les
+// confondre reviendrait à crier au loup un jour trop tôt.
+function heureDepassee(tache, ajd, heureCourante) {
+    if (!tache || tache.faite || !aUneHeure(tache)) return false;
+    if (tache.echeance !== ajd) return false;
 
-// Le créneau est posé APRÈS la date à laquelle c'était dû. Rien, dans
-// un calendrier seul ni dans une liste seule, ne peut le dire.
-function planifieApresEcheance(tache) {
-    if (!tache || tache.faite) return false;
-    if (!aUnCreneau(tache) || !isoValide(tache.echeance)) return false;
-    return tache.creneauJour > tache.echeance;
-}
-
-// Ça brûle et on n'a pas décidé quand : le vrai trou de la planification.
-function sansCreneauAlorsQueProche(tache, ajd) {
-    if (!tache || tache.faite || aUnCreneau(tache)) return false;
-    return estEnRetard(tache, ajd) || estUrgente(tache, ajd);
-}
-
-// L'heure est passée, la tâche est ouverte. CE N'EST PAS UN RETARD :
-// l'échéance tient peut-être encore. C'est une replanification à faire,
-// et les confondre reviendrait à crier au loup un jour trop tôt.
-function creneauManque(tache, ajd, heureCourante) {
-    if (!tache || tache.faite || !aUnCreneau(tache)) return false;
-    if (tache.creneauJour > ajd) return false;
-    if (tache.creneauJour < ajd) return true;
-
-    var bornes = bornesCreneau(tache);
+    var bornes = bornesHeure(tache);
     var maintenant = minutesDeHeure(heureCourante);
     // Sans heure courante exploitable, on ne déclare rien : mieux vaut
     // taire un signal que d'en inventer un.
@@ -409,26 +394,28 @@ function joursDeLaSemaine(isoLundi) {
     return jours;
 }
 
-function creneauxDuJour(taches, iso) {
+// Les tâches de ce jour-là QUI ONT UNE HEURE : elles seules peuvent se
+// placer dans la grille horaire.
+function avecHeureLeJour(taches, iso) {
     return (taches || []).filter(function(tache) {
-        return aUnCreneau(tache) && tache.creneauJour === iso;
+        return aUneHeure(tache) && tache.echeance === iso;
     });
 }
 
-// Les échéances tombant ce jour-là, créneau ou pas : dans la grille
-// elles s'affichent en bandeau au-dessus des heures. Une contrainte
-// n'a pas d'horaire, la poser dans la grille serait mentir.
-function echeancesDuJour(taches, iso) {
+// Celles du même jour SANS heure : elles s'affichent en bandeau
+// au-dessus des heures. Les poser dans la grille leur inventerait un
+// horaire qu'on n'a pas choisi.
+function sansHeureLeJour(taches, iso) {
     return (taches || []).filter(function(tache) {
-        return !tache.faite && tache.echeance === iso;
+        return !tache.faite && !aUneHeure(tache) && tache.echeance === iso;
     });
 }
 
 // ------------------------------------------------------------
 // 7. Les voies parallèles
 // ------------------------------------------------------------
-// Deux créneaux qui se chevauchent doivent rester tous les deux
-// lisibles : empilés, le second cacherait le premier et on planifierait
+// Deux tâches dont les heures se chevauchent doivent rester toutes deux
+// lisibles : empilées, la seconde cacherait la première et on poserait
 // par-dessus sans le voir.
 //
 // Les voies se comptent par GRAPPE de chevauchements, pas par journée.
@@ -438,7 +425,7 @@ function echeancesDuJour(taches, iso) {
 // Rend [{ tache, debut, fin, voie, nbVoies }], en minutes.
 function repartirEnVoies(creneaux) {
     var elements = (creneaux || []).map(function(tache) {
-        var bornes = bornesCreneau(tache);
+        var bornes = bornesHeure(tache);
         return { tache: tache, debut: bornes.debut, fin: bornes.fin, voie: 0, nbVoies: 1 };
     }).sort(function(a, b) {
         if (a.debut !== b.debut) return a.debut - b.debut;
@@ -473,15 +460,15 @@ function repartirEnVoies(creneaux) {
     return elements;
 }
 
-// La plage d'heures a afficher : les constantes, elargies a ce que la
-// semaine contient reellement. Arrondie a l'heure pleine des deux cotes,
+// La plage d'heures à afficher : les constantes, élargies à ce que la
+// semaine contient réellement. Arrondie à l'heure pleine des deux côtés,
 // pour que la colonne de gauche n'affiche pas « 06:40 ».
 function plageHoraire(taches) {
     var debut = HEURE_DEBUT_GRILLE * 60;
     var fin = HEURE_FIN_GRILLE * 60;
 
     (taches || []).forEach(function(tache) {
-        var bornes = bornesCreneau(tache);
+        var bornes = bornesHeure(tache);
         if (!bornes) return;
         if (bornes.debut < debut) debut = bornes.debut;
         if (bornes.fin > fin) fin = bornes.fin;
@@ -565,15 +552,12 @@ if (typeof module !== 'undefined' && module.exports) {
         estEnlisee: estEnlisee,
         blocDe: blocDe,
         compterEnRetard: compterEnRetard,
-        // Créneaux
-        aUnCreneau: aUnCreneau,
-        dureeCreneau: dureeCreneau,
-        bornesCreneau: bornesCreneau,
-        creneauxDuJour: creneauxDuJour,
-        echeancesDuJour: echeancesDuJour,
-        // Les trois signaux
-        planifieApresEcheance: planifieApresEcheance,
-        sansCreneauAlorsQueProche: sansCreneauAlorsQueProche,
-        creneauManque: creneauManque
+        // L'heure facultative
+        aUneHeure: aUneHeure,
+        dureeEcheance: dureeEcheance,
+        bornesHeure: bornesHeure,
+        avecHeureLeJour: avecHeureLeJour,
+        sansHeureLeJour: sansHeureLeJour,
+        heureDepassee: heureDepassee
     };
 }

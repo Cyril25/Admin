@@ -486,29 +486,42 @@ tâche due demain est faux. D'où :
 
 Bénéfice secondaire, la saisie tombe à trois gestes : un titre, une case, une date.
 
-#### ⚠ L'échéance et le créneau sont deux choses, et c'est tout le sujet
+#### ⚠ Une seule date — et pourquoi on est revenu en arrière
 
-`echeance` répond à **avant quand** ça doit être fait : c'est une contrainte, et elle n'a
-pas d'heure. `creneauJour` + `creneauHeure` répondent à **quand je m'y colle** : c'est une
-décision, et elle en a une.
+Le projet a d'abord séparé deux dates : `echeance` (avant quand ça doit être fait) et
+`creneauJour` + `creneauHeure` (quand je m'y colle). L'argument était solide sur le papier —
+les confondre est la maladie de Google Calendar, où une contrainte devient un rendez-vous et
+passe sans rien dire.
 
-Les confondre est la maladie exacte de Google Calendar — la contrainte y devient un
-événement à 14 h, et si on ne le fait pas à 14 h, il passe, sans rien dire. Coller une
-heure sur `echeance` aurait d'ailleurs cassé le mécanisme de retard : « en retard » serait
-redevenu une question d'instant, et le bloc de tête se serait mis à clignoter à midi pour
-une tâche qu'on a jusqu'au soir.
+**L'usage a tranché contre.** Sur 38 tâches réelles au 24 août 2026 :
 
-Séparés, les deux champs font apparaître **trois signaux qu'aucun des deux outils ne sait
-donner** :
-
-| Signal | Ce qu'il dit |
+| Cas | Nombre |
 |---|---|
-| **Planifié après l'échéance** | Le créneau est jeudi, c'était dû mardi. Un calendrier ne le voit pas, une liste non plus |
-| **Urgent sans créneau** | Ça brûle et aucun moment n'est décidé — le vrai trou de la planification |
-| **Créneau manqué** | L'heure est passée, la tâche est ouverte. **Ce n'est pas un retard** : l'échéance tient peut-être encore, c'est une replanification à faire |
+| Les deux champs, **même date** | **20** sur 26 |
+| Les deux, dates différentes | 6 (dont 3 ouvertes) |
+| Échéance seule | 3 |
+| **Créneau seul** | **0** |
 
-Aucun des trois ne change le bloc de la tâche : ce sont des alertes, pas une cinquième
-priorité. Diluer les quatre blocs les aurait rendus muets.
+Le formulaire demandait deux dates, on répondait deux fois la même. La distinction était
+juste en théorie et vide en pratique — pire, elle donnait l'impression d'un doublon à chaque
+saisie, ce qu'elle était devenue.
+
+Il reste **une date, avec une heure facultative**. Et le classement s'est réparé tout seul :
+avant, une tâche qu'on faisait dans deux heures tombait dans « Le reste », parce que le
+créneau ne pesait rien sur la priorité — seule l'échéance comptait. Maintenant sa date *est*
+son échéance : elle est urgente, et elle remonte.
+
+**Ce qu'on a perdu**, et qu'il faut assumer plutôt que redécouvrir :
+
+- « dû vendredi, je le fais mardi » n'est plus exprimable ;
+- les signaux *planifié après l'échéance* et *urgent sans créneau* ont été supprimés.
+
+Il reste un seul signal de ce groupe : **l'heure passée**. La tâche est due aujourd'hui,
+l'heure qu'on s'était fixée est derrière nous, mais la journée n'est pas finie — ce n'est
+donc **pas** un retard, et les confondre reviendrait à crier au loup un jour trop tôt.
+
+⚠ **Ne pas refaire la séparation** sans nouvelles données d'usage. Elle a été essayée,
+mesurée, et retirée pour cette raison-là.
 
 #### La vue Semaine
 
@@ -517,19 +530,19 @@ la grille dit *quand*. Construite à la main, sans librairie : sept colonnes, de
 positionnés au pixel depuis des minutes. FullCalendar passerait la CSP mais pèserait plus
 lourd que tout le hub réuni.
 
-Deux étages, et leur séparation **est** le sujet de la vue : les **échéances** en bandeau
-au-dessus de la grille (une contrainte n'a pas d'horaire, la poser dans les heures serait
-lui en inventer un), les **créneaux** en blocs dans les heures.
+Deux étages, et leur séparation **est** le sujet de la vue : les tâches **sans heure** en
+bandeau au-dessus de la grille (les poser dans les heures leur en inventerait une), celles
+**à heure fixe** en blocs dans les heures.
 
-On pose une tâche en **cliquant une case vide** — pas en glissant : le glisser-déposer tient
+On pose une heure en **cliquant une case vide** — pas en glissant : le glisser-déposer tient
 mal au doigt, or c'est sur le téléphone qu'on replanifie, et il serait intestable hors
-navigateur. Les tâches proposées sont les ouvertes non encore planifiées, dans l'ordre de
-priorité de la liste.
+navigateur. ⚠ Depuis la fusion, **poser une heure déplace la date** : il n'y en a plus
+qu'une. Le compteur de reports s'en aperçoit si la date recule, comme partout ailleurs.
 
-Deux créneaux qui se chevauchent se répartissent en **voies parallèles**, comptées par
-grappe de chevauchements et non par journée : un doublon à 9 h ne doit pas rétrécir tout le
-reste de la journée, qui n'y est pour rien. Et la plage horaire s'étend d'elle-même si un
-créneau tombe hors des bornes — une tâche planifiée à 6 h ne doit pas devenir invisible.
+Deux tâches dont les heures se chevauchent se répartissent en **voies parallèles**, comptées
+par grappe de chevauchements et non par journée : un doublon à 9 h ne doit pas rétrécir tout
+le reste de la journée, qui n'y est pour rien. Et la plage horaire s'étend d'elle-même si
+une heure tombe hors des bornes — une tâche à 6 h ne doit pas devenir invisible.
 
 Sur téléphone, la grille **défile horizontalement** plutôt que de passer à une vue « un jour
 à la fois » : du code en moins, et la semaine reste sous les yeux au moment précis où on
@@ -545,17 +558,16 @@ l'infobulle la donne en toutes lettres.
 **En retard** → **Urgent** → **Important non urgent** → **Le reste**. L'ordre de la
 constante `BLOCS` *est* la priorité ; les blocs vides ne s'affichent pas.
 
-À l'intérieur d'un bloc, l'ordre est **important → échéance → créneau → ancienneté**.
+À l'intérieur d'un bloc, l'ordre est **important → date → heure → ancienneté**.
 
 L'important passe devant y compris parmi les retards : c'est le cas du retour de vacances —
 quarante retards d'un coup, triés par ancienneté, mettraient la même croûte en tête pour
 toujours pendant que l'important pourrit trois écrans plus bas.
 
-Le **créneau ne départage qu'à contrainte égale** : c'est l'échéance qui commande, le
-créneau dit seulement dans quel ordre les choses vont réellement s'enchaîner. Deux tâches du
-même jour, l'une à 12 h 45 et l'autre à 19 h, se lisent dans cet ordre-là. Une tâche non
-planifiée passe en dernier, pour la même raison qu'une tâche sans échéance : n'avoir aucun
-moment décidé n'est pas un rang.
+L'**heure ne départage qu'à date égale** : c'est la date qui commande. Deux tâches du même
+jour, l'une à 12 h 45 et l'autre à 19 h, se lisent dans cet ordre-là. Une tâche sans heure
+passe en dernier, pour la même raison qu'une tâche sans date : n'avoir décidé d'aucun moment
+n'est pas un rang.
 
 #### ⚠ Le compteur de reports — ce qui manque à tous les todos
 
@@ -593,18 +605,16 @@ compteur échoue, il se tait — il ne doit jamais emporter l'accueil avec lui.
 | `projet` | string | Libellé, liste fermée filtrée par les droits (comme `idees`) |
 | `important` | bool | La seule qualification saisie à la main |
 | `urgentForce` | bool | « Urgent tout de suite », pour l'urgence sans date |
-| `echeance` | string | **`AAAA-MM-JJ`, pas un Timestamp** — la contrainte, voir ci-dessous |
-| `creneauJour` | string | `AAAA-MM-JJ` — la décision : quand je m'y colle |
-| `creneauHeure` | string | `HH:MM`, chaîne locale sans fuseau |
-| `creneauDuree` | int | Minutes, liste fermée (15 → 480) |
+| `echeance` | string | **`AAAA-MM-JJ`, pas un Timestamp** — quand c'est dû, ou quand je le fais |
+| `echeanceHeure` | string | `HH:MM` ou `''` — **facultative**, chaîne locale sans fuseau |
+| `echeanceDuree` | int | Minutes, liste fermée (15 → 480) |
 
-**C'est le jour qui crée le créneau.** L'heure se saisit en deux listes fermées — les 24
-heures, et les quatre quarts — et a donc toujours une valeur ; sans jour choisi, elle n'est
-simplement pas écrite. Un `<input type="time">` acceptait n'importe quelle minute et
-ouvrait, selon le navigateur, la liste des soixante : imprenable au doigt, pour une
-précision qu'on n'a pas. Une nouvelle tâche s'ouvre sur **l'heure pleine suivante** (passé
-23 h, sur 09:00 — le champ du jour est vide de toute façon), et une minute héritée du temps
-de l'ancien champ est conservée dans la liste plutôt qu'arrondie en silence.
+**L'heure est facultative, et vide par défaut.** Elle se saisit en deux listes fermées — les
+24 heures précédées d'une option vide, et les quatre quarts. Un `<input type="time">`
+acceptait n'importe quelle minute et ouvrait, selon le navigateur, la liste des soixante :
+imprenable au doigt, pour une précision qu'on n'a pas. Une minute héritée de ce temps-là
+(14:37) est conservée dans la liste plutôt qu'arrondie en silence à la simple ouverture de
+la modale. Une heure saisie sans date n'est pas écrite : elle ne voudrait rien dire.
 | `faite` / `faiteLe` | bool / string | `faiteLe` est **vidé** à la réouverture, sinon le badge ment |
 | `nbReports` | int | Combien de fois l'échéance a été repoussée |
 | `echeanceInitiale` | string | La toute première date visée, écrite une seule fois |
@@ -686,6 +696,15 @@ scope supplémentaire et de la gestion des doublons et des suppressions.
 **Pas de notification par membre.** Le notifieur écrit dans une seule conversation. Passer
 au multi-membre demanderait un champ sur la fiche membre et un flux d'appairage, pour des
 personnes qui n'ont pas encore le projet coché.
+
+#### La bascule vers la date unique
+
+Une bannière temporaire propose de basculer les tâches d'avant la fusion, sur le modèle de
+« Me les attribuer » du carnet d'idées : un rattrapage de données se fait en **un geste
+explicite**, jamais en silence au fil des enregistrements — sinon on ne sait jamais s'il est
+terminé. Quand les deux dates diffèrent, **c'est le créneau qui devient la date** : c'est
+celle qu'on avait décidée, elle porte l'heure, et c'est toujours la plus proche. À retirer
+une fois qu'aucune tâche ne porte plus d'ancien `creneauJour`.
 
 **Pas de vue Mois.** Les horaires n'y tiennent pas : on y verrait des pastilles, pas des
 créneaux. Elle s'ajoutera sans rien casser le jour où le volume la rendra utile — le calcul

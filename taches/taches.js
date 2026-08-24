@@ -7,10 +7,9 @@
 //   projet           string   libellé, liste fermée (comme le carnet d'idées)
 //   important        bool     la seule qualification saisie à la main
 //   urgentForce      bool     « urgent tout de suite », pour l'urgence sans date
-//   echeance         string   'AAAA-MM-JJ' — AVANT QUAND ça doit être fait
-//   creneauJour      string   'AAAA-MM-JJ' — QUAND je m'y colle
-//   creneauHeure     string   'HH:MM'
-//   creneauDuree     int      minutes
+//   echeance         string   'AAAA-MM-JJ' — quand c'est dû, ou quand je le fais
+//   echeanceHeure    string   'HH:MM' ou '' — facultative
+//   echeanceDuree    int      minutes, pour la grille de semaine
 //   faite            bool
 //   faiteLe          string   'AAAA-MM-JJ'
 //   nbReports        int      combien de fois l'échéance a été repoussée
@@ -46,7 +45,7 @@ var filtreEtat = 'a_faire';   // a_faire | faites | toutes
 var vue = 'liste';            // liste | semaine
 var lundiAffiche = '';        // lundi de la semaine montrée par la grille
 var idEnEdition = null;
-var creneauEnCours = null;    // { jour, heure } pendant le choix d'une tâche
+var momentEnCours = null;     // { jour, heure } pendant le choix d'une tâche
 var premierChargement = true;
 
 // La hauteur d'une heure dans la grille, en pixels. De la présentation
@@ -58,7 +57,7 @@ var HAUTEUR_HEURE = 46;
 var HAUTEUR_BLOC_MINI = 22;
 
 // En dessous, l'heure et le titre ne tiennent pas tous les deux. Le bloc
-// passe en mode compact — voir `blocCreneau`.
+// passe en mode compact — voir `blocHeure`.
 var HAUTEUR_DEUX_LIGNES = 34;
 
 // Le bloc des tâches réglées : de la présentation pure, d'où sa place
@@ -215,7 +214,7 @@ function renderVue() {
     if (outils) outils.style.display = (vue === 'liste') ? '' : 'none';
 
     signalerEnlisement();
-    signalerSansCreneau();
+    signalerFusion();
 
     if (vue === 'semaine') renderSemaine();
     else renderTaches();
@@ -347,25 +346,14 @@ function carteTache(tache, ajd) {
             + escapeHtml(formatEcheance(tache.faiteLe)) + '</span>');
     }
 
-    // Les trois signaux que la séparation échéance / créneau rend
-    // possibles. Ils ne changent pas le bloc de la tâche — ce sont des
-    // alertes, pas une cinquième priorité.
-    if (aUnCreneau(tache) && !tache.faite) {
-        var manque = creneauManque(tache, ajd, heureCourante());
-        bouts.push('<span class="badge ' + (manque ? 'badge-creneau-manque' : 'badge-creneau') + '">'
-            + '<i class="fa-solid fa-' + (manque ? 'clock-rotate-left' : 'calendar-check') + '"></i>'
-            + escapeHtml(libelleCreneau(tache, ajd)) + (manque ? ' — manqué' : '') + '</span>');
-    }
-    if (planifieApresEcheance(tache)) {
-        bouts.push('<span class="badge badge-debordee"'
-            + ' title="' + escapeAttr('Le créneau est le ' + formatEcheance(tache.creneauJour)
-                + ', l\'échéance était le ' + formatEcheance(tache.echeance) + '.') + '">'
-            + '<i class="fa-solid fa-arrow-right-long"></i>planifié après l\'échéance</span>');
-    }
-    if (sansCreneauAlorsQueProche(tache, ajd)) {
-        bouts.push('<span class="badge badge-sans-creneau"'
-            + ' title="Ça brûle, et aucun moment n\'est encore décidé.">'
-            + '<i class="fa-solid fa-calendar-plus"></i>sans créneau</span>');
+    // L'heure, quand il y en a une. Grisée et barrée d'un « passé » si
+    // elle est derrière nous : ce n'est PAS un retard — la journée n'est
+    // pas finie — mais le moment qu'on s'était donné, lui, l'est.
+    if (aUneHeure(tache) && !tache.faite) {
+        var passee = heureDepassee(tache, ajd, heureCourante());
+        bouts.push('<span class="badge ' + (passee ? 'badge-heure-passee' : 'badge-heure') + '">'
+            + '<i class="fa-solid fa-' + (passee ? 'clock-rotate-left' : 'clock') + '"></i>'
+            + escapeHtml(tache.echeanceHeure) + (passee ? ' — passée' : '') + '</span>');
     }
 
     return '<article class="carte-fil carte-tache' + (tache.faite ? ' carte-fil--close' : '') + '">'
@@ -381,11 +369,11 @@ function carteTache(tache, ajd) {
 
 // « aujourd'hui 14:00 », « mar. 3 à 09:30 » : le jour se dit en clair
 // quand il n'est pas aujourd'hui, sinon l'heure suffit.
-function libelleCreneau(tache, ajd) {
-    var heure = tache.creneauHeure;
-    if (tache.creneauJour === ajd) return 'aujourd\'hui ' + heure;
-    if (tache.creneauJour === ajouterJours(ajd, 1)) return 'demain ' + heure;
-    return libelleJourCourt(tache.creneauJour) + ' à ' + heure;
+function libelleDateEtHeure(tache, ajd) {
+    var heure = tache.echeanceHeure;
+    if (tache.echeance === ajd) return 'aujourd\'hui ' + heure;
+    if (tache.echeance === ajouterJours(ajd, 1)) return 'demain ' + heure;
+    return libelleJourCourt(tache.echeance) + ' à ' + heure;
 }
 
 function titreReports(tache) {
@@ -415,45 +403,16 @@ function actionsTache(tache, retard) {
         }
     }
 
-    if (aUnCreneau(tache) && !tache.faite) {
-        boutons += '<button type="button" class="tache-btn" onclick="deplanifierTache(\'' + id + '\')"'
-            + ' title="Retirer le créneau — la tâche reste, seule la décision du moment s\'efface">'
-            + '<i class="fa-solid fa-calendar-xmark"></i> Déplanifier</button>';
+    if (aUneHeure(tache) && !tache.faite) {
+        boutons += '<button type="button" class="tache-btn" onclick="retirerHeure(\'' + id + '\')"'
+            + ' title="Retirer l\'heure — la tâche reste due ce jour-là, sans moment précis">'
+            + '<i class="fa-solid fa-clock"></i> Retirer l\'heure</button>';
     }
 
     boutons += '<button type="button" class="tache-btn" onclick="ouvrirModale(\'' + id + '\')">'
         + '<i class="fa-solid fa-pen"></i> Modifier</button>';
 
     return '<div class="tache-actions">' + boutons + '</div>';
-}
-
-// Le trou de la planification : ça brûle et rien n'est décidé. C'est le
-// signal qu'un calendrier seul ne peut pas donner — il ne connaît que ce
-// qu'on y a déjà posé — et qu'une liste seule ne peut pas donner non
-// plus, faute de savoir ce qui est planifié.
-function signalerSansCreneau() {
-    var bloc = document.getElementById('note-sans-creneau');
-    if (!bloc) return;
-
-    var ajd = aujourdhui();
-    var orphelines = taches.filter(function(tache) {
-        return sansCreneauAlorsQueProche(tache, ajd);
-    });
-
-    if (!orphelines.length) {
-        bloc.style.display = 'none';
-        return;
-    }
-
-    var nb = orphelines.length;
-    bloc.innerHTML = '<i class="fa-solid fa-calendar-plus"></i>'
-        + '<div><strong>' + nb + ' tâche' + (nb > 1 ? 's' : '') + ' sans créneau</strong> '
-        + 'alors qu\'' + (nb > 1 ? 'elles arrivent' : 'elle arrive') + ' à échéance. '
-        + 'Savoir que c\'est urgent ne suffit pas : tant qu\'aucun moment n\'est posé, '
-        + 'rien ne se fera.'
-        + '<button type="button" class="btn-ajout-auteur" onclick="changerVue(\'semaine\')">'
-        + 'Ouvrir la semaine</button></div>';
-    bloc.style.display = '';
 }
 
 // L'avertissement qui dit tout haut ce qu'un compteur de reports ne
@@ -478,6 +437,88 @@ function signalerEnlisement() {
     bloc.style.display = '';
 }
 
+// ⚠ BANNIÈRE TEMPORAIRE — À RETIRER une fois la bascule faite partout.
+//
+// Les tâches d'avant la fusion portent encore `creneauJour`, un second
+// champ de date que le modèle n'a plus. Tant qu'elles existent, leur
+// heure et leur durée sont invisibles : la page ne lit plus ces
+// champs-là. Un bouton, un lot, et c'est réglé.
+//
+// Même patron que « Me les attribuer » du carnet d'idées : un rattrapage
+// de données se fait en un geste explicite, jamais en silence au fil des
+// enregistrements — sinon on ne sait jamais s'il est terminé.
+function tachesAFusionner() {
+    return taches.filter(function(tache) {
+        return !!tache.creneauJour || !!tache.creneauHeure;
+    });
+}
+
+function signalerFusion() {
+    var bloc = document.getElementById('note-fusion');
+    if (!bloc) return;
+
+    var restantes = tachesAFusionner();
+    if (!restantes.length) {
+        bloc.style.display = 'none';
+        return;
+    }
+
+    var nb = restantes.length;
+    // Combien perdront vraiment quelque chose : celles dont les deux
+    // dates diffèrent. On garde le créneau — c'est la date décidée, elle
+    // porte l'heure, et c'est toujours la plus proche.
+    var divergentes = restantes.filter(function(tache) {
+        return isoValide(tache.echeance) && isoValide(tache.creneauJour)
+            && tache.echeance !== tache.creneauJour;
+    });
+
+    bloc.innerHTML = '<i class="fa-solid fa-code-merge"></i>'
+        + '<div><strong>' + nb + ' tâche' + (nb > 1 ? 's' : '') + ' à basculer '
+        + 'vers la date unique.</strong> '
+        + 'Échéance et créneau ne font plus qu\'un : le créneau devient la date, '
+        + 'avec son heure.'
+        + (divergentes.length
+            ? ' <strong>' + divergentes.length + '</strong> porte'
+              + (divergentes.length > 1 ? 'nt' : '') + ' deux dates différentes — '
+              + 'c\'est le créneau qui est gardé, vérifiez-les après coup.'
+            : '')
+        + '<button type="button" class="btn-ajout-auteur" onclick="fusionnerLesDates()">'
+        + 'Basculer</button></div>';
+    bloc.style.display = '';
+}
+
+function fusionnerLesDates() {
+    var restantes = tachesAFusionner();
+    if (!restantes.length) return;
+
+    var lot = db.batch();
+    var efface = firebase.firestore.FieldValue.delete();
+
+    restantes.forEach(function(tache) {
+        var donnees = {
+            // Le créneau gagne quand les deux diffèrent : c'est la date
+            // qu'on avait décidée, elle porte l'heure, et elle est
+            // toujours la plus proche — rien ne risque d'être découvert
+            // trop tard.
+            echeance: isoValide(tache.creneauJour) ? tache.creneauJour : (tache.echeance || ''),
+            echeanceHeure: heureValide(tache.creneauHeure) ? tache.creneauHeure : '',
+            echeanceDuree: Number(tache.creneauDuree) || 0,
+            creneauJour: efface,
+            creneauHeure: efface,
+            creneauDuree: efface,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        lot.update(db.collection('taches').doc(tache.id), donnees);
+    });
+
+    lot.commit().then(function() {
+        showToast(restantes.length + ' tâche(s) basculée(s).', 'success');
+    }).catch(function(erreur) {
+        console.error(erreur);
+        showToast('Bascule impossible : ' + erreur.message, 'error');
+    });
+}
+
 // ------------------------------------------------------------
 // 7. La grille de semaine
 // ------------------------------------------------------------
@@ -500,7 +541,7 @@ function renderSemaine() {
     // planifiée à 5 h en mars ne doit pas allonger toutes les grilles de
     // l'année.
     var deLaSemaine = taches.filter(function(t) {
-        return aUnCreneau(t) && jours.indexOf(t.creneauJour) !== -1;
+        return aUneHeure(t) && jours.indexOf(t.echeance) !== -1;
     });
     var plage = plageHoraire(deLaSemaine);
 
@@ -523,7 +564,7 @@ function barreSemaine(jours, ajd) {
         : '';
 
     var nbPlanifiees = jours.reduce(function(total, iso) {
-        return total + creneauxDuJour(taches, iso).length;
+        return total + avecHeureLeJour(taches, iso).length;
     }, 0);
 
     return '<div class="semaine-barre">'
@@ -588,8 +629,8 @@ function colonneJour(iso, ajd, plage) {
                 + ' à ' + heureDeMinutes(minutes)) + '"></button>';
     }
 
-    var blocs = repartirEnVoies(creneauxDuJour(taches, iso))
-        .map(function(element) { return blocCreneau(element, plage); })
+    var blocs = repartirEnVoies(avecHeureLeJour(taches, iso))
+        .map(function(element) { return blocHeure(element, plage); })
         .join('');
 
     return '<div class="semaine-colonne' + (estAujourdhui ? ' semaine-colonne--aujourdhui' : '') + '">'
@@ -606,13 +647,12 @@ function colonneJour(iso, ajd, plage) {
 // dont l'échéance tombe ici mais dont le créneau est ailleurs apparaît
 // donc aux deux endroits : c'est justement ce qu'on veut voir.
 function bandeauEcheances(iso) {
-    var lignes = echeancesDuJour(taches, iso);
+    var lignes = sansHeureLeJour(taches, iso);
     if (!lignes.length) return '';
 
     return lignes.map(function(tache) {
         var classe = 'semaine-echeance';
         if (tache.important) classe += ' semaine-echeance--important';
-        if (planifieApresEcheance(tache)) classe += ' semaine-echeance--debordee';
         return '<button type="button" class="' + classe + '"'
             + ' onclick="ouvrirModale(\'' + jsAttr(tache.id) + '\')"'
             + ' title="' + escapeAttr(infobulleEcheance(tache)) + '">'
@@ -622,15 +662,10 @@ function bandeauEcheances(iso) {
 }
 
 function infobulleEcheance(tache) {
-    var texte = 'Échéance : ' + formatEcheance(tache.echeance);
-    if (!aUnCreneau(tache)) return texte + ' — aucun créneau posé.';
-    if (planifieApresEcheance(tache)) {
-        return texte + ' — mais le créneau est le ' + formatEcheance(tache.creneauJour) + ', après.';
-    }
-    return texte + ' — créneau le ' + formatEcheance(tache.creneauJour) + ' à ' + tache.creneauHeure + '.';
+    return 'Due le ' + formatEcheance(tache.echeance) + ' — sans heure fixée.';
 }
 
-function blocCreneau(element, plage) {
+function blocHeure(element, plage) {
     var tache = element.tache;
     var haut = ((element.debut - plage.debut) / 60) * HAUTEUR_HEURE;
     var hauteur = Math.max(HAUTEUR_BLOC_MINI, ((element.fin - element.debut) / 60) * HAUTEUR_HEURE);
@@ -645,28 +680,22 @@ function blocCreneau(element, plage) {
     // bloc la dit déjà, et l'infobulle la donne en toutes lettres.
     if (hauteur < HAUTEUR_DEUX_LIGNES) classe += ' semaine-bloc--compact';
     if (tache.faite) classe += ' semaine-bloc--faite';
-    else if (creneauManque(tache, aujourdhui(), heureCourante())) classe += ' semaine-bloc--manque';
+    else if (heureDepassee(tache, aujourdhui(), heureCourante())) classe += ' semaine-bloc--manque';
     else if (tache.important) classe += ' semaine-bloc--important';
-    if (planifieApresEcheance(tache)) classe += ' semaine-bloc--debordee';
 
     return '<button type="button" class="' + classe + '"'
         + ' style="top:' + haut + 'px;height:' + hauteur + 'px;'
         +   'left:' + (element.voie * largeur) + '%;width:' + largeur + '%"'
         + ' onclick="ouvrirModale(\'' + jsAttr(tache.id) + '\')"'
-        + ' title="' + escapeAttr(infobulleCreneau(tache, element)) + '">'
+        + ' title="' + escapeAttr(infobulleHeure(tache, element)) + '">'
         + '<span class="semaine-bloc-heure">' + escapeHtml(heureDeMinutes(element.debut)) + '</span>'
         + '<span class="semaine-bloc-titre">' + escapeHtml(tache.titre || '(sans titre)') + '</span>'
         + '</button>';
 }
 
-function infobulleCreneau(tache, element) {
-    var texte = heureDeMinutes(element.debut) + ' – ' + heureDeMinutes(element.fin)
+function infobulleHeure(tache, element) {
+    return heureDeMinutes(element.debut) + ' – ' + heureDeMinutes(element.fin)
         + ' · ' + (tache.titre || '(sans titre)');
-    if (isoValide(tache.echeance)) {
-        texte += '\nÉchéance : ' + formatEcheance(tache.echeance);
-        if (planifieApresEcheance(tache)) texte += ' — le créneau est APRÈS.';
-    }
-    return texte;
 }
 
 // L'heure courante, pour savoir si un créneau est passé. Isolée dans sa
@@ -682,15 +711,20 @@ function heureCourante() {
 }
 
 // ------------------------------------------------------------
-// 8. Poser une tâche sur un créneau
+// 8. Poser une tâche à une heure depuis la grille
 // ------------------------------------------------------------
 // Clic pour placer, et non glisser-déposer : le glisser tient mal au
 // doigt — or c'est sur le téléphone qu'on replanifie —, et il serait
 // intestable hors navigateur.
+//
+// ⚠ POSER UNE HEURE DÉPLACE L'ÉCHÉANCE. Depuis la fusion des deux dates,
+// il n'y en a plus qu'une : choisir « jeudi 14 h » dans la grille, c'est
+// dire que la tâche est due jeudi. Le compteur de reports s'en aperçoit
+// si la date recule, comme partout ailleurs.
 function ouvrirChoixTache(jour, heure) {
-    creneauEnCours = { jour: jour, heure: heure };
+    momentEnCours = { jour: jour, heure: heure };
 
-    var candidates = taches.filter(function(t) { return !t.faite && !aUnCreneau(t); });
+    var candidates = taches.filter(function(t) { return !t.faite && !aUneHeure(t); });
     var ajd = aujourdhui();
     // Le même ordre que la liste : ce qui brûle en premier, sinon on
     // planifierait au hasard de l'ordre de Firestore.
@@ -723,26 +757,32 @@ function ouvrirChoixTache(jour, heure) {
 
 function fermerChoixTache() {
     document.getElementById('choix-overlay').style.display = 'none';
-    creneauEnCours = null;
+    momentEnCours = null;
 }
 
 function planifierTache(id) {
-    if (!creneauEnCours) return;
-    var jour = creneauEnCours.jour;
-    var heure = creneauEnCours.heure;
+    if (!momentEnCours) return;
+    var jour = momentEnCours.jour;
+    var heure = momentEnCours.heure;
+    var tache = trouverTache(id);
     fermerChoixTache();
+    if (!tache) return;
 
-    ecrire(id, {
-        creneauJour: jour,
-        creneauHeure: heure,
-        creneauDuree: DUREE_DEFAUT
-    }, 'Placée ' + libelleJourCourt(jour) + ' à ' + heure + '.');
+    // La date bouge : c'est donc un report éventuel, comme n'importe
+    // quelle autre façon de repousser une échéance. `champsDeReport`
+    // décide seul si le compteur s'incrémente.
+    var champs = champsDeReport(tache, jour);
+    champs.echeanceHeure = heure;
+    champs.echeanceDuree = DUREE_DEFAUT;
+
+    ecrire(id, champs, 'Placée ' + libelleJourCourt(jour) + ' à ' + heure + '.');
 }
 
-// Déplanifier n'est PAS reporter : on retire une décision, on ne
-// repousse pas une contrainte. Le compteur de reports ne bouge donc pas.
-function deplanifierTache(id) {
-    ecrire(id, { creneauJour: '', creneauHeure: '', creneauDuree: 0 }, 'Créneau retiré.');
+// Retirer l'heure n'est PAS reporter : la tâche reste due le même jour,
+// on renonce seulement au moment précis. Ni la date ni le compteur de
+// reports ne bougent.
+function retirerHeure(id) {
+    ecrire(id, { echeanceHeure: '', echeanceDuree: 0 }, 'Heure retirée.');
 }
 
 // ------------------------------------------------------------
@@ -849,17 +889,20 @@ function remplirSelectProjet(valeurCourante) {
 // les quatre quarts de l'autre. Un `<input type="time">` acceptait
 // n'importe quelle minute et ouvrait, selon le navigateur, la liste des
 // soixante — imprenable au doigt, pour une précision qu'on n'a pas.
+//
+// ⚠ LA PREMIÈRE OPTION EST VIDE, et c'est le défaut. Depuis la fusion,
+// l'heure est FACULTATIVE : la plupart des tâches sont dues un jour,
+// sans moment précis. Proposer d'emblée une heure pleine reviendrait à
+// en inventer une à chaque saisie.
 function remplirSelectsHeure(valeurCourante) {
-    var selectH = document.getElementById('f-creneau-h');
-    var selectM = document.getElementById('f-creneau-m');
+    var selectH = document.getElementById('f-echeance-h');
+    var selectM = document.getElementById('f-echeance-m');
     if (!selectH || !selectM) return;
 
-    // Nouvelle tâche : l'heure pleine suivante. Le jour, lui, reste
-    // vide — c'est le jour qui crée le créneau, pas l'heure.
-    var heure = heureValide(valeurCourante) ? valeurCourante : heurePleineSuivante(heureCourante());
-    var bouts = heure.split(':');
+    var heure = heureValide(valeurCourante) ? valeurCourante : '';
+    var bouts = heure ? heure.split(':') : ['', '00'];
 
-    var htmlH = '';
+    var htmlH = '<option value="">—</option>';
     for (var h = 0; h < 24; h++) {
         var hh = (h < 10 ? '0' : '') + h;
         htmlH += '<option value="' + hh + '">' + hh + '</option>';
@@ -881,17 +924,18 @@ function remplirSelectsHeure(valeurCourante) {
     selectM.value = bouts[1];
 }
 
+// Rend '' quand aucune heure n'est choisie — l'option vide du sélecteur.
 function heureSaisie() {
-    var selectH = document.getElementById('f-creneau-h');
-    var selectM = document.getElementById('f-creneau-m');
-    if (!selectH || !selectM) return '';
-    return selectH.value + ':' + selectM.value;
+    var selectH = document.getElementById('f-echeance-h');
+    var selectM = document.getElementById('f-echeance-m');
+    if (!selectH || !selectM || !selectH.value) return '';
+    return selectH.value + ':' + (selectM.value || '00');
 }
 
 // Durées en liste fermée : personne ne planifie 37 minutes, et un champ
 // libre inviterait à une précision qu'on n'a pas.
 function remplirSelectDuree(valeurCourante) {
-    var select = document.getElementById('f-creneau-duree');
+    var select = document.getElementById('f-echeance-duree');
     if (!select) return;
     select.innerHTML = DUREES.map(function(minutes) {
         return '<option value="' + minutes + '">' + escapeHtml(libelleDuree(minutes)) + '</option>';
@@ -916,18 +960,14 @@ function ouvrirModale(id) {
     document.getElementById('f-important').value    = (tache && tache.important) ? 'oui' : 'non';
     document.getElementById('f-echeance').value     = (tache && isoValide(tache.echeance)) ? tache.echeance : '';
     document.getElementById('f-urgent-force').checked = !!(tache && tache.urgentForce);
-    document.getElementById('f-creneau-jour').value = (tache && isoValide(tache.creneauJour)) ? tache.creneauJour : '';
-    remplirSelectsHeure(tache ? tache.creneauHeure : '');
-    remplirSelectDuree(tache ? dureeCreneau(tache) : DUREE_DEFAUT);
+    remplirSelectsHeure(tache ? tache.echeanceHeure : '');
+    remplirSelectDuree(tache ? dureeEcheance(tache) : DUREE_DEFAUT);
     remplirSelectProjet(tache ? (tache.projet || '') : '');
 
     var meta = document.getElementById('f-meta');
     if (tache) {
         var texte = 'Créée le ' + formatDateFr(tache.createdAt);
         if (tache.nbReports) texte += ' — ' + titreReports(tache).toLowerCase();
-        if (planifieApresEcheance(tache)) {
-            texte += ' — ⚠ le créneau est posé APRÈS l\'échéance.';
-        }
         meta.textContent = texte;
         meta.style.display = 'block';
     } else {
@@ -954,29 +994,21 @@ function sauverTache() {
 
     var echeance = document.getElementById('f-echeance').value;
 
-    // C'EST LE JOUR QUI CRÉE LE CRÉNEAU. Les deux listes d'heure ont
-    // toujours une valeur — il n'existe donc plus de « jour sans heure »
-    // à refuser. Sans jour, en revanche, l'heure ne veut rien dire et
-    // n'est pas écrite : un jour sans heure serait une seconde échéance
-    // déguisée, exactement la confusion qu'on évite.
-    var creneauJour = document.getElementById('f-creneau-jour').value;
-    var creneauHeure = heureSaisie();
-    var creneauComplet = isoValide(creneauJour) && heureValide(creneauHeure);
-    if (creneauJour && !creneauComplet) {
-        showToast('Ce créneau n\'est pas lisible : vérifiez le jour et l\'heure.', 'error');
-        return;
-    }
+    // ⚠ UNE HEURE SANS DATE NE VEUT RIEN DIRE. On la laisse tomber
+    // silencieusement plutôt que de refuser la saisie : l'heure est
+    // facultative, et bloquer sur un champ facultatif serait absurde.
+    var heure = heureSaisie();
+    var avecHeure = isoValide(echeance) && heureValide(heure);
 
     var donnees = {
-        titre:        titre,
-        detail:       document.getElementById('f-detail').value.trim(),
-        projet:       document.getElementById('f-projet').value.trim(),
-        important:    document.getElementById('f-important').value === 'oui',
-        urgentForce:  document.getElementById('f-urgent-force').checked,
-        creneauJour:  creneauComplet ? creneauJour : '',
-        creneauHeure: creneauComplet ? creneauHeure : '',
-        creneauDuree: creneauComplet ? Number(document.getElementById('f-creneau-duree').value) || DUREE_DEFAUT : 0,
-        updatedAt:    firebase.firestore.FieldValue.serverTimestamp()
+        titre:         titre,
+        detail:        document.getElementById('f-detail').value.trim(),
+        projet:        document.getElementById('f-projet').value.trim(),
+        important:     document.getElementById('f-important').value === 'oui',
+        urgentForce:   document.getElementById('f-urgent-force').checked,
+        echeanceHeure: avecHeure ? heure : '',
+        echeanceDuree: avecHeure ? Number(document.getElementById('f-echeance-duree').value) || DUREE_DEFAUT : 0,
+        updatedAt:     firebase.firestore.FieldValue.serverTimestamp()
     };
 
     var operation;
@@ -1067,9 +1099,8 @@ function exporterJson() {
                 urgentForce:      !!t.urgentForce,
                 echeance:         t.echeance || '',
                 echeanceInitiale: t.echeanceInitiale || '',
-                creneauJour:      t.creneauJour || '',
-                creneauHeure:     t.creneauHeure || '',
-                creneauDuree:     t.creneauDuree || 0,
+                echeanceHeure:    t.echeanceHeure || '',
+                echeanceDuree:    t.echeanceDuree || 0,
                 nbReports:        t.nbReports || 0,
                 faite:            !!t.faite,
                 faiteLe:          t.faiteLe || '',
