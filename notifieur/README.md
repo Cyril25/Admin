@@ -18,17 +18,45 @@ Le calcul de « en retard » et « ça commence bientôt » n'est pas ici : il v
 fait diverger, et cette divergence-là serait **muette** — un message qui ne part pas ne se
 remarque pas.
 
-## Deux déclencheurs
+## Trois déclencheurs
 
-- **Le digest du matin**, à 07:30 (heure de Paris). Les créneaux du jour, les retards, ce
-  qui arrive sans créneau posé. C'est celui qui répond au problème d'origine :
-  l'accumulation qu'on ne voit plus.
-- **Un rappel 15 minutes avant chaque créneau.**
+| Quand | Quoi | Question posée |
+|---|---|---|
+| **07:30** | Digest du matin — créneaux du jour, retards, urgences sans créneau | Qu'est-ce qui m'attend ? |
+| **15 min avant chaque créneau** | Un rappel, une seule fois | — |
+| **20:00** | Bilan du soir — échéances qui basculent cette nuit, créneaux non tenus, programme de demain | Qu'est-ce qui a glissé, et que fais-je de demain ? |
 
-Le digest part **même quand il n'y a rien**. Une ligne de plus par jour contre une
-ambiguïté en moins : sinon le silence voudrait dire à la fois « rien à faire » et « le
-notifieur est cassé ». `DIGEST_MEME_SI_VIDE = false` en haut de `notifieur-messages.js` si
-la ligne quotidienne agace.
+Le notifieur est **silencieux le reste du temps**. Il se réveille 288 fois par jour et ne
+dit rien la quasi-totalité de ces fois : une alerte qu'on reçoit sans cesse est une alerte
+qu'on apprend à ignorer, et le jour où elle compte, on ne la voit plus.
+
+### ⚠ Le bilan du soir n'est pas le digest une seconde fois
+
+Il répond à une autre question, et il règle surtout un problème que rien d'autre ne peut
+régler : **une tâche bascule en retard à minuit**. Une alerte à cet instant tomberait vers
+00 h 05, à l'heure la plus inutile qui soit pour apprendre qu'on a oublié quelque chose.
+
+Prévenu à 20 h, on a encore le choix — la finir, ou repousser l'échéance délibérément, ce
+qui incrémente le compteur de reports et reste honnête. C'est pourquoi il n'existe pas de
+déclencheur « bascule en retard » séparé : il serait arrivé trop tard.
+
+Le bilan absorbe de la même façon le **créneau manqué**, dont un signalement à chaque
+glissement aurait été bavard. Groupé une fois le soir, il devient une invitation à
+replanifier plutôt qu'un reproche répété. Et il ne reprend que les créneaux **du jour** :
+répéter ceux des jours précédents chaque soir jusqu'à ce qu'on cède ne serait plus un
+rappel.
+
+### Une asymétrie assumée entre les deux
+
+Le digest du matin part **même quand il n'y a rien** — une ligne suffit. C'est le battement
+de cœur qui prouve que le notifieur vit : sans lui, le silence voudrait dire à la fois
+« rien à faire » et « c'est cassé », et on ne saurait jamais lequel.
+
+Le bilan du soir, **non** : s'il n'y a rien qui bascule, rien qui a glissé et rien demain,
+il se tait. Deux battements par jour, c'en est un de trop.
+
+`DIGEST_MEME_SI_VIDE = false` en haut de `notifieur-messages.js` si la ligne quotidienne
+agace ; `HEURE_DIGEST` et `HEURE_BILAN` juste à côté pour déplacer les deux rendez-vous.
 
 ## Ce qu'il lit, et ce qu'il ne lit pas
 
@@ -42,7 +70,11 @@ Deux requêtes, donc, choisies selon le tour :
 | Quand | Ce qui est lu |
 |---|---|
 | Presque tous les tours | Les créneaux d'**aujourd'hui et demain** seulement. Le rappel n'anticipe que de 15 min : au plus loin, ce soir à 23:50 pour un créneau demain à 00:05 |
-| Fenêtre du digest, digest pas encore parti | Toutes les tâches **ouvertes**. Une fois par jour |
+| Fenêtre d'un résumé, résumé pas encore parti | Toutes les tâches **ouvertes**. Deux fois par jour au plus |
+
+Le bilan du soir a besoin de la liste complète autant que le digest : les échéances qui
+basculent cette nuit n'ont pas de créneau, elles seraient invisibles dans la lecture
+courte.
 
 Le KV est interrogé **avant** Firestore : si le digest du jour est déjà parti, la lecture
 complète n'a pas lieu du tout.

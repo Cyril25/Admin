@@ -627,9 +627,14 @@ deux fois par an, le changement d'heure rend 23 heures et ferait afficher « en 
 
 Le compteur sur la tuile ne parle que si l'on ouvre l'accueil ; une alerte qui suppose qu'on
 aille la chercher n'est pas une alerte. Un **Worker Cloudflare** réveillé toutes les 5
-minutes comble ce trou : digest à 07:30 (créneaux du jour, retards, urgences sans créneau)
-et rappel 15 minutes avant chaque créneau. Mise en place complète dans
-[`notifieur/README.md`](notifieur/README.md).
+minutes comble ce trou. Trois déclencheurs : **digest à 07:30** (créneaux du jour, retards,
+urgences sans créneau), **rappel 15 minutes avant chaque créneau**, et **bilan à 20:00**.
+Mise en place complète dans [`notifieur/README.md`](notifieur/README.md).
+
+Le bilan du soir n'est pas le digest une seconde fois : il dit ce qui a glissé, et surtout
+**ce qui bascule en retard cette nuit**. Une tâche bascule à minuit ; prévenu à 20 h, on
+peut encore la finir ou repousser l'échéance délibérément. C'est pourquoi il n'existe pas
+d'alerte « bascule en retard » séparée — elle serait arrivée trop tard, vers 00 h 05.
 
 Il **réutilise `taches/taches-calcul.js`** plutôt que de recopier les règles — même argument
 que pour le compteur d'accueil, avec un enjeu plus fort : une divergence de l'affichage

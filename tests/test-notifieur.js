@@ -232,8 +232,84 @@ verifie('a une heure creuse, rien ne part',
   messages.messagesDus(journee, AJD, '17:00').length === 0,
   cles(messages.messagesDus(journee, AJD, '17:00')));
 
-// --- 9. Coherence config / regles / Worker ---------------------------
-console.log('\n9. Coherence entre les fichiers');
+// --- 9. Le bilan du soir ---------------------------------------------
+console.log('\n9. Le bilan du soir');
+// IL NE REPETE PAS LE DIGEST : il repond a une autre question. Le matin
+// dit ce qui attend, le soir dit ce qui a glisse et ce qu'on peut encore
+// sauver.
+const SOIR = '20:00';
+const journeeDuSoir = [
+  tache({ id: 'b1', titre: 'Declarer les impots', echeance: AJD, important: true }),
+  tache({ id: 'b2', titre: 'Appeler le garagiste', creneauJour: AJD, creneauHeure: '14:00' }),
+  tache({ id: 'b3', titre: 'Rendez-vous couvreur', creneauJour: '2026-08-20', creneauHeure: '09:30', creneauDuree: 90 }),
+  tache({ id: 'b4', titre: 'Deja reglee', creneauJour: AJD, creneauHeure: '10:00', faite: true }),
+  tache({ id: 'b5', titre: 'Vieux creneau', creneauJour: '2026-08-17', creneauHeure: '11:00' }),
+  tache({ id: 'b6', titre: 'Echeance lointaine', echeance: '2026-09-30' }),
+];
+
+verifie('rien avant 20 h', messages.bilanDuSoir(journeeDuSoir, AJD, '19:55') === null);
+verifie('le bilan part a 20 h', messages.bilanDuSoir(journeeDuSoir, AJD, SOIR) !== null);
+verifie('...et rattrape jusqu\'a 23 h', messages.bilanDuSoir(journeeDuSoir, AJD, '23:00') !== null);
+// La fenetre ne doit pas franchir minuit : au-dela, le « demain » du
+// message ne serait plus demain.
+verifie('mais plus rien passe 23 h', messages.bilanDuSoir(journeeDuSoir, AJD, '23:30') === null);
+
+// ⚠ LA DIFFERENCE ASSUMEE AVEC LE MATIN. Le digest part meme a vide,
+// parce qu'il porte le battement de coeur qui prouve que le notifieur
+// vit. Deux battements par jour, c'en est un de trop.
+verifie('le bilan SE TAIT quand il n\'y a rien, contrairement au digest',
+  messages.bilanDuSoir([], AJD, SOIR) === null
+  && messages.digestDuMatin([], AJD, '07:30') !== null);
+
+const texteBilan = messages.bilanDuSoir(journeeDuSoir, AJD, SOIR).texte;
+
+// C'est lui qui rattrape la bascule en retard : une tache bascule a
+// MINUIT, une alerte a cet instant tomberait a 00 h 05. Prevenu le soir,
+// on peut encore la finir ou repousser l'echeance deliberement.
+verifie('les echeances qui basculent cette nuit sont annoncees',
+  texteBilan.indexOf('Declarer les impots') !== -1
+  && texteBilan.indexOf('Bascule en retard') !== -1);
+verifie('...et une echeance lointaine n\'y figure pas',
+  texteBilan.indexOf('Echeance lointaine') === -1);
+
+verifie('les creneaux non tenus du jour sont listes',
+  texteBilan.indexOf('Appeler le garagiste') !== -1
+  && texteBilan.indexOf('non tenus') !== -1);
+verifie('...mais pas une tache deja reglee', texteBilan.indexOf('Deja reglee') === -1);
+
+// ⚠ LE CAS A NE PAS CASSER. Les creneaux des jours PRECEDENTS ont deja
+// ete annonces le soir venu. Les repeter chaque soir jusqu'a ce qu'on
+// cede ne serait plus un rappel mais du harcelement.
+verifie('un creneau d\'un jour PRECEDENT n\'est pas repete tous les soirs',
+  texteBilan.indexOf('Vieux creneau') === -1);
+
+verifie('les creneaux de demain sont annonces',
+  texteBilan.indexOf('Rendez-vous couvreur') !== -1 && texteBilan.indexOf('Demain') !== -1);
+
+verifie('la cle du bilan porte le jour et differe de celle du digest',
+  messages.cleBilan(AJD) === 'bilan:' + AJD && messages.cleBilan(AJD) !== messages.cleDigest(AJD));
+
+// Les deux resumes ne doivent jamais tomber le meme tour : ils
+// annonceraient deux fois la meme journee, sous deux angles, a la suite.
+verifie('les deux fenetres ne se recouvrent jamais',
+  ['07:30', '09:00', '11:30'].every((h) =>
+    messages.dansLaFenetreDuDigest(h) && !messages.dansLaFenetreDuBilan(h))
+  && ['20:00', '21:30', '23:00'].every((h) =>
+    messages.dansLaFenetreDuBilan(h) && !messages.dansLaFenetreDuDigest(h)));
+verifie('dansUneFenetreDeResume couvre bien les deux',
+  messages.dansUneFenetreDeResume('07:30') && messages.dansUneFenetreDeResume('20:00')
+  && !messages.dansUneFenetreDeResume('15:00'));
+
+// Un tour du soir doit produire le bilan, pas le digest.
+const tourDuSoir = messages.messagesDus(journeeDuSoir, AJD, SOIR);
+verifie('a 20 h, c\'est le bilan qui part, pas le digest',
+  tourDuSoir.length === 1 && tourDuSoir[0].cle.indexOf('bilan:') === 0,
+  cles(tourDuSoir));
+verifie('...et la liste tronquee le refuse aussi',
+  messages.messagesDus(journeeDuSoir, AJD, SOIR, false).length === 0);
+
+// --- 10. Coherence config / regles / Worker --------------------------
+console.log('\n10. Coherence entre les fichiers');
 const regles = fs.readFileSync(path.join(REPO, 'firestore.rules'), 'utf8');
 const configSource = fs.readFileSync(path.join(REPO, 'config.js'), 'utf8');
 const workerSource = fs.readFileSync(path.join(REPO, 'notifieur', 'worker.js'), 'utf8');
@@ -282,8 +358,14 @@ verifie('le KV est consulte AVANT de choisir la requete',
   workerSource.indexOf('dansLaFenetreDuDigest') < workerSource.indexOf('lireTachesOuvertes(env, jeton)'));
 // Une liste tronquee ne doit jamais produire un digest : il annoncerait
 // « 0 en retard » avec aplomb.
-verifie('le digest est refuse quand la liste est tronquee',
-  /messagesDus\(taches, maintenant\.jour, maintenant\.heure, digestPossible\)/.test(workerSource));
+verifie('les resumes sont refuses quand la liste est tronquee',
+  /messagesDus\(taches, maintenant\.jour, maintenant\.heure, listeComplete\)/.test(workerSource));
+// Le bilan du soir en a besoin autant que le digest : les echeances qui
+// basculent cette nuit n'ont pas de creneau, elles seraient invisibles
+// dans la lecture courte.
+verifie('le bilan du soir declenche aussi la lecture complete',
+  /dansLaFenetreDuBilan\(maintenant\.heure\)/.test(workerSource)
+  && /cleBilan\(maintenant\.jour\)/.test(workerSource));
 // Deux clauses sur DEUX champs differents reclameraient un index
 // composite, donc une etape manuelle de plus et une panne le jour ou on
 // l'oublie. Chaque requete ne porte que sur un champ.

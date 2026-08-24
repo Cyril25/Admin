@@ -50,6 +50,14 @@ var FENETRE_DIGEST_MINUTES = 4 * 60;
 // Se met à false en une ligne si la ligne quotidienne agace.
 var DIGEST_MEME_SI_VIDE = true;
 
+// L'heure du bilan du soir, à Paris.
+var HEURE_BILAN = '20:00';
+
+// Trois heures, pas quatre comme le matin : la fenêtre ne doit pas
+// franchir minuit. Au-delà, le « demain » du message ne serait plus
+// demain, et les créneaux annoncés seraient ceux d'après-demain.
+var FENETRE_BILAN_MINUTES = 3 * 60;
+
 // ------------------------------------------------------------
 // 2. Le temps, en minutes signées
 // ------------------------------------------------------------
@@ -260,7 +268,103 @@ function jourEnLettres(iso) {
 }
 
 // ------------------------------------------------------------
-// 6. Tout ce qui doit partir maintenant
+// 6. Le bilan du soir
+// ------------------------------------------------------------
+// IL NE RÉPÈTE PAS LE DIGEST DU MATIN — il répond à une autre question.
+// Le matin dit ce qui attend ; le soir dit ce qui a glissé, et ce qu'on
+// peut encore sauver avant que la journée ne se referme.
+//
+// ⚠ C'EST LUI QUI RATTRAPE LES BASCULES EN RETARD. Une tâche bascule à
+// MINUIT, quand la date change : une alerte à cet instant-là tomberait
+// vers 00 h 05, à l'heure la plus inutile qui soit pour apprendre qu'on
+// a oublié quelque chose. Prévenu le soir, on a encore le choix — la
+// finir, ou repousser l'échéance délibérément, ce qui incrémente le
+// compteur de reports et reste honnête. C'est la raison pour laquelle
+// le déclencheur « bascule en retard » n'existe pas séparément.
+//
+// Il absorbe aussi le CRÉNEAU MANQUÉ, dont un signalement à chaque
+// glissement aurait été bavard : groupé une fois le soir, il devient
+// une invitation à replanifier au lieu d'un reproche répété.
+function cleBilan(ajd) {
+    return 'bilan:' + ajd;
+}
+
+function dansLaFenetreDuBilan(heure) {
+    var maintenant = calcul.minutesDeHeure(heure);
+    var ouverture = calcul.minutesDeHeure(HEURE_BILAN);
+    if (maintenant === null || ouverture === null) return false;
+    return maintenant >= ouverture && maintenant <= ouverture + FENETRE_BILAN_MINUTES;
+}
+
+function bilanDuSoir(taches, ajd, heure) {
+    if (!dansLaFenetreDuBilan(heure)) return null;
+
+    // Échéance AUJOURD'HUI et pas close : à minuit, ce sera un retard.
+    // Ce soir, ça ne l'est pas encore — d'où le temps qui reste.
+    var basculent = (taches || []).filter(function(tache) {
+        return !tache.faite && tache.echeance === ajd;
+    });
+
+    // Les créneaux du JOUR seulement. Ceux des jours précédents ont déjà
+    // été annoncés le soir venu ; les répéter chaque soir jusqu'à ce
+    // qu'on cède ne serait plus un rappel mais du harcèlement.
+    var nonTenus = (taches || []).filter(function(tache) {
+        return tache.creneauJour === ajd && calcul.creneauManque(tache, ajd, heure);
+    }).sort(function(a, b) {
+        return calcul.minutesDeHeure(a.creneauHeure) - calcul.minutesDeHeure(b.creneauHeure);
+    });
+
+    var demain = calcul.creneauxDuJour(taches, calcul.ajouterJours(ajd, 1))
+        .filter(function(tache) { return !tache.faite; })
+        .sort(function(a, b) {
+            return calcul.minutesDeHeure(a.creneauHeure) - calcul.minutesDeHeure(b.creneauHeure);
+        });
+
+    // ⚠ CONTRAIREMENT AU DIGEST DU MATIN, IL SE TAIT QUAND IL N'Y A RIEN.
+    // Le matin porte déjà le battement de cœur qui prouve que le notifieur
+    // vit et lève l'ambiguïté du silence ; deux par jour, c'en est un de
+    // trop, et le second finirait par ne plus être lu.
+    if (!basculent.length && !nonTenus.length && !demain.length) return null;
+
+    return { cle: cleBilan(ajd), texte: texteBilan(ajd, basculent, nonTenus, demain) };
+}
+
+function texteBilan(ajd, basculent, nonTenus, demain) {
+    var lignes = ['🌙 <b>' + echapper(jourEnLettres(ajd)) + '</b> — bilan'];
+
+    if (basculent.length) {
+        lignes.push('');
+        lignes.push('⚠️ <b>Bascule en retard cette nuit (' + basculent.length + ')</b>');
+        lignes.push('<i>Ce soir, c\'est encore rattrapable.</i>');
+        basculent.forEach(function(tache) {
+            lignes.push('• ' + titreDe(tache)
+                + (tache.important ? ' <i>(important)</i>' : ''));
+        });
+    }
+
+    if (nonTenus.length) {
+        lignes.push('');
+        lignes.push('↩️ <b>Créneaux non tenus (' + nonTenus.length + ')</b>');
+        nonTenus.forEach(function(tache) {
+            lignes.push('• ' + echapper(tache.creneauHeure) + ' — ' + titreDe(tache));
+        });
+    }
+
+    if (demain.length) {
+        lignes.push('');
+        lignes.push('📋 <b>Demain</b>');
+        demain.forEach(function(tache) {
+            var bornes = calcul.bornesCreneau(tache);
+            lignes.push('• ' + calcul.heureDeMinutes(bornes.debut) + ' — ' + titreDe(tache)
+                + ' <i>(' + libelleDuree(calcul.dureeCreneau(tache)) + ')</i>');
+        });
+    }
+
+    return lignes.join('\n');
+}
+
+// ------------------------------------------------------------
+// 7. Tout ce qui doit partir maintenant
 // ------------------------------------------------------------
 // Le digest d'abord : au réveil, on veut la vue d'ensemble avant le
 // rappel de 8 h 00.
@@ -269,26 +373,40 @@ function jourEnLettres(iso) {
 // KV du Worker. Cette fonction dit ce qui est DÛ ; le Worker retire ce
 // qui est déjà PARTI. Séparer les deux est ce qui permet de tester la
 // décision sans inventer un faux stockage.
-// ⚠ `avecDigest` n'est PAS une commodite. Le Worker ne lit la liste
-// complete que lorsqu'un digest est possible ; le reste du temps il n'a
-// en main que les creneaux d'aujourd'hui et demain. Calculer un digest
-// sur cette liste tronquee annoncerait « 0 en retard » avec aplomb.
+// ⚠ `listeComplete` n'est PAS une commodité. Le Worker ne lit toutes les
+// tâches ouvertes que lorsqu'un résumé est possible ; le reste du temps
+// il n'a en main que les créneaux d'aujourd'hui et demain. Calculer un
+// digest — ou un bilan — sur cette liste tronquée annoncerait « 0 en
+// retard » avec aplomb, et manquerait les échéances qui basculent.
 //
-// La dedup du KV le rattraperait — le digest du jour est deja parti —
-// mais se reposer dessus reviendrait a produire un message faux et a
-// esperer que personne ne le lise. Le refus est donc explicite.
-function messagesDus(taches, ajd, heure, avecDigest) {
+// La dédup du KV le rattraperait — le résumé du jour est déjà parti —
+// mais se reposer dessus reviendrait à produire un message faux et à
+// espérer que personne ne le lise. Le refus est donc explicite.
+//
+// Les deux résumés ne peuvent pas tomber le même tour : leurs fenêtres
+// ne se recouvrent pas (07:30–11:30 et 20:00–23:00).
+function messagesDus(taches, ajd, heure, listeComplete) {
     var messages = [];
-    if (avecDigest !== false) {
+    if (listeComplete !== false) {
         var digest = digestDuMatin(taches, ajd, heure);
         if (digest) messages.push(digest);
+        var bilan = bilanDuSoir(taches, ajd, heure);
+        if (bilan) messages.push(bilan);
     }
     return messages.concat(rappelsCreneaux(taches, ajd, heure));
+}
+
+// Le Worker s'en sert AVANT de lire Firestore, pour savoir s'il lui faut
+// la liste complète ou seulement les créneaux proches.
+function dansUneFenetreDeResume(heure) {
+    return dansLaFenetreDuDigest(heure) || dansLaFenetreDuBilan(heure);
 }
 
 module.exports = {
     MINUTES_AVANT_CRENEAU: MINUTES_AVANT_CRENEAU,
     HEURE_DIGEST: HEURE_DIGEST,
+    HEURE_BILAN: HEURE_BILAN,
+    FENETRE_BILAN_MINUTES: FENETRE_BILAN_MINUTES,
     FENETRE_DIGEST_MINUTES: FENETRE_DIGEST_MINUTES,
     DIGEST_MEME_SI_VIDE: DIGEST_MEME_SI_VIDE,
     minutesDepuisAujourdhui: minutesDepuisAujourdhui,
@@ -296,7 +414,11 @@ module.exports = {
     echapper: echapper,
     cleRappel: cleRappel,
     cleDigest: cleDigest,
+    cleBilan: cleBilan,
     dansLaFenetreDuDigest: dansLaFenetreDuDigest,
+    dansLaFenetreDuBilan: dansLaFenetreDuBilan,
+    dansUneFenetreDeResume: dansUneFenetreDeResume,
+    bilanDuSoir: bilanDuSoir,
     rappelsCreneaux: rappelsCreneaux,
     digestDuMatin: digestDuMatin,
     messagesDus: messagesDus

@@ -100,23 +100,33 @@ async function tourDeGarde(env, aBlanc = false) {
         //
         // Presque tous les tours n'ont qu'un travail : trouver les
         // créneaux qui commencent dans le quart d'heure. Aujourd'hui et
-        // demain suffisent. Seul le digest a besoin de la liste complète,
-        // et une fois par jour — d'où la question posée au KV AVANT
-        // d'interroger Firestore.
-        const digestPossible = messages.dansLaFenetreDuDigest(maintenant.heure)
-            && !(await dejaEnvoye(env, messages.cleDigest(maintenant.jour)));
-        bilan.lecture = digestPossible ? 'complete' : 'creneaux';
+        // demain suffisent. Seuls les deux RÉSUMÉS — le digest du matin et
+        // le bilan du soir — ont besoin de la liste complète, deux fois
+        // par jour. D'où la question posée au KV AVANT d'interroger
+        // Firestore : si le résumé du moment est déjà parti, la lecture
+        // complète n'a pas lieu du tout.
+        //
+        // Le bilan du soir en a besoin autant que le digest : les
+        // échéances qui basculent cette nuit n'ont pas de créneau, elles
+        // seraient invisibles dans la lecture courte.
+        const resumeDu = messages.dansLaFenetreDuDigest(maintenant.heure)
+            ? messages.cleDigest(maintenant.jour)
+            : (messages.dansLaFenetreDuBilan(maintenant.heure)
+                ? messages.cleBilan(maintenant.jour)
+                : null);
+        const listeComplete = resumeDu !== null && !(await dejaEnvoye(env, resumeDu));
+        bilan.lecture = listeComplete ? 'complete' : 'creneaux';
 
         const jeton = await connexionFirebase(env);
-        const taches = digestPossible
+        const taches = listeComplete
             ? await lireTachesOuvertes(env, jeton)
             : await lireCreneauxProches(env, jeton, maintenant.jour);
         bilan.tachesLues = taches.length;
 
-        // Le digest est refusé explicitement quand la liste est tronquée :
-        // le calculer sur les seuls créneaux du jour annoncerait
-        // « 0 en retard » avec aplomb.
-        const dus = messages.messagesDus(taches, maintenant.jour, maintenant.heure, digestPossible);
+        // Les résumés sont refusés explicitement quand la liste est
+        // tronquée : les calculer sur les seuls créneaux du jour
+        // annoncerait « 0 en retard » avec aplomb.
+        const dus = messages.messagesDus(taches, maintenant.jour, maintenant.heure, listeComplete);
         bilan.dus = dus.map((m) => m.cle);
 
         const aEnvoyer = [];

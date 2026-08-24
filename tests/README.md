@@ -15,7 +15,7 @@ d'étape de build.
 | `test-exterieur.js` | Le pilotage du chantier : analyseur `.eml`, camp et relances, regroupement des devis, recherche, écritures |
 | `test-cueillette.js` | Le calendrier de cueillette : calcul des statuts, **isolation des forçages par saison**, cohérence du référentiel |
 | `test-taches.js` | La to-do priorisée : calendrier, urgence déduite, ordre des blocs, **compteur de reports**, créneaux et grille de semaine, cloisonnement en lecture |
-| `test-notifieur.js` | Le notifieur Telegram : fenêtres d'envoi, **déduplication**, échappement HTML, cohérence config / règles / Worker |
+| `test-notifieur.js` | Le notifieur Telegram : fenêtres d'envoi, **déduplication**, échappement HTML, bilan du soir, cohérence config / règles / Worker |
 
 ### `test-notifieur.js` — ce qui ne part pas
 
@@ -40,7 +40,19 @@ L'échappement HTML n'est pas cosmétique — un titre contenant `<` ou `&` fera
 l'envoi par l'API Telegram, donc un rappel perdu en silence sur la tâche la plus mal
 nommée. Les balises du gabarit, elles, doivent survivre.
 
-Enfin, une dizaine d'assertions relisent `config.js`, `firestore.rules`, `worker.js` et
+**Le bilan du soir** ajoute une quinzaine d'assertions autour d'une idée : il ne répète pas
+le digest. Deux cas y sont figés. D'abord l'**asymétrie assumée** — le digest part même à
+vide, le bilan se tait, et une assertion vérifie les deux dans la même ligne : deux
+battements de cœur par jour, c'en est un de trop. Ensuite le **harcèlement** : un créneau
+non tenu d'un jour *précédent* ne doit pas être répété tous les soirs jusqu'à ce qu'on
+cède, seuls ceux du jour figurent au bilan.
+
+Une assertion vérifie aussi que les deux fenêtres (07:30–11:30 et 20:00–23:00) **ne se
+recouvrent jamais** : les deux résumés annonceraient sinon la même journée deux fois, sous
+deux angles, à la suite. Et que la fenêtre du soir ne franchit pas minuit — au-delà, le
+« demain » du message ne serait plus demain.
+
+Enfin, une quinzaine d'assertions relisent `config.js`, `firestore.rules`, `worker.js` et
 `wrangler.toml` ensemble : que l'adresse du robot soit **la même** des deux côtés (sinon
 Firestore le refuse et il se tait, ce qui ressemble à « rien à signaler »), qu'il ne puisse
 **rien écrire**, que `notifieur()` ne soit nommé nulle part ailleurs, que le Worker calcule
