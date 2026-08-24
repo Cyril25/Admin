@@ -90,6 +90,13 @@ Authentication → *Users* → **Add user** :
 La boîte aux lettres n'a pas besoin d'exister. Ne **pas** lui créer de fiche dans
 `membres` : son droit vient des règles, pas de l'annuaire.
 
+> **⚠ Note le mot de passe tout de suite, il ne se retrouve pas.** Firebase n'en garde
+> qu'une empreinte, et la console **ne sait pas le changer** : le menu ⋮ d'un utilisateur
+> n'offre que « réinitialiser par e-mail » — inutile ici, la boîte n'existe pas —,
+> « désactiver » et « supprimer ». Pour en reposer un, il faut **supprimer le compte et le
+> recréer**. C'est sans risque : `notifieur()` reconnaît l'adresse, pas l'identifiant
+> interne, donc le nouveau compte est le même aux yeux des règles.
+
 > Si tu choisis une autre adresse, il faut la changer **aux deux endroits** — `config.js` et
 > `firestore.rules`. Un test échoue si les deux divergent, parce que le notifieur se ferait
 > refuser en silence, ce qui ressemble exactement à « rien à signaler ».
@@ -112,7 +119,15 @@ lequel, « bonjour » suffit), puis ouvrir dans un navigateur
 https://api.telegram.org/bot<TON_JETON>/getUpdates
 ```
 
-et lire `message.chat.id` dans la réponse. C'est le `TELEGRAM_CHAT_ID`.
+et lire `message.chat.id` dans la réponse. C'est le `TELEGRAM_CHAT_ID` — attention aux
+autres `id` de la réponse, c'est bien celui du bloc `chat`.
+
+> Si `result` est vide : soit on a parlé à @BotFather et non au bot lui-même (ce sont deux
+> conversations différentes), soit le message a plus de **24 h** — Telegram ne garde pas
+> les updates non lues au-delà. Dans les deux cas, renvoyer un message et recharger.
+>
+> Le jeton se retrouve chez @BotFather (`/mybots` → le bot → *API Token*). Le mot de passe
+> du robot, lui, ne se retrouve pas : voir l'étape 2.
 
 ### 5. Créer le stockage de déduplication
 
@@ -129,24 +144,63 @@ Recopier l'identifiant rendu dans `wrangler.toml`, à la place de
 
 Sans ce stockage, le rappel de 9 h 00 repartirait à 8 h 45, 8 h 50 **et** 8 h 55.
 
-### 6. Poser les secrets
+### 6. Déployer une première fois
+
+⚠ **Avant les secrets, et pas après.** `wrangler secret put` ne crée pas le Worker : il
+refuse en disant qu'il n'existe pas. Il faut donc lui donner un corps d'abord.
+
+```bash
+npx wrangler deploy
+```
+
+Le cron démarre aussitôt et **échouera toutes les 5 minutes** jusqu'à l'étape suivante,
+faute de secrets. Sans conséquence : les erreurs sont attrapées, et le Worker ne peut même
+pas envoyer son message de panne puisqu'il n'a pas encore le jeton.
+
+### 7. Poser les secrets
 
 ```bash
 npx wrangler secret put FIREBASE_API_KEY     # celle de config.js
 npx wrangler secret put NOTIFIEUR_EMAIL      # l'adresse du compte robot
 npx wrangler secret put NOTIFIEUR_MDP        # son mot de passe
-npx wrangler secret put TELEGRAM_TOKEN       # le jeton de @BotFather
-npx wrangler secret put TELEGRAM_CHAT_ID     # l'identifiant de conversation
+npx wrangler secret put TELEGRAM_TOKEN       # le jeton de @BotFather, SANS le « bot » devant
+npx wrangler secret put TELEGRAM_CHAT_ID     # le nombre lu dans "chat":{"id":…}
 ```
+
+Chaque `secret put` redéploie le Worker : c'est attendu.
 
 **Aucun de ces cinq ne va dans git.** Le dépôt est public : un secret déposé ici serait
-lisible par tout le monde, pour toujours — même retiré au commit suivant.
+lisible par tout le monde, pour toujours — même retiré au commit suivant. Et une fois posé
+chez Cloudflare, **un secret n'est plus relisible** : `secret list` n'affiche que les noms.
+Le gestionnaire de mots de passe est le seul endroit où ces valeurs restent consultables.
 
-### 7. Déployer
+### ⚠ Toutes ces commandes se lancent depuis `notifieur/`
+
+Ailleurs, wrangler ne trouve ni le nom du Worker ni même l'authentification, et rend un
+« Required Worker name missing » qui n'a rien à voir avec la vraie cause. `--name` ne suffit
+pas. En PowerShell, coller le déplacement devant chaque commande évite la question :
+
+```powershell
+cd c:\Users\csamson\Documents\Perso\GitHub\Admin\notifieur; npx wrangler secret put NOTIFIEUR_MDP
+```
+
+### Si l'authentification Cloudflare lâche
+
+La session `wrangler login` expire, et son jeton de rafraîchissement ne survit pas toujours
+(« auth token has expired and could not be refreshed »). Deux issues :
 
 ```bash
-npx wrangler deploy
+npx wrangler login --browser=false   # affiche une URL à ouvrir à la main
 ```
+
+ou un jeton d'API durable — dashboard → *My Profile* → *API Tokens* → modèle **Edit
+Cloudflare Workers** — posé en variable de session :
+
+```powershell
+$env:CLOUDFLARE_API_TOKEN = "..."
+```
+
+Jamais dans un fichier du dépôt : `.gitignore` couvre `.wrangler/`, pas `.env`.
 
 ## Vérifier sans attendre le cron
 

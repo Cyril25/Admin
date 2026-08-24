@@ -28,7 +28,7 @@ crons = ["*/5 * * * *"]
 # puis recopier l'identifiant rendu ci-dessous.
 [[kv_namespaces]]
 binding = "ENVOIS"
-id = "A_REMPLACER_PAR_L_ID_RENDU_PAR_WRANGLER"
+id = "34945db6daea49a79edd4a04e0efa7a3"
 
 # Valeur publique : c'est deja celle de config.js, qui part dans le
 # navigateur. Elle est ici pour que le Worker n'ait pas a la deviner.
