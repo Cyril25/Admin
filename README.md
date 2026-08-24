@@ -631,8 +631,10 @@ minutes comble ce trou. Trois déclencheurs : **digest à 07:30** (créneaux du 
 urgences sans créneau), **rappel 15 minutes avant chaque créneau**, et **bilan à 20:00**.
 Mise en place complète dans [`notifieur/README.md`](notifieur/README.md).
 
-Le digest du matin porte aussi, **en tête**, les arrivées et départs du gîte de Labergement
-prévus le lendemain — lus sur le calendrier iCal de `menage-state`, avec la plateforme, le
+Les **deux résumés** portent aussi, en tête, les arrivées et départs du gîte de Labergement
+prévus le lendemain — annoncés le matin, redemandés le soir (« message d'arrivée envoyé ? »).
+C'est la seule répétition assumée du notifieur : une tâche se coche, un message envoyé aux
+gens ne se coche pas, et l'oubli coûte à eux plutôt qu'à soi. Ils portent — lus sur le calendrier iCal de `menage-state`, avec la plateforme, le
 nombre de personnes, la langue et le lien vers la réservation. C'est la seule partie du
 notifieur qui ne parle pas de `taches`, et la seule qui dépende d'une source **externe** au
 hub : sa panne coûte une section, jamais le message.

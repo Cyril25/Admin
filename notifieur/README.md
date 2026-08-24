@@ -27,8 +27,9 @@ remarque pas.
 | **15 min avant chaque créneau** | Un rappel, une seule fois | — |
 | **20:00** | Bilan du soir — échéances qui basculent cette nuit, créneaux non tenus, programme de demain | Qu'est-ce qui a glissé, et que fais-je de demain ? |
 
-Le digest du matin porte en plus, **en tête**, les arrivées et départs du gîte de
-Labergement prévus le lendemain — voir plus bas.
+**Les deux résumés** portent en plus, en tête, les arrivées et départs du gîte de
+Labergement prévus le lendemain : le matin les annonce (« envoyer le message d'arrivée »),
+le soir les redemande (« message d'arrivée envoyé ? »). Voir plus bas.
 
 Le notifieur est **silencieux le reste du temps**. Il se réveille 288 fois par jour et ne
 dit rien la quasi-totalité de ces fois : une alerte qu'on reçoit sans cesse est une alerte
@@ -154,8 +155,24 @@ part, et le bilan du mode à blanc porte `giteIndisponible` avec la raison. L'é
 un confort supplémentaire : sans lui, le rappel part quand même, sans le nombre de personnes
 ni la langue.
 
-Le calendrier n'est lu **que dans la fenêtre du digest**, une fois par jour — pas à chacun
-des 288 réveils.
+Le calendrier n'est lu **que dans les fenêtres de résumé**, deux fois par jour — pas à
+chacun des 288 réveils.
+
+### ⚠ La seule répétition assumée du notifieur
+
+Le gîte apparaît **deux fois dans la journée**, ce qui contredit la parcimonie appliquée
+partout ailleurs. La raison tient en deux points.
+
+**Une tâche se coche** : le notifieur sait qu'elle est faite et se tait. Le gîte n'a pas de
+« fait » — rien ne lui dira jamais que le message est parti. Le choix est donc binaire :
+une seule chance, ou deux.
+
+**Et l'oubli ne coûte pas à celui qui oublie.** Une corvée repoussée n'ennuie que soi ; des
+clients qui arrivent sans code d'entrée, non.
+
+Le soir n'est donc pas une copie mais un filet, et la ligne d'action le dit — « envoyer » le
+matin, « envoyé ? » le soir. Le reste du bloc est identique à dessein : si le message n'est
+pas parti le matin, on veut pouvoir l'écrire là, sans rien rouvrir.
 
 ## ⚠ Le compte robot, et pourquoi pas une clé de service
 

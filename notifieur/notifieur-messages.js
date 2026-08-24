@@ -213,7 +213,20 @@ function dateLocale(iso) {
 // `info_<date d'arrivée>`, le nombre de personnes et la LANGUE. Les deux
 // comptent pour écrire le message — on n'accueille pas trois Allemands
 // comme un couple de Français. Absent, la ligne disparaît sans bruit.
-function lignesSejour(sejour, sens, etat) {
+// ⚠ POURQUOI CETTE SECTION EST LA SEULE QU'ON RÉPÈTE DANS LA JOURNÉE.
+//
+// Une tâche se coche : le notifieur sait qu'elle est faite et se tait.
+// Le gîte n'a pas de « fait » — rien ne dira jamais que le message est
+// parti. Le choix est donc binaire : une seule chance, ou deux.
+//
+// Et l'oubli ne coûte pas à celui qui oublie. Une corvée repoussée
+// n'ennuie que soi ; des clients qui arrivent sans code d'entrée, non.
+// C'est le seul endroit du notifieur où répéter se justifie.
+//
+// Le soir n'est donc pas une copie mais un FILET, et la ligne d'action
+// le dit : « envoyer » le matin, « envoyé ? » le soir. Le reste du bloc
+// est identique, pour pouvoir écrire sur-le-champ sans rien rouvrir.
+function lignesSejour(sejour, sens, etat, mode) {
     var lignes = [];
     var quoi = (sens === 'arrivee') ? 'Arrivée' : 'Départ';
 
@@ -233,7 +246,10 @@ function lignesSejour(sejour, sens, etat) {
     precisions.push(periodeCourte(sejour.debut, sejour.fin));
     lignes.push(echapper(precisions.filter(Boolean).join(' · ')));
 
-    lignes.push('→ envoyer le message ' + (sens === 'arrivee' ? "d'arrivée" : 'de départ'));
+    var lequel = (sens === 'arrivee') ? "d'arrivée" : 'de départ';
+    lignes.push(mode === 'rappel'
+        ? '→ message ' + lequel + ' envoyé ?'
+        : '→ envoyer le message ' + lequel);
 
     // Le lien de réservation vaut de l'or dans un message : un lien à
     // toucher plutôt qu'une réservation à retrouver à la main. Airbnb le
@@ -248,7 +264,7 @@ function lignesSejour(sejour, sens, etat) {
     return lignes;
 }
 
-function sectionSejours(sejours, ajd, etat) {
+function sectionSejours(sejours, ajd, etat, mode) {
     var demain = sejoursGite.sejoursAAnnoncer(sejours, ajd);
     if (!demain.arrivees.length && !demain.departs.length) return [];
 
@@ -257,11 +273,11 @@ function sectionSejours(sejours, ajd, etat) {
     // engage le plus de monde.
     demain.departs.forEach(function(sejour) {
         lignes.push('');
-        lignes = lignes.concat(lignesSejour(sejour, 'depart', etat));
+        lignes = lignes.concat(lignesSejour(sejour, 'depart', etat, mode));
     });
     demain.arrivees.forEach(function(sejour) {
         lignes.push('');
-        lignes = lignes.concat(lignesSejour(sejour, 'arrivee', etat));
+        lignes = lignes.concat(lignesSejour(sejour, 'arrivee', etat, mode));
     });
     return lignes;
 }
@@ -291,7 +307,7 @@ function digestDuMatin(taches, ajd, heure, sejours, etat) {
             && !calcul.estEnRetard(tache, ajd);
     });
 
-    var gite = sectionSejours(sejours, ajd, etat);
+    var gite = sectionSejours(sejours, ajd, etat, 'annonce');
 
     if (!duJour.length && !retards.length && !sansCreneau.length && !gite.length
         && !DIGEST_MEME_SI_VIDE) {
@@ -390,7 +406,7 @@ function dansLaFenetreDuBilan(heure) {
     return maintenant >= ouverture && maintenant <= ouverture + FENETRE_BILAN_MINUTES;
 }
 
-function bilanDuSoir(taches, ajd, heure) {
+function bilanDuSoir(taches, ajd, heure, sejours, etat) {
     if (!dansLaFenetreDuBilan(heure)) return null;
 
     // Échéance AUJOURD'HUI et pas close : à minuit, ce sera un retard.
@@ -414,17 +430,24 @@ function bilanDuSoir(taches, ajd, heure) {
             return calcul.minutesDeHeure(a.creneauHeure) - calcul.minutesDeHeure(b.creneauHeure);
         });
 
+    // Le filet du gîte : « le message est-il parti ? ». Voir lignesSejour
+    // pour la raison — c'est la seule répétition assumée de la journée.
+    var gite = sectionSejours(sejours, ajd, etat, 'rappel');
+
     // ⚠ CONTRAIREMENT AU DIGEST DU MATIN, IL SE TAIT QUAND IL N'Y A RIEN.
     // Le matin porte déjà le battement de cœur qui prouve que le notifieur
     // vit et lève l'ambiguïté du silence ; deux par jour, c'en est un de
     // trop, et le second finirait par ne plus être lu.
-    if (!basculent.length && !nonTenus.length && !demain.length) return null;
+    if (!basculent.length && !nonTenus.length && !demain.length && !gite.length) return null;
 
-    return { cle: cleBilan(ajd), texte: texteBilan(ajd, basculent, nonTenus, demain) };
+    return { cle: cleBilan(ajd), texte: texteBilan(ajd, basculent, nonTenus, demain, gite) };
 }
 
-function texteBilan(ajd, basculent, nonTenus, demain) {
+function texteBilan(ajd, basculent, nonTenus, demain, gite) {
     var lignes = ['🌙 <b>' + echapper(jourEnLettres(ajd)) + '</b> — bilan'];
+
+    // En tête comme au matin : c'est ce qui engage quelqu'un d'autre.
+    lignes = lignes.concat(gite || []);
 
     if (basculent.length) {
         lignes.push('');
@@ -484,7 +507,7 @@ function messagesDus(taches, ajd, heure, listeComplete, sejours, etat) {
     if (listeComplete !== false) {
         var digest = digestDuMatin(taches, ajd, heure, sejours, etat);
         if (digest) messages.push(digest);
-        var bilan = bilanDuSoir(taches, ajd, heure);
+        var bilan = bilanDuSoir(taches, ajd, heure, sejours, etat);
         if (bilan) messages.push(bilan);
     }
     return messages.concat(rappelsCreneaux(taches, ajd, heure));

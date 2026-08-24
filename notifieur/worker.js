@@ -133,12 +133,13 @@ async function tourDeGarde(env, aBlanc = false) {
             : await lireCreneauxProches(env, jeton, maintenant.jour);
         bilan.tachesLues = taches.length;
 
-        // Le gîte n'entre que dans le digest DU MATIN : prévenir la veille
-        // d'une arrivée laisse le temps d'écrire, le bilan du soir
-        // arriverait après coup pour ça.
+        // Le gîte entre dans LES DEUX résumés : annoncé le matin,
+        // re-demandé le soir (« le message est-il parti ? »). C'est la
+        // seule répétition assumée du notifieur — voir lignesSejour dans
+        // notifieur-messages.js pour la raison.
         let sejours = [];
         let etatGite = null;
-        if (listeComplete && messages.dansLaFenetreDuDigest(maintenant.heure)) {
+        if (listeComplete) {
             try {
                 const gite = await lireGite();
                 sejours = gite.sejours;

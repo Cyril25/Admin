@@ -492,13 +492,38 @@ verifie('le bilan du soir declenche aussi la lecture complete',
 verifie('aucune requete ne melange faite et creneauJour',
   !/fieldPath: 'faite'[\s\S]{0,400}fieldPath: 'creneauJour'/.test(workerSource));
 
+// LE SOIR N'EST PAS UNE COPIE DU MATIN, C'EST UN FILET.
+// Une tache se coche, donc le notifieur sait qu'elle est faite et se
+// tait. Le gite n'a pas de « fait » : rien ne dira jamais que le message
+// est parti. Et l'oubli ne coute pas a celui qui oublie, mais aux gens
+// qui arrivent. C'est la seule repetition assumee de la journee.
+const soirGite = messages.bilanDuSoir([], '2026-08-27', '20:00', lus, etatGite).texte;
+verifie('le gite figure aussi au bilan du soir',
+  soirGite.indexOf('Arrivée demain — Airbnb') !== -1);
+verifie('...mais la ligne d\'action DIFFERE : « envoye ? » et non « envoyer »',
+  soirGite.indexOf("message d'arrivée envoyé ?") !== -1
+  && soirGite.indexOf('envoyer le message') === -1);
+verifie('...tandis que le matin dit bien « envoyer »',
+  digestGite.indexOf("envoyer le message d'arrivée") !== -1
+  && digestGite.indexOf('envoyé ?') === -1);
+// Le detail est repete a dessein : si le message n'est pas parti le
+// matin, on veut pouvoir l'ecrire le soir sans rien rouvrir.
+verifie('le soir garde le lien et les details, pour agir sur-le-champ',
+  soirGite.indexOf('details/HMY45JSW55') !== -1
+  && soirGite.indexOf('3 personnes') !== -1);
+// Sinon le filet ne servirait que les jours ou il y a aussi des taches.
+verifie('un bilan sans taches part quand meme si le gite parle',
+  messages.bilanDuSoir([], '2026-08-27', '20:00', lus, etatGite) !== null);
+verifie('...et se tait toujours quand il n\'y a vraiment rien',
+  messages.bilanDuSoir([], '2026-09-15', '20:00', lus, etatGite) === null);
+
 // ⚠ LE GITE NE DOIT JAMAIS FAIRE TOMBER LE DIGEST. C'est une source
 // EXTERNE au hub : si elle est en panne, les taches n'ont pas a en
 // souffrir. La section disparait, le reste part, et le bilan le dit.
 verifie('le Worker attrape la panne du gite sans laisser tomber le digest',
   /catch \(erreur\)[\s\S]{0,600}giteIndisponible/.test(workerSource));
-verifie('...et le gite n\'est lu que dans la fenetre du digest',
-  /dansLaFenetreDuDigest\(maintenant\.heure\)\)\s*\{[\s\S]{0,120}lireGite\(\)/.test(workerSource));
+verifie('le Worker lit le gite pour LES DEUX fenetres, pas seulement le matin',
+  /if \(listeComplete\) \{[\s\S]{0,400}lireGite\(\)/.test(workerSource));
 verifie('le Worker lit bien les deux endpoints du gite',
   /GITE_API \+ '\/ical'/.test(workerSource) && /GITE_API \+ '\/'/.test(workerSource));
 
