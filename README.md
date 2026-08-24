@@ -631,6 +631,12 @@ minutes comble ce trou. Trois déclencheurs : **digest à 07:30** (créneaux du 
 urgences sans créneau), **rappel 15 minutes avant chaque créneau**, et **bilan à 20:00**.
 Mise en place complète dans [`notifieur/README.md`](notifieur/README.md).
 
+Le digest du matin porte aussi, **en tête**, les arrivées et départs du gîte de Labergement
+prévus le lendemain — lus sur le calendrier iCal de `menage-state`, avec la plateforme, le
+nombre de personnes, la langue et le lien vers la réservation. C'est la seule partie du
+notifieur qui ne parle pas de `taches`, et la seule qui dépende d'une source **externe** au
+hub : sa panne coûte une section, jamais le message.
+
 Le bilan du soir n'est pas le digest une seconde fois : il dit ce qui a glissé, et surtout
 **ce qui bascule en retard cette nuit**. Une tâche bascule à minuit ; prévenu à 20 h, on
 peut encore la finir ou repousser l'échéance délibérément. C'est pourquoi il n'existe pas

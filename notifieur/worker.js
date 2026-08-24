@@ -39,6 +39,16 @@
 // ============================================================
 
 import messages from './notifieur-messages.js';
+import sejoursGite from './notifieur-sejours.js';
+
+// Le calendrier du gîte de Labergement. Deux endpoints publics du même
+// Worker : `/ical` fusionne les calendriers Airbnb et Booking, `/` porte
+// l'état du ménage — d'où viennent le nombre de personnes et la langue.
+//
+// C'est la seule source EXTERNE au hub que le notifieur consulte. Elle
+// est donc traitée comme telle : son indisponibilité ne doit jamais
+// faire tomber le reste.
+const GITE_API = 'https://menage-state.cyril-samson41.workers.dev';
 
 // Le fuseau du planning. Les tâches portent des heures locales
 // (« 09:00 »), un Worker tourne en UTC : sans cette conversion, le
@@ -123,10 +133,32 @@ async function tourDeGarde(env, aBlanc = false) {
             : await lireCreneauxProches(env, jeton, maintenant.jour);
         bilan.tachesLues = taches.length;
 
+        // Le gîte n'entre que dans le digest DU MATIN : prévenir la veille
+        // d'une arrivée laisse le temps d'écrire, le bilan du soir
+        // arriverait après coup pour ça.
+        let sejours = [];
+        let etatGite = null;
+        if (listeComplete && messages.dansLaFenetreDuDigest(maintenant.heure)) {
+            try {
+                const gite = await lireGite();
+                sejours = gite.sejours;
+                etatGite = gite.etat;
+                bilan.sejoursLus = sejours.length;
+            } catch (erreur) {
+                // ⚠ NE JAMAIS FAIRE TOMBER LE DIGEST POUR ÇA. Le calendrier
+                // du gîte est une source externe : si elle est en panne, les
+                // tâches n'ont pas à en souffrir. La section disparaît, le
+                // reste du digest part quand même, et le bilan le dit.
+                bilan.giteIndisponible = String((erreur && erreur.message) || erreur);
+                console.warn('Calendrier du gîte indisponible :', bilan.giteIndisponible);
+            }
+        }
+
         // Les résumés sont refusés explicitement quand la liste est
         // tronquée : les calculer sur les seuls créneaux du jour
         // annoncerait « 0 en retard » avec aplomb.
-        const dus = messages.messagesDus(taches, maintenant.jour, maintenant.heure, listeComplete);
+        const dus = messages.messagesDus(
+            taches, maintenant.jour, maintenant.heure, listeComplete, sejours, etatGite);
         bilan.dus = dus.map((m) => m.cle);
 
         const aEnvoyer = [];
@@ -353,6 +385,39 @@ function decoderValeur(valeur) {
         return objet;
     }
     return null;
+}
+
+// ------------------------------------------------------------
+// 4 bis. Le calendrier du gîte
+// ------------------------------------------------------------
+// Aucune authentification : les deux endpoints sont publics. Le CORS du
+// Worker ménage est restreint à ofildudoubs.fr, ce qui ne gêne pas un
+// appel serveur — CORS ne contraint que les navigateurs.
+async function lireGite() {
+    const [fluxIcal, etatBrut] = await Promise.all([
+        fetch(GITE_API + '/ical'),
+        fetch(GITE_API + '/')
+    ]);
+
+    // Le flux iCal est indispensable : sans lui, pas de séjours du tout.
+    if (!fluxIcal.ok) {
+        throw new Error('flux iCal du gîte indisponible (' + fluxIcal.status + ')');
+    }
+    const sejours = sejoursGite.analyserIcal(await fluxIcal.text());
+
+    // L'état, lui, ne porte que des précisions de confort — le nombre de
+    // personnes et la langue. Son absence ne doit pas priver du rappel
+    // lui-même : on rend null et les lignes de détail disparaissent.
+    let etat = null;
+    if (etatBrut.ok) {
+        try {
+            etat = await etatBrut.json();
+        } catch (ignore) {
+            etat = null;
+        }
+    }
+
+    return { sejours, etat };
 }
 
 // ------------------------------------------------------------

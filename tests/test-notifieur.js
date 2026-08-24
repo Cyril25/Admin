@@ -22,6 +22,7 @@ const REPO = path.join(__dirname, '..');
 
 const messages = require(path.join(REPO, 'notifieur', 'notifieur-messages.js'));
 const calcul = require(path.join(REPO, 'taches', 'taches-calcul.js'));
+const sejoursGite = require(path.join(REPO, 'notifieur', 'notifieur-sejours.js'));
 
 let echecs = 0;
 function verifie(nom, condition, detail) {
@@ -308,8 +309,127 @@ verifie('a 20 h, c\'est le bilan qui part, pas le digest',
 verifie('...et la liste tronquee le refuse aussi',
   messages.messagesDus(journeeDuSoir, AJD, SOIR, false).length === 0);
 
-// --- 10. Coherence config / regles / Worker --------------------------
-console.log('\n10. Coherence entre les fichiers');
+// --- 10. Le gite : arrivees et departs --------------------------------
+console.log('\n10. Le gite : arrivees et departs');
+// Le flux iCal fusionne Airbnb et Booking. Le gabarit ci-dessous reprend
+// EXACTEMENT les formes rencontrees dans le vrai flux, repliage compris.
+const FLUX = [
+  'BEGIN:VCALENDAR',
+  'VERSION:2.0',
+  'BEGIN:VEVENT',
+  'DTSTART;VALUE=DATE:20260828',
+  'DTEND;VALUE=DATE:20260830',
+  'SUMMARY:Reserved',
+  'UID:1418fb94e984-5512b91f50a66cd49c351f7edf411e95@airbnb.com',
+  'DESCRIPTION:Reservation URL: https://www.airbnb.com/hosting/reservations/de',
+  ' tails/HMY45JSW55\\nPhone Number (Last 4 Digits): 6792',
+  'END:VEVENT',
+  'BEGIN:VEVENT',
+  'DTSTART;VALUE=DATE:20261219',
+  'DTEND;VALUE=DATE:20261227',
+  'SUMMARY:Airbnb (Not available)',
+  'UID:7f662ec65913-cef87b81784d1b9a961675a09da7cba2@airbnb.com',
+  'END:VEVENT',
+  'BEGIN:VEVENT',
+  'DTSTART;VALUE=DATE:20270620',
+  'DTEND;VALUE=DATE:20270621',
+  'SUMMARY:CLOSED - Not available',
+  'UID:abc@booking.com',
+  'END:VEVENT',
+  'BEGIN:VEVENT',
+  'SUMMARY:Evenement sans dates',
+  'UID:zzz@airbnb.com',
+  'END:VEVENT',
+  'END:VCALENDAR'
+].join('\r\n');
+
+const lus = sejoursGite.analyserIcal(FLUX);
+verifie('les evenements sans date sont ecartes', lus.length === 3, lus.length + ' sejours');
+
+// ⚠ LE REPLIAGE. Une ligne iCal se coupe au-dela de 75 octets et la
+// suite commence par une espace. Sans depliage, l'URL de reservation
+// arriverait tronquee — un lien mort dans le message, et personne pour
+// s'en apercevoir avant d'avoir tape dessus.
+verifie('une ligne repliee est recollee : le lien est ENTIER',
+  lus[0].lien === 'https://www.airbnb.com/hosting/reservations/details/HMY45JSW55',
+  lus[0].lien);
+
+// Les dates se prennent telles quelles : Airbnb met la vraie date de
+// depart dans DTEND, contrairement a la lettre de la norme iCal. Deux
+// sources le confirment — l'affichage du site menage et _futureCheckouts.
+verifie('« du 28 au 30 » se lit sans decalage',
+  lus[0].debut === '2026-08-28' && lus[0].fin === '2026-08-30');
+
+// LA PLATEFORME NE SE LIT PAS DANS LE LIBELLE mais dans le domaine de
+// l'UID : c'est le seul champ que les deux plateformes remplissent.
+verifie('Reserved chez airbnb = une reservation Airbnb', lus[0].plateforme === 'airbnb');
+// Un blocage Airbnb n'est PAS un trou : l'hote bloque en general pour
+// des clients qui viennent en direct. Ce sont meme ceux a qui il faut le
+// plus penser, puisque aucune plateforme ne relance a sa place.
+verifie('un blocage Airbnb compte comme une arrivee en direct',
+  lus[1].plateforme === 'direct', lus[1].plateforme);
+verifie('un evenement booking est etiquete Booking', lus[2].plateforme === 'booking');
+verifie('un UID d\'un autre domaine ne ment pas sur la plateforme',
+  sejoursGite.plateformeDe('x@example.com', 'Reserved') === 'inconnu');
+
+// J-1 DES DEUX COTES : on previent la veille de l'arrivee pour ecrire le
+// message d'accueil, la veille du depart pour celui de sortie. Le jour
+// meme, les gens sont deja en route.
+const veilleArrivee = sejoursGite.sejoursAAnnoncer(lus, '2026-08-27');
+verifie('la veille de l\'arrivee, l\'arrivee est annoncee',
+  veilleArrivee.arrivees.length === 1 && veilleArrivee.departs.length === 0);
+const veilleDepart = sejoursGite.sejoursAAnnoncer(lus, '2026-08-29');
+verifie('la veille du depart, le depart est annonce',
+  veilleDepart.departs.length === 1 && veilleDepart.arrivees.length === 0);
+verifie('le jour meme de l\'arrivee, plus rien',
+  sejoursGite.sejoursAAnnoncer(lus, '2026-08-28').arrivees.length === 0);
+verifie('un jour sans rien ne produit rien',
+  sejoursGite.sejoursAAnnoncer(lus, '2026-09-15').arrivees.length === 0
+  && sejoursGite.sejoursAAnnoncer(lus, '2026-09-15').departs.length === 0);
+
+// --- La section dans le digest ---------------------------------------
+const etatGite = {
+  'info_2026-08-28': { nbPersons: 3, comment: 'Livret en allemand en premier', lang: 'de' }
+};
+const digestGite = messages.digestDuMatin([], '2026-08-27', '07:30', lus, etatGite).texte;
+
+// En tete parce que c'est la seule chose du digest qui engage quelqu'un
+// d'autre que soi, et la seule qu'on ne rattrape pas le lendemain.
+const digestMixte = messages.digestDuMatin(
+  [tache({ titre: 'Une tache du jour', creneauJour: '2026-08-27', creneauHeure: '09:00' })],
+  '2026-08-27', '07:30', lus, etatGite).texte;
+verifie('la section gite passe AVANT le programme des taches',
+  digestMixte.indexOf('Arrivée demain') < digestMixte.indexOf('Au programme')
+  && digestMixte.indexOf('Au programme') !== -1);
+verifie('...et le digest ne dit plus « rien au programme » quand le gite parle',
+  digestGite.indexOf('Rien au programme') === -1);
+verifie('la plateforme est nommee', digestGite.indexOf('Arrivée demain — Airbnb') !== -1);
+// Le nombre de personnes et la LANGUE viennent de l'etat menage : on
+// n'accueille pas trois Allemands comme un couple de Francais.
+verifie('le nombre de personnes et la langue y sont',
+  digestGite.indexOf('3 personnes') !== -1 && digestGite.indexOf('en allemand') !== -1);
+verifie('la periode est lisible', digestGite.indexOf('du 28 au 30 août') !== -1, digestGite);
+verifie('le commentaire du menage est repris',
+  digestGite.indexOf('Livret en allemand en premier') !== -1);
+verifie('le lien de reservation est la, entier',
+  digestGite.indexOf('details/HMY45JSW55') !== -1);
+
+// Un depart n'a pas de nombre de personnes a annoncer : ils s'en vont.
+const digestDepart = messages.digestDuMatin([], '2026-08-29', '07:30', lus, etatGite).texte;
+verifie('un depart s\'annonce sans compter les personnes',
+  digestDepart.indexOf('Départ demain') !== -1 && digestDepart.indexOf('3 personnes') === -1);
+
+// L'etat menage est un CONFORT : son absence ne doit pas priver du rappel.
+const sansEtat = messages.digestDuMatin([], '2026-08-27', '07:30', lus, null).texte;
+verifie('sans l\'etat menage, le rappel part quand meme',
+  sansEtat.indexOf('Arrivée demain — Airbnb') !== -1 && sansEtat.indexOf('personnes') === -1);
+
+// Un jour sans sejour ne doit pas laisser de section vide.
+verifie('aucune section gite quand rien n\'arrive',
+  messages.digestDuMatin([], '2026-09-15', '07:30', lus, etatGite).texte.indexOf('🏠') === -1);
+
+// --- 11. Coherence config / regles / Worker --------------------------
+console.log('\n11. Coherence entre les fichiers');
 const regles = fs.readFileSync(path.join(REPO, 'firestore.rules'), 'utf8');
 const configSource = fs.readFileSync(path.join(REPO, 'config.js'), 'utf8');
 const workerSource = fs.readFileSync(path.join(REPO, 'notifieur', 'worker.js'), 'utf8');
@@ -359,7 +479,7 @@ verifie('le KV est consulte AVANT de choisir la requete',
 // Une liste tronquee ne doit jamais produire un digest : il annoncerait
 // « 0 en retard » avec aplomb.
 verifie('les resumes sont refuses quand la liste est tronquee',
-  /messagesDus\(taches, maintenant\.jour, maintenant\.heure, listeComplete\)/.test(workerSource));
+  /messagesDus\([\s\S]{0,80}listeComplete/.test(workerSource));
 // Le bilan du soir en a besoin autant que le digest : les echeances qui
 // basculent cette nuit n'ont pas de creneau, elles seraient invisibles
 // dans la lecture courte.
@@ -371,6 +491,16 @@ verifie('le bilan du soir declenche aussi la lecture complete',
 // l'oublie. Chaque requete ne porte que sur un champ.
 verifie('aucune requete ne melange faite et creneauJour',
   !/fieldPath: 'faite'[\s\S]{0,400}fieldPath: 'creneauJour'/.test(workerSource));
+
+// ⚠ LE GITE NE DOIT JAMAIS FAIRE TOMBER LE DIGEST. C'est une source
+// EXTERNE au hub : si elle est en panne, les taches n'ont pas a en
+// souffrir. La section disparait, le reste part, et le bilan le dit.
+verifie('le Worker attrape la panne du gite sans laisser tomber le digest',
+  /catch \(erreur\)[\s\S]{0,600}giteIndisponible/.test(workerSource));
+verifie('...et le gite n\'est lu que dans la fenetre du digest',
+  /dansLaFenetreDuDigest\(maintenant\.heure\)\)\s*\{[\s\S]{0,120}lireGite\(\)/.test(workerSource));
+verifie('le Worker lit bien les deux endpoints du gite',
+  /GITE_API \+ '\/ical'/.test(workerSource) && /GITE_API \+ '\/'/.test(workerSource));
 
 verifie('le Worker lit bien la collection taches',
   /collectionId: 'taches'/.test(workerSource));

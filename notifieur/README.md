@@ -10,6 +10,7 @@ l'on ouvre l'accueil. Une alerte qui suppose qu'on aille la chercher n'est pas u
 | Fichier | Rôle |
 |---|---|
 | `notifieur-messages.js` | **Quoi envoyer, et quand.** Fonctions pures, sans réseau ni horloge — donc testables |
+| `notifieur-sejours.js` | Lit le calendrier iCal du gîte : arrivées, départs, plateforme |
 | `worker.js` | La glu : se connecter, lire Firestore, appeler Telegram. Aucune décision |
 | `wrangler.toml` | Cron, binding KV, variables publiques. **Aucun secret** |
 
@@ -25,6 +26,9 @@ remarque pas.
 | **07:30** | Digest du matin — créneaux du jour, retards, urgences sans créneau | Qu'est-ce qui m'attend ? |
 | **15 min avant chaque créneau** | Un rappel, une seule fois | — |
 | **20:00** | Bilan du soir — échéances qui basculent cette nuit, créneaux non tenus, programme de demain | Qu'est-ce qui a glissé, et que fais-je de demain ? |
+
+Le digest du matin porte en plus, **en tête**, les arrivées et départs du gîte de
+Labergement prévus le lendemain — voir plus bas.
 
 Le notifieur est **silencieux le reste du temps**. Il se réveille 288 fois par jour et ne
 dit rien la quasi-totalité de ces fois : une alerte qu'on reçoit sans cesse est une alerte
@@ -89,6 +93,69 @@ manuelle de plus dans la console, et une panne le jour où on l'oublie. C'est po
 `faite` se filtre côté Worker dans la requête des créneaux : l'y ajouter coûterait cet
 index pour écarter une poignée de documents. Un test échoue si les deux champs se
 retrouvent dans la même requête.
+
+## Le gîte — arrivées et départs
+
+La seule partie du notifieur qui ne parle pas de `taches`. Elle lit le calendrier du gîte
+sur `menage-state.cyril-samson41.workers.dev` : `/ical` pour les séjours, `/` pour l'état du
+ménage. Deux endpoints publics, aucune authentification, et le CORS restreint à
+`ofildudoubs.fr` ne gêne pas — il ne contraint que les navigateurs.
+
+**La veille d'une arrivée**, le digest rappelle d'envoyer le message d'accueil ; **la veille
+d'un départ**, celui de sortie. Un jour d'avance des deux côtés : prévenir le jour même ne
+sert plus à rien, les gens sont déjà en route. Aucune plateforme ne fait ce rappel à la
+place de l'hôte, et c'est typiquement ce qu'on oublie.
+
+```
+🏠 Arrivée demain — Airbnb
+3 personnes · en allemand · du 28 au 30 août
+→ envoyer le message d'arrivée
+https://www.airbnb.com/hosting/reservations/details/HMY45JSW55
+Livret en allemand en premier
+```
+
+Le nombre de personnes, la langue et le commentaire viennent de `info_<date d'arrivée>` dans
+l'état ménage. Le lien de réservation vient de la `DESCRIPTION` du flux Airbnb : un lien à
+toucher plutôt qu'une réservation à retrouver à la main.
+
+### ⚠ Trois sortes d'événements, et il a fallu les données pour le voir
+
+| `SUMMARY` | Domaine de l'`UID` | Lecture |
+|---|---|---|
+| `Reserved` | `airbnb.com` | Réservation Airbnb, avec l'URL de la réservation |
+| `Airbnb (Not available)` | `airbnb.com` | Dates bloquées. L'hôte bloque **en général pour des clients en direct** — ce sont donc de vraies arrivées, et même celles à ne pas manquer : aucune plateforme ne relance à sa place |
+| `CLOSED - Not available` | `booking.com` | **Indiscernable.** Booking n'exporte rien qui distingue un séjour d'un inventaire fermé |
+
+**La plateforme ne se lit pas dans le libellé mais dans le domaine de l'`UID`** : c'est le
+seul champ que les deux plateformes remplissent de façon fiable.
+
+Les événements Booking sont traités comme des séjours, faute de mieux. Au moment de
+l'écriture, les 14 présents dans le flux étaient visiblement de l'inventaire fermé — treize
+nuits isolées à l'été 2027 et un blocage de six mois — et rien avant juin 2027. Si ce motif
+persiste, ils produiront des rappels sans objet ; c'est un choix assumé plutôt qu'une
+heuristique sur la durée, qui se serait trompée en silence.
+
+### ⚠ Deux pièges du format iCal
+
+**Le repliage de lignes.** Une ligne iCal se coupe au-delà de 75 octets et la suite commence
+par une espace. La `DESCRIPTION` d'Airbnb est toujours repliée : sans dépliage, l'URL de
+réservation arrive tronquée — un lien mort dans le message, et personne pour s'en apercevoir
+avant d'avoir tapé dessus. Une assertion vérifie que le lien ressort entier.
+
+**`DTEND` se prend tel quel.** La norme iCal le veut exclusif pour une date pleine ; Airbnb y
+met la date de départ réelle. `DTSTART 20260828` / `DTEND 20260830` se lit « du 28 au 30 »,
+ce que confirment l'affichage du site ménage et la liste `_futureCheckouts` de l'état.
+
+### Ce qui se passe si le gîte est injoignable
+
+**Rien de grave, et surtout pas la perte du digest.** C'est une source externe au hub : son
+indisponibilité ne doit pas priver des tâches. La section disparaît, le reste du message
+part, et le bilan du mode à blanc porte `giteIndisponible` avec la raison. L'état ménage est
+un confort supplémentaire : sans lui, le rappel part quand même, sans le nombre de personnes
+ni la langue.
+
+Le calendrier n'est lu **que dans la fenêtre du digest**, une fois par jour — pas à chacun
+des 288 réveils.
 
 ## ⚠ Le compte robot, et pourquoi pas une clé de service
 

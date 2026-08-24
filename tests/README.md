@@ -52,6 +52,20 @@ recouvrent jamais** : les deux résumés annonceraient sinon la même journée d
 deux angles, à la suite. Et que la fenêtre du soir ne franchit pas minuit — au-delà, le
 « demain » du message ne serait plus demain.
 
+**Le gîte** ajoute une vingtaine d'assertions sur la lecture du flux iCal. Le piège figé est
+le **repliage de lignes** : une ligne iCal se coupe au-delà de 75 octets, et la `DESCRIPTION`
+d'Airbnb — qui porte l'URL de la réservation — est toujours repliée. Sans dépliage, le lien
+part tronqué dans le message, et rien ne le signale avant qu'on tape dessus. Le gabarit du
+test reprend exactement la coupure du vrai flux.
+
+L'autre cas verrouillé est la **provenance** : la plateforme se lit dans le domaine de
+l'`UID`, jamais dans le libellé. Et un `Airbnb (Not available)` compte comme une arrivée
+**en direct**, pas comme un trou — c'est la lecture que l'hôte fait de ses propres blocages,
+et ce sont justement les clients à qui aucune plateforme ne pensera à sa place.
+
+Deux assertions relisent enfin `worker.js` pour que le gîte **ne puisse pas faire tomber le
+digest** : c'est une source externe au hub, sa panne doit coûter une section, pas un message.
+
 Enfin, une quinzaine d'assertions relisent `config.js`, `firestore.rules`, `worker.js` et
 `wrangler.toml` ensemble : que l'adresse du robot soit **la même** des deux côtés (sinon
 Firestore le refuse et il se tait, ce qui ressemble à « rien à signaler »), qu'il ne puisse

@@ -21,6 +21,7 @@
 // ============================================================
 
 var calcul = require('../taches/taches-calcul.js');
+var sejoursGite = require('./notifieur-sejours.js');
 
 // ------------------------------------------------------------
 // 1. Réglages
@@ -179,7 +180,93 @@ function dansLaFenetreDuDigest(heure) {
     return maintenant >= ouverture && maintenant <= ouverture + FENETRE_DIGEST_MINUTES;
 }
 
-function digestDuMatin(taches, ajd, heure) {
+// ------------------------------------------------------------
+// 5 bis. Le gîte — arrivées et départs de demain
+// ------------------------------------------------------------
+// Une section du digest, pas un message à part : elle tomberait à la
+// même minute que lui, et deux notifications simultanées font qu'on en
+// lit une distraitement.
+//
+// C'est la seule partie du notifieur qui ne parle pas de `taches`. Elle
+// vient du flux iCal du gîte, analysé par notifieur-sejours.js — et
+// c'est délibérément le digest du matin qui la porte : prévenir la
+// veille laisse le temps d'écrire, prévenir le jour même ne sert plus à
+// rien puisque les gens sont déjà en route.
+function periodeCourte(debut, fin) {
+    var d = dateLocale(debut);
+    var f = dateLocale(fin);
+    if (!d || !f) return '';
+    var memeMois = (d.getMonth() === f.getMonth() && d.getFullYear() === f.getFullYear());
+    var jourSeul = { day: 'numeric' };
+    var jourEtMois = { day: 'numeric', month: 'long' };
+    return 'du ' + d.toLocaleDateString('fr-FR', memeMois ? jourSeul : jourEtMois)
+        + ' au ' + f.toLocaleDateString('fr-FR', jourEtMois);
+}
+
+function dateLocale(iso) {
+    if (!calcul.isoValide(iso)) return null;
+    var bouts = iso.split('-');
+    return new Date(Number(bouts[0]), Number(bouts[1]) - 1, Number(bouts[2]));
+}
+
+// `etat` est le JSON de l'endpoint ménage : il porte, sous
+// `info_<date d'arrivée>`, le nombre de personnes et la LANGUE. Les deux
+// comptent pour écrire le message — on n'accueille pas trois Allemands
+// comme un couple de Français. Absent, la ligne disparaît sans bruit.
+function lignesSejour(sejour, sens, etat) {
+    var lignes = [];
+    var quoi = (sens === 'arrivee') ? 'Arrivée' : 'Départ';
+
+    lignes.push('🏠 <b>' + quoi + ' demain — '
+        + echapper(sejoursGite.libellePlateforme(sejour.plateforme)) + '</b>');
+
+    var precisions = [];
+    if (sens === 'arrivee') {
+        var details = sejoursGite.detailsArrivee(etat, sejour.debut);
+        if (details && details.personnes) {
+            precisions.push(details.personnes + ' personne' + (details.personnes > 1 ? 's' : ''));
+        }
+        if (details && sejoursGite.libelleLangue(details.langue)) {
+            precisions.push(sejoursGite.libelleLangue(details.langue));
+        }
+    }
+    precisions.push(periodeCourte(sejour.debut, sejour.fin));
+    lignes.push(echapper(precisions.filter(Boolean).join(' · ')));
+
+    lignes.push('→ envoyer le message ' + (sens === 'arrivee' ? "d'arrivée" : 'de départ'));
+
+    // Le lien de réservation vaut de l'or dans un message : un lien à
+    // toucher plutôt qu'une réservation à retrouver à la main. Airbnb le
+    // donne ; les blocages et Booking, non.
+    if (sejour.lien) lignes.push(echapper(sejour.lien));
+
+    if (sens === 'arrivee') {
+        var infos = sejoursGite.detailsArrivee(etat, sejour.debut);
+        if (infos && infos.commentaire) lignes.push('<i>' + echapper(infos.commentaire) + '</i>');
+    }
+
+    return lignes;
+}
+
+function sectionSejours(sejours, ajd, etat) {
+    var demain = sejoursGite.sejoursAAnnoncer(sejours, ajd);
+    if (!demain.arrivees.length && !demain.departs.length) return [];
+
+    var lignes = [];
+    // Les départs d'abord : le ménage s'enchaîne derrière, c'est ce qui
+    // engage le plus de monde.
+    demain.departs.forEach(function(sejour) {
+        lignes.push('');
+        lignes = lignes.concat(lignesSejour(sejour, 'depart', etat));
+    });
+    demain.arrivees.forEach(function(sejour) {
+        lignes.push('');
+        lignes = lignes.concat(lignesSejour(sejour, 'arrivee', etat));
+    });
+    return lignes;
+}
+
+function digestDuMatin(taches, ajd, heure, sejours, etat) {
     if (!dansLaFenetreDuDigest(heure)) return null;
 
     var duJour = calcul.creneauxDuJour(taches, ajd)
@@ -204,15 +291,23 @@ function digestDuMatin(taches, ajd, heure) {
             && !calcul.estEnRetard(tache, ajd);
     });
 
-    if (!duJour.length && !retards.length && !sansCreneau.length && !DIGEST_MEME_SI_VIDE) {
+    var gite = sectionSejours(sejours, ajd, etat);
+
+    if (!duJour.length && !retards.length && !sansCreneau.length && !gite.length
+        && !DIGEST_MEME_SI_VIDE) {
         return null;
     }
 
-    return { cle: cleDigest(ajd), texte: texteDigest(ajd, duJour, retards, sansCreneau) };
+    return { cle: cleDigest(ajd), texte: texteDigest(ajd, duJour, retards, sansCreneau, gite) };
 }
 
-function texteDigest(ajd, duJour, retards, sansCreneau) {
+function texteDigest(ajd, duJour, retards, sansCreneau, gite) {
     var lignes = ['☀️ <b>' + echapper(jourEnLettres(ajd)) + '</b>'];
+
+    // Le gîte EN TÊTE : c'est la seule chose du digest qui engage
+    // quelqu'un d'autre que soi, et la seule qu'on ne puisse pas
+    // rattraper le lendemain.
+    lignes = lignes.concat(gite || []);
 
     if (duJour.length) {
         lignes.push('');
@@ -250,7 +345,7 @@ function texteDigest(ajd, duJour, retards, sansCreneau) {
 
     // Le cas vide est un message à part entière, pas une omission : le
     // silence ne doit jamais vouloir dire deux choses à la fois.
-    if (!duJour.length && !retards.length && !sansCreneau.length) {
+    if (!duJour.length && !retards.length && !sansCreneau.length && !(gite || []).length) {
         lignes.push('');
         lignes.push('Rien au programme, rien en retard. 🌱');
     }
@@ -261,9 +356,8 @@ function texteDigest(ajd, duJour, retards, sansCreneau) {
 // Reconstruit en Date LOCALE, comme partout ailleurs dans ce projet :
 // passer la chaîne à `new Date()` la lirait comme minuit UTC.
 function jourEnLettres(iso) {
-    if (!calcul.isoValide(iso)) return String(iso || '');
-    var bouts = iso.split('-');
-    var date = new Date(Number(bouts[0]), Number(bouts[1]) - 1, Number(bouts[2]));
+    var date = dateLocale(iso);
+    if (!date) return String(iso || '');
     return date.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
@@ -385,10 +479,10 @@ function texteBilan(ajd, basculent, nonTenus, demain) {
 //
 // Les deux résumés ne peuvent pas tomber le même tour : leurs fenêtres
 // ne se recouvrent pas (07:30–11:30 et 20:00–23:00).
-function messagesDus(taches, ajd, heure, listeComplete) {
+function messagesDus(taches, ajd, heure, listeComplete, sejours, etat) {
     var messages = [];
     if (listeComplete !== false) {
-        var digest = digestDuMatin(taches, ajd, heure);
+        var digest = digestDuMatin(taches, ajd, heure, sejours, etat);
         if (digest) messages.push(digest);
         var bilan = bilanDuSoir(taches, ajd, heure);
         if (bilan) messages.push(bilan);
@@ -421,5 +515,7 @@ module.exports = {
     bilanDuSoir: bilanDuSoir,
     rappelsCreneaux: rappelsCreneaux,
     digestDuMatin: digestDuMatin,
+    sectionSejours: sectionSejours,
+    periodeCourte: periodeCourte,
     messagesDus: messagesDus
 };
