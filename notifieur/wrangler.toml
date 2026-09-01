@@ -30,6 +30,24 @@ crons = ["*/5 * * * *"]
 binding = "ENVOIS"
 id = "34945db6daea49a79edd4a04e0efa7a3"
 
+# ⚠ LIAISON DE SERVICE VERS LE WORKER DU GITE.
+#
+# Les deux Workers vivent sur le meme sous-domaine
+# `cyril-samson41.workers.dev`. Un Worker qui appelle un voisin par son
+# URL PUBLIQUE ne sort pas sur Internet : il reste dans le reseau
+# interne de Cloudflare, ou ce nom ne se resout pas — et recoit un 404.
+#
+# C'est ce qui a fait echouer TOUTES les notifications du gite pendant
+# huit jours, du 24 aout au 1er septembre 2026, sans qu'aucune ne parte.
+# Le `fetch()` direct marchait parfaitement depuis un poste, ce qui rend
+# la panne invisible a tout test local.
+#
+# La liaison ci-dessous est la voie prevue par Cloudflare : l'appel
+# devient un RPC interne, sans DNS ni reseau.
+[[services]]
+binding = "GITE"
+service = "menage-state"
+
 # Valeur publique : c'est deja celle de config.js, qui part dans le
 # navigateur. Elle est ici pour que le Worker n'ait pas a la deviner.
 [vars]

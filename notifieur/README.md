@@ -98,9 +98,22 @@ retrouvent dans la même requête.
 ## Le gîte — arrivées et départs
 
 La seule partie du notifieur qui ne parle pas de `taches`. Elle lit le calendrier du gîte
-sur `menage-state.cyril-samson41.workers.dev` : `/ical` pour les séjours, `/` pour l'état du
-ménage. Deux endpoints publics, aucune authentification, et le CORS restreint à
-`ofildudoubs.fr` ne gêne pas — il ne contraint que les navigateurs.
+servi par le Worker `menage-state` : `/ical` pour les séjours, `/` pour l'état du ménage.
+
+### ⚠ Par la liaison de service, jamais par l'URL publique
+
+Les deux Workers vivent sur le même sous-domaine `cyril-samson41.workers.dev`. Un `fetch()`
+vers l'URL publique du voisin **ne sort pas sur Internet** : il reste dans le réseau interne
+de Cloudflare, où ce nom ne se résout pas, et rend **404**.
+
+C'est ce qui a fait échouer **toutes** les notifications du gîte du 24 août au 1er septembre
+2026 — huit jours sans qu'aucune ne parte. Et aucun test local ne pouvait le voir : depuis
+un poste, la même URL répond parfaitement. Seul un `wrangler tail` sur le cron l'a montré,
+et encore, une fois la panne rendue bruyante.
+
+La liaison `[[services]]` de `wrangler.toml` transforme l'appel en RPC interne, sans DNS ni
+réseau. Le bilan porte `giteVia` pour dire quelle voie a servi : un binding oublié ne doit
+pas redevenir une panne muette. Deux assertions l'exigent.
 
 **La veille d'une arrivée**, le digest rappelle d'envoyer le message d'accueil ; **la veille
 d'un départ**, celui de sortie. Un jour d'avance des deux côtés : prévenir le jour même ne
@@ -149,9 +162,13 @@ ce que confirment l'affichage du site ménage et la liste `_futureCheckouts` de 
 
 ### Ce qui se passe si le gîte est injoignable
 
-**Rien de grave, et surtout pas la perte du digest.** C'est une source externe au hub : son
-indisponibilité ne doit pas priver des tâches. La section disparaît, le reste du message
-part, et le bilan du mode à blanc porte `giteIndisponible` avec la raison. L'état ménage est
+**Le digest le dit, et ne se tait pas.** C'est une source externe au hub : son indisponibilité ne doit pas priver des tâches. Mais
+le message porte alors **« ⚠️ Calendrier du gîte injoignable — à vérifier à la main »**, et
+le bilan du mode à blanc donne la raison dans `giteIndisponible`.
+
+⚠ Ce n'était pas le cas jusqu'au 1er septembre 2026 : la section disparaissait en silence,
+et rien ne distinguait « aucune arrivée demain » de « je n'ai rien pu lire ». C'est ce
+silence qui a laissé la panne des huit jours passer inaperçue. L'état ménage est
 un confort supplémentaire : sans lui, le rappel part quand même, sans le nombre de personnes
 ni la langue.
 

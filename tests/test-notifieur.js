@@ -575,9 +575,25 @@ verifie('un depart est annonce la veille ET le jour meme',
 verifie('le Worker attrape la panne du gite sans laisser tomber le digest',
   /catch \(erreur\)[\s\S]{0,600}giteIndisponible/.test(workerSource));
 verifie('le Worker lit le gite pour LES DEUX fenetres, pas seulement le matin',
-  /if \(listeComplete\) \{[\s\S]{0,400}lireGite\(\)/.test(workerSource));
+  /if \(listeComplete\) \{[\s\S]{0,400}lireGite\(env\)/.test(workerSource));
+// ⚠ LA PANNE DU 24 AOUT AU 1er SEPTEMBRE 2026. Le Worker appelait le
+// calendrier par son URL PUBLIQUE. Les deux Workers vivant sur le meme
+// sous-domaine workers.dev, l'appel ne sortait pas sur Internet : il
+// restait dans le reseau interne de Cloudflare, ou ce nom ne se resout
+// pas, et rendait 404. Aucune notification du gite n'est partie pendant
+// huit jours, et aucun test local ne pouvait le voir — depuis un poste,
+// la meme URL repond parfaitement.
+verifie('le gite est lu par la LIAISON DE SERVICE, pas par son URL publique',
+  /env\.GITE\.fetch/.test(workerSource));
+verifie('...et la liaison est declaree dans wrangler.toml',
+  /binding = "GITE"/.test(wrangler) && /service = "menage-state"/.test(wrangler));
+// Le bilan dit par quelle voie la lecture est passee : un binding
+// oublie ne doit pas redevenir une panne muette.
+verifie('le bilan indique la voie empruntee',
+  /giteVia/.test(workerSource));
+
 verifie('le Worker lit bien les deux endpoints du gite',
-  /GITE_API \+ '\/ical'/.test(workerSource) && /GITE_API \+ '\/'/.test(workerSource));
+  /appeler\('\/ical'\)/.test(workerSource) && /appeler\('\/'\)/.test(workerSource));
 
 verifie('le Worker lit bien la collection taches',
   /collectionId: 'taches'/.test(workerSource));

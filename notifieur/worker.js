@@ -146,7 +146,8 @@ async function tourDeGarde(env, aBlanc = false) {
         let etatGite = null;
         if (listeComplete) {
             try {
-                const gite = await lireGite();
+                const gite = await lireGite(env);
+                bilan.giteVia = env.GITE ? 'liaison de service' : 'URL publique';
                 sejours = gite.sejours;
                 etatGite = gite.etat;
                 bilan.sejoursLus = sejours.length;
@@ -399,10 +400,31 @@ function decoderValeur(valeur) {
 // Aucune authentification : les deux endpoints sont publics. Le CORS du
 // Worker ménage est restreint à ofildudoubs.fr, ce qui ne gêne pas un
 // appel serveur — CORS ne contraint que les navigateurs.
-async function lireGite() {
+//
+// ⚠ ON PASSE PAR LA LIAISON DE SERVICE, PAS PAR L'URL PUBLIQUE.
+//
+// Les deux Workers vivent sur le même sous-domaine workers.dev. Un
+// `fetch()` vers l'URL publique du voisin ne sort pas sur Internet : il
+// reste dans le réseau interne de Cloudflare, où ce nom ne se résout
+// pas, et rend **404**.
+//
+// C'est ce qui a fait échouer TOUTES les notifications du gîte pendant
+// huit jours, du 24 août au 1er septembre 2026. Aucun test local ne
+// pouvait le voir : depuis un poste, la même URL répond parfaitement.
+// Seul un `wrangler tail` sur le cron l'a montré — et encore, une fois
+// la panne rendue bruyante.
+//
+// `env.GITE` est déclaré dans wrangler.toml. Le repli sur `fetch` sert
+// au cas où la liaison manquerait ; le bilan dit alors laquelle a servi,
+// pour qu'un binding oublié ne redevienne pas une panne muette.
+async function lireGite(env) {
+    const appeler = (chemin) => (env && env.GITE)
+        ? env.GITE.fetch('https://gite' + chemin)
+        : fetch(GITE_API + chemin);
+
     const [fluxIcal, etatBrut] = await Promise.all([
-        fetch(GITE_API + '/ical'),
-        fetch(GITE_API + '/')
+        appeler('/ical'),
+        appeler('/')
     ]);
 
     // Le flux iCal est indispensable : sans lui, pas de séjours du tout.
