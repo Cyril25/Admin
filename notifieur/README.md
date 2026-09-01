@@ -19,6 +19,30 @@ Le calcul de « en retard » et « ça commence bientôt » n'est pas ici : il v
 fait diverger, et cette divergence-là serait **muette** — un message qui ne part pas ne se
 remarque pas.
 
+## Deux canaux, deux publics
+
+| Canal | Bot | Contenu | Secrets |
+|---|---|---|---|
+| **`gite`** | O'Fil du Doubs — **partagé** | Arrivées et départs du logement, et rien d'autre | `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID` |
+| **`taches`** | Personnel | Digest, rappels d'heure, bilan du soir, pannes techniques | `TELEGRAM_TOKEN_TACHES`, `TELEGRAM_CHAT_ID_TACHES` |
+
+**C'est le partage qui a imposé la séparation.** Tant que tout arrivait au même endroit, une
+section du digest suffisait — et j'avais argumenté contre deux messages simultanés. Mais on
+ne peut pas donner à quelqu'un l'accès aux arrivées du gîte sans lui donner au passage la
+liste des corvées personnelles.
+
+**Chaque `CHAT_ID` accepte plusieurs destinataires**, séparés par des virgules. Un bot
+Telegram n'écrit jamais « à plusieurs » : il écrit dans une conversation. Deux personnes en
+privé font donc deux identifiants ; un groupe où le bot est invité n'en fait qu'un.
+
+Si `TELEGRAM_TOKEN_TACHES` manque, tout repart sur le bot du gîte. Ce n'est pas une
+commodité : sans ce repli, un secret oublié ferait disparaître tous les rappels de tâches en
+silence. Mieux vaut un message au mauvais endroit qu'aucun message.
+
+Les **pannes techniques** vont sur le canal personnel : elles regardent qui maintient le
+notifieur, pas les gens invités pour le gîte. Le « ⚠️ Calendrier du gîte injoignable », lui,
+part sur le canal du gîte — c'est là qu'il manque.
+
 ## Trois déclencheurs
 
 | Quand | Quoi | Question posée |
@@ -27,9 +51,9 @@ remarque pas.
 | **15 min avant chaque heure fixée** | Un rappel, une seule fois. Une tâche sans heure n'en reçoit pas : il n'y a pas de moment à anticiper | — |
 | **20:00** | Bilan du soir — échéances qui basculent cette nuit, heures passées sans être faites, programme de demain | Qu'est-ce qui a glissé, et que fais-je de demain ? |
 
-**Les deux résumés** portent en plus, en tête, les arrivées et départs du gîte de
-Labergement prévus le lendemain : le matin les annonce (« envoyer le message d'arrivée »),
-le soir les redemande (« message d'arrivée envoyé ? »). Voir plus bas.
+Le gîte suit **les mêmes fenêtres** — annoncé le matin (« envoyer le message d'arrivée »),
+redemandé le soir (« message d'arrivée envoyé ? ») — mais dans **son propre message**, sur
+le canal partagé. Voir plus bas.
 
 Le notifieur est **silencieux le reste du temps**. Il se réveille 288 fois par jour et ne
 dit rien la quasi-totalité de ces fois : une alerte qu'on reçoit sans cesse est une alerte
@@ -293,11 +317,13 @@ pas envoyer son message de panne puisqu'il n'a pas encore le jeton.
 ### 7. Poser les secrets
 
 ```bash
-npx wrangler secret put FIREBASE_API_KEY     # celle de config.js
-npx wrangler secret put NOTIFIEUR_EMAIL      # l'adresse du compte robot
-npx wrangler secret put NOTIFIEUR_MDP        # son mot de passe
-npx wrangler secret put TELEGRAM_TOKEN       # le jeton de @BotFather, SANS le « bot » devant
-npx wrangler secret put TELEGRAM_CHAT_ID     # le nombre lu dans "chat":{"id":…}
+npx wrangler secret put FIREBASE_API_KEY          # celle de config.js
+npx wrangler secret put NOTIFIEUR_EMAIL           # l'adresse du compte robot
+npx wrangler secret put NOTIFIEUR_MDP             # son mot de passe
+npx wrangler secret put TELEGRAM_TOKEN            # bot du GÎTE, sans le « bot » devant
+npx wrangler secret put TELEGRAM_CHAT_ID          # ses destinataires, virgules acceptées
+npx wrangler secret put TELEGRAM_TOKEN_TACHES     # bot PERSONNEL
+npx wrangler secret put TELEGRAM_CHAT_ID_TACHES   # ses destinataires
 ```
 
 Chaque `secret put` redéploie le Worker : c'est attendu.

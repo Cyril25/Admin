@@ -33,8 +33,10 @@
 //   FIREBASE_PROJECT_ID « ofildudoubs-hub »
 //   NOTIFIEUR_EMAIL     l'adresse du compte robot (= NOTIFIEUR_EMAIL de config.js)
 //   NOTIFIEUR_MDP       son mot de passe — le seul vrai secret du lot
-//   TELEGRAM_TOKEN      le jeton du bot, donné par @BotFather
-//   TELEGRAM_CHAT_ID    la conversation où écrire
+//   TELEGRAM_TOKEN      le bot O'Fil du Doubs — canal GÎTE, partagé
+//   TELEGRAM_CHAT_ID    ses destinataires, séparés par des virgules
+//   TELEGRAM_TOKEN_TACHES   le bot personnel — canal TÂCHES
+//   TELEGRAM_CHAT_ID_TACHES ses destinataires, séparés par des virgules
 // Et un binding KV : ENVOIS. Voir README.md du dossier.
 // ============================================================
 
@@ -166,14 +168,14 @@ async function tourDeGarde(env, aBlanc = false) {
         // annoncerait « 0 en retard » avec aplomb.
         const dus = messages.messagesDus(
             taches, maintenant.jour, maintenant.heure, listeComplete, sejours, etatGite);
-        bilan.dus = dus.map((m) => m.cle);
+        bilan.dus = dus.map((m) => m.canal + ' → ' + m.cle);
 
         const aEnvoyer = [];
         for (const message of dus) {
             if (await dejaEnvoye(env, message.cle)) continue;
             aEnvoyer.push(message);
         }
-        bilan.aEnvoyer = aEnvoyer.map((m) => m.cle);
+        bilan.aEnvoyer = aEnvoyer.map((m) => m.canal + ' → ' + m.cle);
 
         if (aBlanc) {
             bilan.apercu = aEnvoyer.map((m) => m.texte);
@@ -182,12 +184,12 @@ async function tourDeGarde(env, aBlanc = false) {
 
         bilan.envoyes = [];
         for (const message of aEnvoyer) {
-            await envoyerTelegram(env, message.texte);
+            await envoyerTelegram(env, message.texte, message.canal);
             // Marqué APRÈS l'envoi, jamais avant : si Telegram échoue, le
             // prochain tour réessaiera. Une clé posée d'avance ferait
             // disparaître le message pour de bon, sans un mot.
             await marquerEnvoye(env, message.cle);
-            bilan.envoyes.push(message.cle);
+            bilan.envoyes.push(message.canal + ' → ' + message.cle);
         }
     } catch (erreur) {
         bilan.erreur = String((erreur && erreur.message) || erreur);
@@ -464,24 +466,57 @@ async function marquerEnvoye(env, cle) {
 // ------------------------------------------------------------
 // 6. Telegram
 // ------------------------------------------------------------
-async function envoyerTelegram(env, texte) {
-    const reponse = await fetch(
-        'https://api.telegram.org/bot' + env.TELEGRAM_TOKEN + '/sendMessage',
-        {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({
-                chat_id: env.TELEGRAM_CHAT_ID,
-                text: texte,
-                parse_mode: 'HTML',
-                disable_web_page_preview: true
-            })
-        }
-    );
+// ------------------------------------------------------------
+// 6. Telegram — deux bots, deux publics
+// ------------------------------------------------------------
+// Le canal `gite` part sur le bot O'Fil du Doubs, PARTAGÉ : on peut y
+// inviter quelqu'un sans lui donner au passage la liste des corvées
+// personnelles. Le canal `taches` part sur le bot personnel.
+//
+// Le repli sur le bot du gîte n'est pas une commodité : sans lui, un
+// secret oublié ferait disparaître tous les rappels de tâches en
+// silence. Mieux vaut un message au mauvais endroit qu'aucun message.
+function canalDe(env, canal) {
+    if (canal === 'taches' && env.TELEGRAM_TOKEN_TACHES) {
+        return { jeton: env.TELEGRAM_TOKEN_TACHES,
+                 destinataires: env.TELEGRAM_CHAT_ID_TACHES || env.TELEGRAM_CHAT_ID };
+    }
+    return { jeton: env.TELEGRAM_TOKEN, destinataires: env.TELEGRAM_CHAT_ID };
+}
 
-    if (!reponse.ok) {
-        throw new Error('Telegram a refusé (' + reponse.status + ') : '
-            + (await reponse.text()).slice(0, 300));
+// Une conversation Telegram par destinataire : un bot n'écrit jamais
+// « à plusieurs », il écrit dans un chat. Deux personnes en privé font
+// donc deux identifiants — un groupe, un seul.
+function listeDestinataires(valeur) {
+    return String(valeur || '').split(',')
+        .map(function(x) { return x.trim(); })
+        .filter(Boolean);
+}
+
+async function envoyerTelegram(env, texte, canal) {
+    const voie = canalDe(env, canal);
+    const destinataires = listeDestinataires(voie.destinataires);
+    if (!destinataires.length) throw new Error('aucun destinataire pour le canal ' + canal);
+
+    for (const destinataire of destinataires) {
+        const reponse = await fetch(
+            'https://api.telegram.org/bot' + voie.jeton + '/sendMessage',
+            {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({
+                    chat_id: destinataire,
+                    text: texte,
+                    parse_mode: 'HTML',
+                    disable_web_page_preview: true
+                })
+            }
+        );
+
+        if (!reponse.ok) {
+            throw new Error('Telegram a refusé (' + reponse.status + ') pour ' + destinataire
+                + ' : ' + (await reponse.text()).slice(0, 300));
+        }
     }
 }
 
@@ -494,6 +529,8 @@ async function envoyerTelegram(env, texte) {
 // 288 messages par jour. On se ferait taire le bot, et le prochain vrai
 // rappel se perdrait dans le tas. Une alerte qu'on apprend à ignorer ne
 // vaut pas mieux que pas d'alerte.
+// ⚠ Sur le canal PERSONNEL : une panne technique regarde celui qui
+// maintient le notifieur, pas les gens invités pour le gîte.
 async function signalerPanne(env, texte, heure) {
     const cle = 'panne:' + heure;
     try {
@@ -503,14 +540,17 @@ async function signalerPanne(env, texte, heure) {
     }
 
     try {
-        await fetch('https://api.telegram.org/bot' + env.TELEGRAM_TOKEN + '/sendMessage', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({
-                chat_id: env.TELEGRAM_CHAT_ID,
-                text: '⚠️ Notifieur en panne : ' + texte
-            })
-        });
+        const voie = canalDe(env, 'taches');
+        for (const destinataire of listeDestinataires(voie.destinataires)) {
+            await fetch('https://api.telegram.org/bot' + voie.jeton + '/sendMessage', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({
+                    chat_id: destinataire,
+                    text: '⚠️ Notifieur en panne : ' + texte
+                })
+            });
+        }
         if (env.ENVOIS) {
             await env.ENVOIS.put(cle, texte.slice(0, 200), { expirationTtl: 3600 });
         }

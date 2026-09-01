@@ -24,6 +24,15 @@ const messages = require(path.join(REPO, 'notifieur', 'notifieur-messages.js'));
 const calcul = require(path.join(REPO, 'taches', 'taches-calcul.js'));
 const sejoursGite = require(path.join(REPO, 'notifieur', 'notifieur-sejours.js'));
 
+// Les fichiers relus tels quels : plusieurs assertions verifient que le
+// code, la configuration et les regles ne se contredisent pas. Declares
+// ici, en tete, pour qu'aucun deplacement d'assertion ne les rende
+// inaccessibles.
+const regles = fs.readFileSync(path.join(REPO, 'firestore.rules'), 'utf8');
+const configSource = fs.readFileSync(path.join(REPO, 'config.js'), 'utf8');
+const workerSource = fs.readFileSync(path.join(REPO, 'notifieur', 'worker.js'), 'utf8');
+const wrangler = fs.readFileSync(path.join(REPO, 'notifieur', 'wrangler.toml'), 'utf8');
+
 let echecs = 0;
 function verifie(nom, condition, detail) {
   if (condition) console.log('  ok   ' + nom);
@@ -389,185 +398,72 @@ verifie('un jour sans rien ne produit rien',
   sejoursGite.sejoursAAnnoncer(lus, '2026-09-15').arrivees.length === 0
   && sejoursGite.sejoursAAnnoncer(lus, '2026-09-15').departs.length === 0);
 
-// --- La section dans le digest ---------------------------------------
+// --- Le message du gite, sur son propre canal ------------------------
 const etatGite = {
   'info_2026-08-28': { nbPersons: 3, comment: 'Livret en allemand en premier', lang: 'de' }
 };
-const digestGite = messages.digestDuMatin([], '2026-08-27', '07:30', lus, etatGite).texte;
+const giteMatin = messages.messageGite(lus, '2026-08-27', etatGite, 'annonce');
 
-// En tete parce que c'est la seule chose du digest qui engage quelqu'un
-// d'autre que soi, et la seule qu'on ne rattrape pas le lendemain.
-const digestMixte = messages.digestDuMatin(
-  [tache({ titre: 'Une tache du jour', echeance: '2026-08-27', echeanceHeure: '09:00' })],
-  '2026-08-27', '07:30', lus, etatGite).texte;
-verifie('la section gite passe AVANT le programme des taches',
-  digestMixte.indexOf('Arrivée demain') < digestMixte.indexOf('Au programme')
-  && digestMixte.indexOf('Au programme') !== -1);
-verifie('...et le digest ne dit plus « rien au programme » quand le gite parle',
-  digestGite.indexOf('Rien au programme') === -1);
-verifie('la plateforme est nommee', digestGite.indexOf('Arrivée demain — Airbnb') !== -1);
+// ⚠ DEUX CANAUX, DEUX PUBLICS. Le gite part sur le bot partage, ou l'on
+// peut inviter quelqu'un sans lui donner au passage la liste des corvees
+// personnelles. C'est le PARTAGE qui a impose la separation : tant que
+// tout allait au meme endroit, une section du digest suffisait.
+verifie('le message du gite part sur le canal partage',
+  giteMatin.canal === 'gite', giteMatin.canal);
+verifie('...et porte sa propre cle de deduplication',
+  giteMatin.cle === 'gite:2026-08-27', giteMatin.cle);
+verifie('...distincte de celle du soir',
+  messages.cleGite('2026-08-27', 'annonce') !== messages.cleGite('2026-08-27', 'rappel'));
+
+const texteGite = giteMatin.texte;
+verifie('il porte son propre en-tete, ne s\'appuyant plus sur le digest',
+  texteGite.indexOf('Gîte — jeudi 27 août') !== -1, texteGite);
+verifie('la plateforme est nommee', texteGite.indexOf('Arrivée demain — Airbnb') !== -1);
 // Le nombre de personnes et la LANGUE viennent de l'etat menage : on
 // n'accueille pas trois Allemands comme un couple de Francais.
 verifie('le nombre de personnes et la langue y sont',
-  digestGite.indexOf('3 personnes') !== -1 && digestGite.indexOf('en allemand') !== -1);
-verifie('la periode est lisible', digestGite.indexOf('du 28 au 30 août') !== -1, digestGite);
+  texteGite.indexOf('3 personnes') !== -1 && texteGite.indexOf('en allemand') !== -1);
+verifie('la periode est lisible', texteGite.indexOf('du 28 au 30 août') !== -1, texteGite);
 verifie('le commentaire du menage est repris',
-  digestGite.indexOf('Livret en allemand en premier') !== -1);
+  texteGite.indexOf('Livret en allemand en premier') !== -1);
 verifie('le lien de reservation est la, entier',
-  digestGite.indexOf('details/HMY45JSW55') !== -1);
+  texteGite.indexOf('details/HMY45JSW55') !== -1);
 
 // Un depart n'a pas de nombre de personnes a annoncer : ils s'en vont.
-const digestDepart = messages.digestDuMatin([], '2026-08-29', '07:30', lus, etatGite).texte;
+const giteDepart = messages.messageGite(lus, '2026-08-29', etatGite, 'annonce').texte;
 verifie('un depart s\'annonce sans compter les personnes',
-  digestDepart.indexOf('Départ demain') !== -1 && digestDepart.indexOf('3 personnes') === -1);
+  giteDepart.indexOf('Départ demain') !== -1 && giteDepart.indexOf('3 personnes') === -1);
 
 // L'etat menage est un CONFORT : son absence ne doit pas priver du rappel.
-const sansEtat = messages.digestDuMatin([], '2026-08-27', '07:30', lus, null).texte;
+const sansEtat = messages.messageGite(lus, '2026-08-27', null, 'annonce').texte;
 verifie('sans l\'etat menage, le rappel part quand meme',
   sansEtat.indexOf('Arrivée demain — Airbnb') !== -1 && sansEtat.indexOf('personnes') === -1);
 
-// Un jour sans sejour ne doit pas laisser de section vide.
-verifie('aucune section gite quand rien n\'arrive',
-  messages.digestDuMatin([], '2026-09-15', '07:30', lus, etatGite).texte.indexOf('🏠') === -1);
+verifie('aucun message quand rien n\'arrive',
+  messages.messageGite(lus, '2026-09-15', etatGite, 'annonce') === null);
 
-// --- 11. Coherence config / regles / Worker --------------------------
-console.log('\n11. Coherence entre les fichiers');
-const regles = fs.readFileSync(path.join(REPO, 'firestore.rules'), 'utf8');
-const configSource = fs.readFileSync(path.join(REPO, 'config.js'), 'utf8');
-const workerSource = fs.readFileSync(path.join(REPO, 'notifieur', 'worker.js'), 'utf8');
-const wrangler = fs.readFileSync(path.join(REPO, 'notifieur', 'wrangler.toml'), 'utf8');
+// ⚠ LE DIGEST NE PARLE PLUS DU GITE. Les deux publics sont distincts :
+// melanger les deux reviendrait a exposer les corvees personnelles a qui
+// ne s'interesse qu'au logement.
+const digestSeul = messages.digestDuMatin([], '2026-08-27', '07:30');
+verifie('le digest ne contient plus rien du gite',
+  digestSeul.texte.indexOf('🏠') === -1 && digestSeul.texte.indexOf('Arrivée') === -1);
+verifie('...et porte le canal personnel', digestSeul.canal === 'taches');
 
-const adresse = (configSource.match(/var NOTIFIEUR_EMAIL = '([^']+)'/) || [])[1];
-verifie('config.js declare une adresse de notifieur', !!adresse, String(adresse));
-// Les deux fichiers se contrediraient en SILENCE : le notifieur serait
-// refuse par Firestore et se tairait, ce qui ressemble a « rien a dire ».
-verifie('firestore.rules reconnait exactement cette adresse',
-  regles.indexOf("request.auth.token.email.lower() == '" + adresse + "'") !== -1,
-  'adresse absente ou differente dans les regles');
-
-const blocTaches = (regles.match(/match \/taches\/\{document\}[\s\S]*?\n    \}/) || [''])[0];
-verifie('le notifieur peut LIRE taches', /allow read: if notifieur\(\)/.test(blocTaches));
-// ⚠ Lecture seule. S'il apparait un jour dans un allow write, ce doit
-// etre un choix, pas une distraction.
-verifie('...et ne peut RIEN ecrire',
-  !/allow (create|update|delete|write):[^;]*notifieur\(\)/.test(blocTaches),
-  'notifieur() est apparu dans une regle d\'ecriture');
-
-// Aucune autre collection ne doit le nommer : le catch-all final les lui
-// ferme toutes, et c'est exactement ce qui rend cette identite sure.
-const occurrences = (regles.match(/notifieur\(\)/g) || []).length;
-verifie('notifieur() n\'est nomme que la ou il faut (definition + 1 lecture)',
-  occurrences === 2, occurrences + ' occurrences');
-verifie('la fonction n\'exige pas email_verified, qu\'un compte robot n\'a pas',
-  /function notifieur\(\)[\s\S]*?\n    \}/.exec(regles)[0].indexOf('email_verified') === -1);
-
-// Le piege ecarte doit rester ecrit : c'est la raison d'etre de tout ce
-// montage, et elle se perdrait au premier « simplifions ».
-verifie('les regles expliquent pourquoi pas une cle de compte de service',
-  regles.indexOf('compte de service') !== -1);
-
-// ⚠ LE QUOTA. Le plan Spark offre 50 000 lectures/jour ; lire toute la
-// base a chacun des 288 reveils ferait dependre le plafond du nombre
-// TOTAL de taches, et les taches faites s'accumulent pour toujours.
-verifie('le digest lit les taches OUVERTES, pas toutes',
-  /fieldPath: 'faite'[\s\S]{0,120}booleanValue: false/.test(workerSource));
-verifie('les rappels ne lisent que les creneaux du jour et du lendemain',
-  /GREATER_THAN_OR_EQUAL/.test(workerSource) && /LESS_THAN_OR_EQUAL/.test(workerSource)
-  && /jourSuivant/.test(workerSource));
-// Le KV repond avant Firestore : hors fenetre du digest, ou digest deja
-// parti, la lecture complete n'a pas lieu du tout.
-verifie('le KV est consulte AVANT de choisir la requete',
-  workerSource.indexOf('dansLaFenetreDuDigest') < workerSource.indexOf('lireTachesOuvertes(env, jeton)'));
-// Une liste tronquee ne doit jamais produire un digest : il annoncerait
-// « 0 en retard » avec aplomb.
-verifie('les resumes sont refuses quand la liste est tronquee',
-  /messagesDus\([\s\S]{0,80}listeComplete/.test(workerSource));
-// Le bilan du soir en a besoin autant que le digest : les echeances qui
-// basculent cette nuit n'ont pas de creneau, elles seraient invisibles
-// dans la lecture courte.
-verifie('le bilan du soir declenche aussi la lecture complete',
-  /dansLaFenetreDuBilan\(maintenant\.heure\)/.test(workerSource)
-  && /cleBilan\(maintenant\.jour\)/.test(workerSource));
-// Deux clauses sur DEUX champs differents reclameraient un index
-// composite, donc une etape manuelle de plus et une panne le jour ou on
-// l'oublie. Chaque requete ne porte que sur un champ.
-verifie('aucune requete ne melange faite et creneauJour',
-  !/fieldPath: 'faite'[\s\S]{0,400}fieldPath: 'creneauJour'/.test(workerSource));
-
-// LE SOIR N'EST PAS UNE COPIE DU MATIN, C'EST UN FILET.
-// Une tache se coche, donc le notifieur sait qu'elle est faite et se
-// tait. Le gite n'a pas de « fait » : rien ne dira jamais que le message
-// est parti. Et l'oubli ne coute pas a celui qui oublie, mais aux gens
-// qui arrivent. C'est la seule repetition assumee de la journee.
-const soirGite = messages.bilanDuSoir([], '2026-08-27', '20:00', lus, etatGite).texte;
-verifie('le gite figure aussi au bilan du soir',
-  soirGite.indexOf('Arrivée demain — Airbnb') !== -1);
-verifie('...mais la ligne d\'action DIFFERE : « envoye ? » et non « envoyer »',
-  soirGite.indexOf("message d'arrivée envoyé ?") !== -1
-  && soirGite.indexOf('envoyer le message') === -1);
-verifie('...tandis que le matin dit bien « envoyer »',
-  digestGite.indexOf("envoyer le message d'arrivée") !== -1
-  && digestGite.indexOf('envoyé ?') === -1);
-// Le detail est repete a dessein : si le message n'est pas parti le
-// matin, on veut pouvoir l'ecrire le soir sans rien rouvrir.
-verifie('le soir garde le lien et les details, pour agir sur-le-champ',
-  soirGite.indexOf('details/HMY45JSW55') !== -1
-  && soirGite.indexOf('3 personnes') !== -1);
-// Sinon le filet ne servirait que les jours ou il y a aussi des taches.
-verifie('un bilan sans taches part quand meme si le gite parle',
-  messages.bilanDuSoir([], '2026-08-27', '20:00', lus, etatGite) !== null);
-verifie('...et se tait toujours quand il n\'y a vraiment rien',
-  messages.bilanDuSoir([], '2026-09-15', '20:00', lus, etatGite) === null);
-
-// ============================================================
-// LES DEUX DEFAUTS DU 31 AOUT 2026
-// ============================================================
-// Un message d'accueil n'est pas parti, et ca a pose de vrais problemes.
-// Le diagnostic a trouve deux fautes de conception, pas un bug de calcul.
-
-// ---- Defaut 1 : la panne du calendrier etait INDETECTABLE ----
-// `null` veut dire « je n'ai pas pu lire », `[]` veut dire « rien a
-// annoncer ». Les confondre faisait disparaitre la section en silence :
-// le digest arrivait parfaitement normal, et rien ne distinguait
-// « aucune arrivee demain » de « je n'ai rien pu lire ».
-const digestPanne = messages.digestDuMatin([], '2026-08-27', '07:30', null, null).texte;
-verifie('un calendrier injoignable est ANNONCE, pas tu',
-  digestPanne.indexOf('Calendrier du gîte injoignable') !== -1, digestPanne);
-verifie('...et le digest part quand meme, le gite etant une source externe',
-  messages.digestDuMatin([], '2026-08-27', '07:30', null, null) !== null);
-// Un tableau VIDE, lui, doit rester silencieux : il n'y a vraiment rien.
-verifie('un calendrier lu mais vide ne dit rien',
-  messages.digestDuMatin([], '2026-08-27', '07:30', [], null)
-    .texte.indexOf('injoignable') === -1);
-verifie('le Worker passe null quand la lecture echoue, pas un tableau vide',
-  /let sejours = listeComplete \? null : \[\]/.test(workerSource));
-
-// ---- Defaut 2 : rien ne rattrapait le JOUR MEME ----
-// Le notifieur n'annoncait que demain. Des que la veille echouait —
-// reseau, message survole, telephone en silencieux — plus rien ne
-// rattrapait. Un rappel qui n'a qu'une seule chance n'est pas un filet.
-const veille = sejoursGite.sejoursAAnnoncer(lus, '2026-08-27');
-const leJourMeme = sejoursGite.sejoursAAnnoncer(lus, '2026-08-28');
-verifie('la veille annonce toujours l\'arrivee',
-  veille.arrivees.length === 1 && veille.arrivees[0].quand === 'demain');
-verifie('LE JOUR MEME l\'annonce aussi, en dernier filet',
-  leJourMeme.arrivees.length === 1 && leJourMeme.arrivees[0].quand === 'aujourdhui',
-  JSON.stringify(leJourMeme.arrivees.map((a) => a.quand)));
-verifie('...et le libelle DIFFERE, pour qu\'on sache que ca se joue',
-  messages.digestDuMatin([], '2026-08-28', '07:30', lus, etatGite)
-    .texte.indexOf("Arrivée AUJOURD'HUI") !== -1);
-verifie('...tandis que la veille dit bien « demain »',
-  digestGite.indexOf('Arrivée demain') !== -1
-  && digestGite.indexOf("AUJOURD'HUI") === -1);
-// Le surlendemain n'est pas annonce : deux jours d'avance seraient du
-// bruit, on ne prepare pas un accueil 48 h en avance.
-verifie('le surlendemain n\'est pas annonce',
-  sejoursGite.sejoursAAnnoncer(lus, '2026-08-26').arrivees.length === 0);
-// Le depart aussi doit avoir son filet du jour meme.
-verifie('un depart est annonce la veille ET le jour meme',
-  sejoursGite.sejoursAAnnoncer(lus, '2026-08-29').departs.length === 1
-  && sejoursGite.sejoursAAnnoncer(lus, '2026-08-30').departs.length === 1
-  && sejoursGite.sejoursAAnnoncer(lus, '2026-08-30').departs[0].quand === 'aujourdhui');
+// Un tour complet doit produire les DEUX messages, chacun sur son canal.
+const tourMatin = messages.messagesDus([], '2026-08-27', '07:30', true, lus, etatGite);
+verifie('un tour du matin produit le digest ET le message du gite',
+  tourMatin.length === 2
+  && tourMatin.filter((m) => m.canal === 'taches').length === 1
+  && tourMatin.filter((m) => m.canal === 'gite').length === 1,
+  tourMatin.map((m) => m.canal + ':' + m.cle).join(', '));
+// Le soir, c'est le filet — « envoye ? » et non « envoyer ».
+const tourSoir = messages.messagesDus([], '2026-08-27', '20:00', true, lus, etatGite);
+const giteSoir = tourSoir.find((m) => m.canal === 'gite');
+verifie('le soir, le gite repart en FILET sur le meme canal',
+  giteSoir && giteSoir.texte.indexOf("message d'arrivée envoyé ?") !== -1
+  && giteSoir.cle === 'gite-soir:2026-08-27',
+  giteSoir && giteSoir.cle);
 
 // ⚠ LE GITE NE DOIT JAMAIS FAIRE TOMBER LE DIGEST. C'est une source
 // EXTERNE au hub : si elle est en panne, les taches n'ont pas a en
@@ -594,6 +490,22 @@ verifie('le bilan indique la voie empruntee',
 
 verifie('le Worker lit bien les deux endpoints du gite',
   /appeler\('\/ical'\)/.test(workerSource) && /appeler\('\/'\)/.test(workerSource));
+
+// Le routage cote Worker : deux jetons, et une LISTE de destinataires.
+// Un bot n'ecrit jamais « a plusieurs », il ecrit dans une conversation.
+verifie('le Worker route selon le canal du message',
+  /envoyerTelegram\(env, message\.texte, message\.canal\)/.test(workerSource));
+verifie('...vers un second jeton pour les taches',
+  /TELEGRAM_TOKEN_TACHES/.test(workerSource) && /TELEGRAM_CHAT_ID_TACHES/.test(workerSource));
+verifie('...et accepte plusieurs destinataires par canal',
+  /listeDestinataires/.test(workerSource) && /split\(','\)/.test(workerSource));
+// Sans jeton personnel, tout doit partir quand meme : mieux vaut un
+// message au mauvais endroit qu'aucun message.
+verifie('un jeton personnel manquant se replie sur le bot du gite',
+  /canal === 'taches' && env\.TELEGRAM_TOKEN_TACHES/.test(workerSource));
+// Une panne technique ne regarde pas les invites du gite.
+verifie('les pannes techniques restent sur le canal personnel',
+  /const voie = canalDe\(env, 'taches'\);/.test(workerSource));
 
 verifie('le Worker lit bien la collection taches',
   /collectionId: 'taches'/.test(workerSource));

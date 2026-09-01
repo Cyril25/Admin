@@ -14,6 +14,21 @@
 // La glu — s'authentifier, lire Firestore, appeler Telegram — vit dans
 // worker.js, qui n'a aucune décision à prendre.
 //
+// ------------------------------------------------------------
+// DEUX CANAUX, DEUX PUBLICS
+// ------------------------------------------------------------
+// Chaque message porte un `canal` :
+//   'taches' → le bot personnel. Digest, rappels d'heure, bilan du soir,
+//              pannes techniques. Ne regarde que celui qui les a écrites.
+//   'gite'   → le bot O'Fil du Doubs, partagé. Arrivées et départs du
+//              logement, et rien d'autre.
+//
+// ⚠ C'EST LE PARTAGE QUI A SEPARE LES DEUX. Tant que tout allait au même
+// endroit, une section du digest suffisait — et j'avais argumenté contre
+// deux messages simultanés. Mais on ne peut pas donner à quelqu'un
+// l'accès aux arrivées du gîte sans lui donner aussi la liste des
+// corvées personnelles : ce sont deux publics, donc deux messages.
+//
 // ⚠ AUCUNE HORLOGE ICI. `ajd` et `heure` sont fournis par le Worker, qui
 // les calcule à l'heure de PARIS. Un Worker Cloudflare tourne en UTC :
 // `new Date()` y donnerait la mauvaise journée tous les soirs entre 22 h
@@ -133,7 +148,8 @@ function rappelsCreneaux(taches, ajd, heure) {
         // rappel mais un constat, et « dans -3 min » ne veut rien dire.
         return (debut - MINUTES_AVANT_CRENEAU) <= maintenant && maintenant < debut;
     }).map(function(tache) {
-        return { cle: cleRappel(tache), texte: texteRappel(tache, ajd, heure) };
+        return { cle: cleRappel(tache), texte: texteRappel(tache, ajd, heure),
+                 canal: 'taches' };
     });
 }
 
@@ -231,7 +247,10 @@ function lignesSejour(sejour, sens, etat, mode) {
     // avant que ça se joue, et il doit se lire comme tel.
     var quand = (sejour.quand === 'aujourdhui') ? "AUJOURD'HUI" : 'demain';
 
-    lignes.push('🏠 <b>' + quoi + ' ' + quand + ' — '
+    // Une flèche plutôt qu'une maison : le message porte déjà « Gîte »
+    // en en-tête, et le sens de la flèche dit d'un coup d'œil s'il faut
+    // accueillir ou saluer.
+    lignes.push((sens === 'arrivee' ? '➡️' : '⬅️') + ' <b>' + quoi + ' ' + quand + ' — '
         + echapper(sejoursGite.libellePlateforme(sejour.plateforme)) + '</b>');
 
     var precisions = [];
@@ -277,6 +296,26 @@ function lignesSejour(sejour, sens, etat, mode) {
 // Désormais le digest le DIT. Un message de trop vaut mieux qu'un
 // silence ambigu : c'est le même raisonnement que le digest qui part
 // même les jours vides.
+// Le gîte part maintenant dans SON PROPRE message, sur le canal partagé.
+// Deux clés distinctes — matin et soir — pour que la déduplication ne
+// confonde pas l'annonce et son filet.
+function cleGite(ajd, mode) {
+    return (mode === 'rappel' ? 'gite-soir:' : 'gite:') + ajd;
+}
+
+function messageGite(sejours, ajd, etat, mode) {
+    var lignes = sectionSejours(sejours, ajd, etat, mode);
+    if (!lignes.length) return null;
+
+    // Un en-tête, puisque le message ne s'appuie plus sur celui du
+    // digest. La première ligne de `sectionSejours` est vide : elle
+    // séparait deux sections, elle n'a plus lieu d'être en tête.
+    var entete = '🏠 <b>Gîte — ' + echapper(jourEnLettres(ajd)) + '</b>';
+    while (lignes.length && lignes[0] === '') lignes.shift();
+
+    return { cle: cleGite(ajd, mode), texte: entete + '\n\n' + lignes.join('\n'), canal: 'gite' };
+}
+
 function sectionSejours(sejours, ajd, etat, mode) {
     // ⚠ SEUL `null` veut dire « je n'ai pas pu lire ». `undefined` — un
     // appelant qui ne passe simplement pas de séjours — ne doit rien
@@ -305,7 +344,7 @@ function sectionSejours(sejours, ajd, etat, mode) {
     return lignes;
 }
 
-function digestDuMatin(taches, ajd, heure, sejours, etat) {
+function digestDuMatin(taches, ajd, heure) {
     if (!dansLaFenetreDuDigest(heure)) return null;
 
     var duJour = calcul.avecHeureLeJour(taches, ajd)
@@ -329,23 +368,16 @@ function digestDuMatin(taches, ajd, heure, sejours, etat) {
         return !calcul.estEnRetard(tache, ajd);
     });
 
-    var gite = sectionSejours(sejours, ajd, etat, 'annonce');
-
-    if (!duJour.length && !retards.length && !sansHeure.length && !gite.length
-        && !DIGEST_MEME_SI_VIDE) {
+    if (!duJour.length && !retards.length && !sansHeure.length && !DIGEST_MEME_SI_VIDE) {
         return null;
     }
 
-    return { cle: cleDigest(ajd), texte: texteDigest(ajd, duJour, retards, sansHeure, gite) };
+    return { cle: cleDigest(ajd), texte: texteDigest(ajd, duJour, retards, sansHeure),
+             canal: 'taches' };
 }
 
-function texteDigest(ajd, duJour, retards, sansHeure, gite) {
+function texteDigest(ajd, duJour, retards, sansHeure) {
     var lignes = ['☀️ <b>' + echapper(jourEnLettres(ajd)) + '</b>'];
-
-    // Le gîte EN TÊTE : c'est la seule chose du digest qui engage
-    // quelqu'un d'autre que soi, et la seule qu'on ne puisse pas
-    // rattraper le lendemain.
-    lignes = lignes.concat(gite || []);
 
     if (duJour.length) {
         lignes.push('');
@@ -382,7 +414,7 @@ function texteDigest(ajd, duJour, retards, sansHeure, gite) {
 
     // Le cas vide est un message à part entière, pas une omission : le
     // silence ne doit jamais vouloir dire deux choses à la fois.
-    if (!duJour.length && !retards.length && !sansHeure.length && !(gite || []).length) {
+    if (!duJour.length && !retards.length && !sansHeure.length) {
         lignes.push('');
         lignes.push('Rien au programme, rien en retard. 🌱');
     }
@@ -427,7 +459,7 @@ function dansLaFenetreDuBilan(heure) {
     return maintenant >= ouverture && maintenant <= ouverture + FENETRE_BILAN_MINUTES;
 }
 
-function bilanDuSoir(taches, ajd, heure, sejours, etat) {
+function bilanDuSoir(taches, ajd, heure) {
     if (!dansLaFenetreDuBilan(heure)) return null;
 
     // Échéance AUJOURD'HUI et pas close : à minuit, ce sera un retard.
@@ -452,17 +484,14 @@ function bilanDuSoir(taches, ajd, heure, sejours, etat) {
             return calcul.minutesDeHeure(a.echeanceHeure) - calcul.minutesDeHeure(b.echeanceHeure);
         });
 
-    // Le filet du gîte : « le message est-il parti ? ». Voir lignesSejour
-    // pour la raison — c'est la seule répétition assumée de la journée.
-    var gite = sectionSejours(sejours, ajd, etat, 'rappel');
-
     // ⚠ CONTRAIREMENT AU DIGEST DU MATIN, IL SE TAIT QUAND IL N'Y A RIEN.
     // Le matin porte déjà le battement de cœur qui prouve que le notifieur
     // vit et lève l'ambiguïté du silence ; deux par jour, c'en est un de
     // trop, et le second finirait par ne plus être lu.
-    if (!basculent.length && !nonTenus.length && !demain.length && !gite.length) return null;
+    if (!basculent.length && !nonTenus.length && !demain.length) return null;
 
-    return { cle: cleBilan(ajd), texte: texteBilan(ajd, basculent, nonTenus, demain, gite) };
+    return { cle: cleBilan(ajd), texte: texteBilan(ajd, basculent, nonTenus, demain),
+             canal: 'taches' };
 }
 
 function texteBilan(ajd, basculent, nonTenus, demain, gite) {
@@ -526,12 +555,26 @@ function texteBilan(ajd, basculent, nonTenus, demain, gite) {
 // ne se recouvrent pas (07:30–11:30 et 20:00–23:00).
 function messagesDus(taches, ajd, heure, listeComplete, sejours, etat) {
     var messages = [];
+
     if (listeComplete !== false) {
-        var digest = digestDuMatin(taches, ajd, heure, sejours, etat);
+        var digest = digestDuMatin(taches, ajd, heure);
         if (digest) messages.push(digest);
-        var bilan = bilanDuSoir(taches, ajd, heure, sejours, etat);
+
+        var bilan = bilanDuSoir(taches, ajd, heure);
         if (bilan) messages.push(bilan);
+
+        // Le gîte suit les mêmes fenêtres que les résumés — annoncé le
+        // matin, redemandé le soir — mais part sur son propre canal, à
+        // son propre public.
+        if (dansLaFenetreDuDigest(heure)) {
+            var giteMatin = messageGite(sejours, ajd, etat, 'annonce');
+            if (giteMatin) messages.push(giteMatin);
+        } else if (dansLaFenetreDuBilan(heure)) {
+            var giteSoir = messageGite(sejours, ajd, etat, 'rappel');
+            if (giteSoir) messages.push(giteSoir);
+        }
     }
+
     return messages.concat(rappelsCreneaux(taches, ajd, heure));
 }
 
@@ -554,6 +597,8 @@ module.exports = {
     cleRappel: cleRappel,
     cleDigest: cleDigest,
     cleBilan: cleBilan,
+    cleGite: cleGite,
+    messageGite: messageGite,
     dansLaFenetreDuDigest: dansLaFenetreDuDigest,
     dansLaFenetreDuBilan: dansLaFenetreDuBilan,
     dansUneFenetreDeResume: dansUneFenetreDeResume,
