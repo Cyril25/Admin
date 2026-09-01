@@ -227,8 +227,11 @@ function dateLocale(iso) {
 function lignesSejour(sejour, sens, etat, mode) {
     var lignes = [];
     var quoi = (sens === 'arrivee') ? 'Arrivée' : 'Départ';
+    // « aujourd'hui » n'est pas « demain » : c'est le dernier rappel
+    // avant que ça se joue, et il doit se lire comme tel.
+    var quand = (sejour.quand === 'aujourdhui') ? "AUJOURD'HUI" : 'demain';
 
-    lignes.push('🏠 <b>' + quoi + ' demain — '
+    lignes.push('🏠 <b>' + quoi + ' ' + quand + ' — '
         + echapper(sejoursGite.libellePlateforme(sejour.plateforme)) + '</b>');
 
     var precisions = [];
@@ -262,18 +265,40 @@ function lignesSejour(sejour, sens, etat, mode) {
     return lignes;
 }
 
+// ⚠ `sejours === null` SIGNIFIE « JE N'AI PAS PU LIRE », et ce n'est pas
+// la même chose qu'un tableau vide, qui signifie « rien à annoncer ».
+//
+// La confusion des deux a coûté un message d'accueil le 31 août 2026 :
+// quand le calendrier ne répondait pas, la section disparaissait
+// simplement, et le digest arrivait parfaitement normal. Rien ne
+// distinguait « aucune arrivée demain » de « je n'ai rien pu lire » —
+// la panne silencieuse exacte contre laquelle ce projet est écrit.
+//
+// Désormais le digest le DIT. Un message de trop vaut mieux qu'un
+// silence ambigu : c'est le même raisonnement que le digest qui part
+// même les jours vides.
 function sectionSejours(sejours, ajd, etat, mode) {
-    var demain = sejoursGite.sejoursAAnnoncer(sejours, ajd);
-    if (!demain.arrivees.length && !demain.departs.length) return [];
+    // ⚠ SEUL `null` veut dire « je n'ai pas pu lire ». `undefined` — un
+    // appelant qui ne passe simplement pas de séjours — ne doit rien
+    // déclencher : confondre les deux ferait crier à la panne un appelant
+    // qui n'a jamais demandé le gîte.
+    if (sejours === null) {
+        return ['', '⚠️ <b>Calendrier du gîte injoignable</b>',
+                '<i>Impossible de savoir s\'il y a une arrivée ou un départ. '
+                + 'À vérifier à la main.</i>'];
+    }
+
+    var aVenir = sejoursGite.sejoursAAnnoncer(sejours, ajd);
+    if (!aVenir.arrivees.length && !aVenir.departs.length) return [];
 
     var lignes = [];
     // Les départs d'abord : le ménage s'enchaîne derrière, c'est ce qui
     // engage le plus de monde.
-    demain.departs.forEach(function(sejour) {
+    aVenir.departs.forEach(function(sejour) {
         lignes.push('');
         lignes = lignes.concat(lignesSejour(sejour, 'depart', etat, mode));
     });
-    demain.arrivees.forEach(function(sejour) {
+    aVenir.arrivees.forEach(function(sejour) {
         lignes.push('');
         lignes = lignes.concat(lignesSejour(sejour, 'arrivee', etat, mode));
     });

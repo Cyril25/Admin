@@ -137,7 +137,12 @@ async function tourDeGarde(env, aBlanc = false) {
         // re-demandé le soir (« le message est-il parti ? »). C'est la
         // seule répétition assumée du notifieur — voir lignesSejour dans
         // notifieur-messages.js pour la raison.
-        let sejours = [];
+        // ⚠ `null` ET `[]` NE VEULENT PAS DIRE LA MÊME CHOSE. Un tableau
+        // vide dit « rien à annoncer » ; `null` dit « je n'ai pas pu
+        // lire ». Les confondre a coûté un message d'accueil le 31 août
+        // 2026 : la section disparaissait en silence et le digest
+        // arrivait normal.
+        let sejours = listeComplete ? null : [];
         let etatGite = null;
         if (listeComplete) {
             try {
@@ -146,10 +151,10 @@ async function tourDeGarde(env, aBlanc = false) {
                 etatGite = gite.etat;
                 bilan.sejoursLus = sejours.length;
             } catch (erreur) {
-                // ⚠ NE JAMAIS FAIRE TOMBER LE DIGEST POUR ÇA. Le calendrier
-                // du gîte est une source externe : si elle est en panne, les
-                // tâches n'ont pas à en souffrir. La section disparaît, le
-                // reste du digest part quand même, et le bilan le dit.
+                // Le digest part quand même — le gîte est une source
+                // externe, sa panne ne doit pas priver des tâches. Mais
+                // il part en le DISANT : `sejours` reste à null, et la
+                // section devient un avertissement.
                 bilan.giteIndisponible = String((erreur && erreur.message) || erreur);
                 console.warn('Calendrier du gîte indisponible :', bilan.giteIndisponible);
             }

@@ -380,8 +380,11 @@ verifie('la veille de l\'arrivee, l\'arrivee est annoncee',
 const veilleDepart = sejoursGite.sejoursAAnnoncer(lus, '2026-08-29');
 verifie('la veille du depart, le depart est annonce',
   veilleDepart.departs.length === 1 && veilleDepart.arrivees.length === 0);
-verifie('le jour meme de l\'arrivee, plus rien',
-  sejoursGite.sejoursAAnnoncer(lus, '2026-08-28').arrivees.length === 0);
+// ⚠ CETTE ASSERTION DISAIT L'INVERSE JUSQU'AU 31 AOUT 2026. Le jour
+// meme ne produisait rien, et c'est exactement ce qui a laisse passer
+// un message d'accueil. Le libelle distinct est teste plus bas.
+verifie('le jour meme de son arrivee, un dernier rappel part',
+  sejoursGite.sejoursAAnnoncer(lus, '2026-08-28').arrivees.length === 1);
 verifie('un jour sans rien ne produit rien',
   sejoursGite.sejoursAAnnoncer(lus, '2026-09-15').arrivees.length === 0
   && sejoursGite.sejoursAAnnoncer(lus, '2026-09-15').departs.length === 0);
@@ -515,6 +518,56 @@ verifie('un bilan sans taches part quand meme si le gite parle',
   messages.bilanDuSoir([], '2026-08-27', '20:00', lus, etatGite) !== null);
 verifie('...et se tait toujours quand il n\'y a vraiment rien',
   messages.bilanDuSoir([], '2026-09-15', '20:00', lus, etatGite) === null);
+
+// ============================================================
+// LES DEUX DEFAUTS DU 31 AOUT 2026
+// ============================================================
+// Un message d'accueil n'est pas parti, et ca a pose de vrais problemes.
+// Le diagnostic a trouve deux fautes de conception, pas un bug de calcul.
+
+// ---- Defaut 1 : la panne du calendrier etait INDETECTABLE ----
+// `null` veut dire « je n'ai pas pu lire », `[]` veut dire « rien a
+// annoncer ». Les confondre faisait disparaitre la section en silence :
+// le digest arrivait parfaitement normal, et rien ne distinguait
+// « aucune arrivee demain » de « je n'ai rien pu lire ».
+const digestPanne = messages.digestDuMatin([], '2026-08-27', '07:30', null, null).texte;
+verifie('un calendrier injoignable est ANNONCE, pas tu',
+  digestPanne.indexOf('Calendrier du gîte injoignable') !== -1, digestPanne);
+verifie('...et le digest part quand meme, le gite etant une source externe',
+  messages.digestDuMatin([], '2026-08-27', '07:30', null, null) !== null);
+// Un tableau VIDE, lui, doit rester silencieux : il n'y a vraiment rien.
+verifie('un calendrier lu mais vide ne dit rien',
+  messages.digestDuMatin([], '2026-08-27', '07:30', [], null)
+    .texte.indexOf('injoignable') === -1);
+verifie('le Worker passe null quand la lecture echoue, pas un tableau vide',
+  /let sejours = listeComplete \? null : \[\]/.test(workerSource));
+
+// ---- Defaut 2 : rien ne rattrapait le JOUR MEME ----
+// Le notifieur n'annoncait que demain. Des que la veille echouait —
+// reseau, message survole, telephone en silencieux — plus rien ne
+// rattrapait. Un rappel qui n'a qu'une seule chance n'est pas un filet.
+const veille = sejoursGite.sejoursAAnnoncer(lus, '2026-08-27');
+const leJourMeme = sejoursGite.sejoursAAnnoncer(lus, '2026-08-28');
+verifie('la veille annonce toujours l\'arrivee',
+  veille.arrivees.length === 1 && veille.arrivees[0].quand === 'demain');
+verifie('LE JOUR MEME l\'annonce aussi, en dernier filet',
+  leJourMeme.arrivees.length === 1 && leJourMeme.arrivees[0].quand === 'aujourdhui',
+  JSON.stringify(leJourMeme.arrivees.map((a) => a.quand)));
+verifie('...et le libelle DIFFERE, pour qu\'on sache que ca se joue',
+  messages.digestDuMatin([], '2026-08-28', '07:30', lus, etatGite)
+    .texte.indexOf("Arrivée AUJOURD'HUI") !== -1);
+verifie('...tandis que la veille dit bien « demain »',
+  digestGite.indexOf('Arrivée demain') !== -1
+  && digestGite.indexOf("AUJOURD'HUI") === -1);
+// Le surlendemain n'est pas annonce : deux jours d'avance seraient du
+// bruit, on ne prepare pas un accueil 48 h en avance.
+verifie('le surlendemain n\'est pas annonce',
+  sejoursGite.sejoursAAnnoncer(lus, '2026-08-26').arrivees.length === 0);
+// Le depart aussi doit avoir son filet du jour meme.
+verifie('un depart est annonce la veille ET le jour meme',
+  sejoursGite.sejoursAAnnoncer(lus, '2026-08-29').departs.length === 1
+  && sejoursGite.sejoursAAnnoncer(lus, '2026-08-30').departs.length === 1
+  && sejoursGite.sejoursAAnnoncer(lus, '2026-08-30').departs[0].quand === 'aujourdhui');
 
 // ⚠ LE GITE NE DOIT JAMAIS FAIRE TOMBER LE DIGEST. C'est une source
 // EXTERNE au hub : si elle est en panne, les taches n'ont pas a en

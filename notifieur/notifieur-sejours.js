@@ -161,20 +161,40 @@ function analyserIcal(texte) {
 }
 
 // ------------------------------------------------------------
-// 4. Ce qu'il faut annoncer demain
+// 4. Ce qu'il faut annoncer
 // ------------------------------------------------------------
-// Un seul jour d'avance, et le même des deux côtés : on prévient la
-// veille de l'arrivée pour le message d'accueil, la veille du départ
-// pour le message de sortie. Prévenir le jour même serait trop tard —
-// les gens sont déjà en route.
+// La veille pour préparer, LE JOUR MÊME pour rattraper.
+//
+// ⚠ LE JOUR MÊME EXISTE PARCE QU'IL A MANQUÉ. Le 31 août 2026, un
+// message d'accueil n'est pas parti et ça a posé de vrais problèmes.
+// Le notifieur n'annonçait alors QUE demain : dès que la veille échouait
+// — réseau, message survolé, téléphone en silencieux — plus rien ne
+// rattrapait. Un rappel qui n'a qu'une seule chance n'est pas un filet.
+//
+// Le jour même n'est pas « trop tard » : les gens arrivent en fin
+// d'après-midi, un message envoyé le matin arrive largement à temps.
+// C'est simplement moins confortable que la veille, d'où le libellé
+// distinct — voir `lignesSejour` dans notifieur-messages.js.
 function sejoursAAnnoncer(sejours, ajd) {
     var demain = calcul.ajouterJours(ajd, 1);
     var parDate = function(a, b) { return a.debut < b.debut ? -1 : 1; };
-
-    return {
-        arrivees: (sejours || []).filter(function(s) { return s.debut === demain; }).sort(parDate),
-        departs: (sejours || []).filter(function(s) { return s.fin === demain; }).sort(parDate)
+    var quand = function(date) {
+        if (date === ajd) return 'aujourdhui';
+        if (date === demain) return 'demain';
+        return '';
     };
+
+    var marquer = function(champ) {
+        return (sejours || [])
+            .map(function(s) {
+                var q = quand(s[champ]);
+                return q ? Object.assign({}, s, { quand: q }) : null;
+            })
+            .filter(Boolean)
+            .sort(parDate);
+    };
+
+    return { arrivees: marquer('debut'), departs: marquer('fin') };
 }
 
 // ------------------------------------------------------------
