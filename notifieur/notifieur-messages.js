@@ -195,17 +195,17 @@ function dansLaFenetreDuDigest(heure) {
 }
 
 // ------------------------------------------------------------
-// 5 bis. Le gîte — arrivées et départs de demain
+// 5 bis. Le gîte — une séquence, pas une répétition
 // ------------------------------------------------------------
-// Une section du digest, pas un message à part : elle tomberait à la
-// même minute que lui, et deux notifications simultanées font qu'on en
-// lit une distraitement.
+// Chaque rappel porte une action DIFFÉRENTE, à son moment utile. La
+// table qui les décrit vit dans notifieur-sejours.js, avec le
+// raisonnement sur les heures.
 //
-// C'est la seule partie du notifieur qui ne parle pas de `taches`. Elle
-// vient du flux iCal du gîte, analysé par notifieur-sejours.js — et
-// c'est délibérément le digest du matin qui la porte : prévenir la
-// veille laisse le temps d'écrire, prévenir le jour même ne sert plus à
-// rien puisque les gens sont déjà en route.
+// ⚠ ACTION ET INFORMATION DOIVENT SE DISTINGUER SANS ÊTRE LUES.
+// Deux icônes de même poids — ℹ️ et ➡️ — se confondaient à l'usage.
+// L'asymétrie est donc dans le ton : l'action crie en majuscules avec un
+// rond rouge, l'information chuchote en minuscules. On voit lequel est
+// lequel avant même de lire.
 function periodeCourte(debut, fin) {
     var d = dateLocale(debut);
     var f = dateLocale(fin);
@@ -223,62 +223,65 @@ function dateLocale(iso) {
     return new Date(Number(bouts[0]), Number(bouts[1]) - 1, Number(bouts[2]));
 }
 
-// `etat` est le JSON de l'endpoint ménage : il porte, sous
-// `info_<date d'arrivée>`, le nombre de personnes et la LANGUE. Les deux
-// comptent pour écrire le message — on n'accueille pas trois Allemands
-// comme un couple de Français. Absent, la ligne disparaît sans bruit.
-// ⚠ POURQUOI CETTE SECTION EST LA SEULE QU'ON RÉPÈTE DANS LA JOURNÉE.
-//
-// Une tâche se coche : le notifieur sait qu'elle est faite et se tait.
-// Le gîte n'a pas de « fait » — rien ne dira jamais que le message est
-// parti. Le choix est donc binaire : une seule chance, ou deux.
-//
-// Et l'oubli ne coûte pas à celui qui oublie. Une corvée repoussée
-// n'ennuie que soi ; des clients qui arrivent sans code d'entrée, non.
-// C'est le seul endroit du notifieur où répéter se justifie.
-//
-// Le soir n'est donc pas une copie mais un FILET, et la ligne d'action
-// le dit : « envoyer » le matin, « envoyé ? » le soir. Le reste du bloc
-// est identique, pour pouvoir écrire sur-le-champ sans rien rouvrir.
-function lignesSejour(sejour, sens, etat, mode) {
-    var lignes = [];
-    var quoi = (sens === 'arrivee') ? 'Arrivée' : 'Départ';
-    // « aujourd'hui » n'est pas « demain » : c'est le dernier rappel
-    // avant que ça se joue, et il doit se lire comme tel.
-    var quand = (sejour.quand === 'aujourdhui') ? "AUJOURD'HUI" : 'demain';
+// Le prénom des voyageurs, leur nombre, la langue — tout ce qui aide à
+// écrire. Vient de `info_<date d'arrivée>` dans l'état ménage, et
+// disparaît sans bruit quand ce n'est pas rempli.
+function detailsVoyageurs(sejour, etat) {
+    var details = sejoursGite.detailsArrivee(etat, sejour.debut);
+    if (!details) return '';
 
-    // Une flèche plutôt qu'une maison : le message porte déjà « Gîte »
-    // en en-tête, et le sens de la flèche dit d'un coup d'œil s'il faut
-    // accueillir ou saluer.
-    lignes.push((sens === 'arrivee' ? '➡️' : '⬅️') + ' <b>' + quoi + ' ' + quand + ' — '
-        + echapper(sejoursGite.libellePlateforme(sejour.plateforme)) + '</b>');
-
-    var precisions = [];
-    if (sens === 'arrivee') {
-        var details = sejoursGite.detailsArrivee(etat, sejour.debut);
-        if (details && details.personnes) {
-            precisions.push(details.personnes + ' personne' + (details.personnes > 1 ? 's' : ''));
-        }
-        if (details && sejoursGite.libelleLangue(details.langue)) {
-            precisions.push(sejoursGite.libelleLangue(details.langue));
-        }
+    var bouts = [];
+    if (details.voyageurs) bouts.push(details.voyageurs);
+    if (details.personnes) bouts.push(details.personnes + ' pers.');
+    if (sejoursGite.libelleLangue(details.langue)) {
+        bouts.push(sejoursGite.libelleLangue(details.langue));
     }
-    precisions.push(periodeCourte(sejour.debut, sejour.fin));
-    lignes.push(echapper(precisions.filter(Boolean).join(' · ')));
+    return bouts.join(' · ');
+}
 
-    var lequel = (sens === 'arrivee') ? "d'arrivée" : 'de départ';
-    lignes.push(mode === 'rappel'
-        ? '→ message ' + lequel + ' envoyé ?'
-        : '→ envoyer le message ' + lequel);
+function blocRappel(du, etat) {
+    var rappel = du.rappel;
+    var sejour = du.sejour;
+    var lignes = [];
 
-    // Le lien de réservation vaut de l'or dans un message : un lien à
-    // toucher plutôt qu'une réservation à retrouver à la main. Airbnb le
-    // donne ; les blocages et Booking, non.
-    if (sejour.lien) lignes.push(echapper(sejour.lien));
+    var quoi = (rappel.sur === 'arrivee') ? 'Arrivée' : 'Départ';
+    var quand = rappel.veille ? 'demain' : 'aujourd\'hui';
+    var plateforme = sejoursGite.libellePlateforme(sejour.plateforme);
 
-    if (sens === 'arrivee') {
-        var infos = sejoursGite.detailsArrivee(etat, sejour.debut);
-        if (infos && infos.commentaire) lignes.push('<i>' + echapper(infos.commentaire) + '</i>');
+    if (rappel.action) {
+        // L'en-tête dit d'abord À QUI c'est. Dans un groupe partagé,
+        // c'est l'information qui décide si le message vous concerne —
+        // et sans elle on retombe sur « je pensais que tu t'en
+        // occupais », qui a déjà coûté un message d'accueil.
+        lignes.push('🔴 <b>À FAIRE — ' + echapper(sejoursGite.responsableDe(sejour.plateforme))
+            + '</b> <i>(' + echapper(plateforme) + ')</i>');
+    } else {
+        lignes.push('▫️ <i>pour info</i>');
+    }
+
+    // Pour une INFO, le libellé du rappel EST le contexte — « Arrivée ce
+    // soir » dit déjà quoi et quand. Le répéter en tête ferait lire deux
+    // fois la même chose dans un message de trois lignes.
+    var contexte = [rappel.action ? (quoi + ' ' + quand) : rappel.info];
+    var voyageurs = detailsVoyageurs(sejour, etat);
+    if (voyageurs) contexte.push(voyageurs);
+    if (!rappel.action) contexte.push(plateforme);
+    lignes.push(echapper(contexte.join(' · ')));
+
+    if (rappel.action) {
+        lignes.push(echapper(periodeCourte(sejour.debut, sejour.fin)));
+        lignes.push('→ ' + echapper(rappel.action));
+        // Le lien de réservation vaut de l'or : un lien à toucher plutôt
+        // qu'une réservation à retrouver à la main.
+        if (sejour.lien) lignes.push(echapper(sejour.lien));
+
+        // Le commentaire du ménage n'a de sens que pour une arrivée.
+        var details = sejoursGite.detailsArrivee(etat, sejour.debut);
+        if (rappel.sur === 'arrivee' && details && details.commentaire) {
+            lignes.push('<i>' + echapper(details.commentaire) + '</i>');
+        }
+    } else if (rappel.suite) {
+        lignes.push('<i>' + echapper(rappel.suite) + '</i>');
     }
 
     return lignes;
@@ -289,60 +292,35 @@ function lignesSejour(sejour, sens, etat, mode) {
 //
 // La confusion des deux a coûté un message d'accueil le 31 août 2026 :
 // quand le calendrier ne répondait pas, la section disparaissait
-// simplement, et le digest arrivait parfaitement normal. Rien ne
-// distinguait « aucune arrivée demain » de « je n'ai rien pu lire » —
-// la panne silencieuse exacte contre laquelle ce projet est écrit.
-//
-// Désormais le digest le DIT. Un message de trop vaut mieux qu'un
-// silence ambigu : c'est le même raisonnement que le digest qui part
-// même les jours vides.
-// Le gîte part maintenant dans SON PROPRE message, sur le canal partagé.
-// Deux clés distinctes — matin et soir — pour que la déduplication ne
-// confonde pas l'annonce et son filet.
-function cleGite(ajd, mode) {
-    return (mode === 'rappel' ? 'gite-soir:' : 'gite:') + ajd;
-}
+// simplement et le message arrivait parfaitement normal.
+function messageGite(sejours, ajd, heure, etat) {
+    var fenetre = sejoursGite.fenetreGite(heure);
+    if (!fenetre) return null;
 
-function messageGite(sejours, ajd, etat, mode) {
-    var lignes = sectionSejours(sejours, ajd, etat, mode);
-    if (!lignes.length) return null;
+    var entete = '🏠 <b>' + echapper(jourEnLettres(ajd)) + '</b>';
 
-    // Un en-tête, puisque le message ne s'appuie plus sur celui du
-    // digest. La première ligne de `sectionSejours` est vide : elle
-    // séparait deux sections, elle n'a plus lieu d'être en tête.
-    var entete = '🏠 <b>Gîte — ' + echapper(jourEnLettres(ajd)) + '</b>';
-    while (lignes.length && lignes[0] === '') lignes.shift();
-
-    return { cle: cleGite(ajd, mode), texte: entete + '\n\n' + lignes.join('\n'), canal: 'gite' };
-}
-
-function sectionSejours(sejours, ajd, etat, mode) {
-    // ⚠ SEUL `null` veut dire « je n'ai pas pu lire ». `undefined` — un
-    // appelant qui ne passe simplement pas de séjours — ne doit rien
-    // déclencher : confondre les deux ferait crier à la panne un appelant
-    // qui n'a jamais demandé le gîte.
-    if (sejours === null) {
-        return ['', '⚠️ <b>Calendrier du gîte injoignable</b>',
-                '<i>Impossible de savoir s\'il y a une arrivée ou un départ. '
-                + 'À vérifier à la main.</i>'];
+    if (sejours === null || sejours === undefined) {
+        return {
+            cle: sejoursGite.cleGite(ajd, fenetre),
+            canal: 'gite',
+            texte: entete + '\n\n⚠️ <b>Calendrier du gîte injoignable</b>\n'
+                + '<i>Impossible de savoir s\'il y a une arrivée ou un départ. '
+                + 'À vérifier à la main.</i>'
+        };
     }
 
-    var aVenir = sejoursGite.sejoursAAnnoncer(sejours, ajd);
-    if (!aVenir.arrivees.length && !aVenir.departs.length) return [];
+    var dus = sejoursGite.rappelsDus(sejours, ajd, heure);
+    if (!dus.length) return null;
 
-    var lignes = [];
-    // Les départs d'abord : le ménage s'enchaîne derrière, c'est ce qui
-    // engage le plus de monde.
-    aVenir.departs.forEach(function(sejour) {
-        lignes.push('');
-        lignes = lignes.concat(lignesSejour(sejour, 'depart', etat, mode));
-    });
-    aVenir.arrivees.forEach(function(sejour) {
-        lignes.push('');
-        lignes = lignes.concat(lignesSejour(sejour, 'arrivee', etat, mode));
-    });
-    return lignes;
+    var blocs = dus.map(function(du) { return blocRappel(du, etat).join('\n'); });
+
+    return {
+        cle: sejoursGite.cleGite(ajd, fenetre),
+        canal: 'gite',
+        texte: entete + '\n\n' + blocs.join('\n\n')
+    };
 }
+
 
 function digestDuMatin(taches, ajd, heure) {
     if (!dansLaFenetreDuDigest(heure)) return null;
@@ -494,11 +472,8 @@ function bilanDuSoir(taches, ajd, heure) {
              canal: 'taches' };
 }
 
-function texteBilan(ajd, basculent, nonTenus, demain, gite) {
+function texteBilan(ajd, basculent, nonTenus, demain) {
     var lignes = ['🌙 <b>' + echapper(jourEnLettres(ajd)) + '</b> — bilan'];
-
-    // En tête comme au matin : c'est ce qui engage quelqu'un d'autre.
-    lignes = lignes.concat(gite || []);
 
     if (basculent.length) {
         lignes.push('');
@@ -563,17 +538,20 @@ function messagesDus(taches, ajd, heure, listeComplete, sejours, etat) {
         var bilan = bilanDuSoir(taches, ajd, heure);
         if (bilan) messages.push(bilan);
 
-        // Le gîte suit les mêmes fenêtres que les résumés — annoncé le
-        // matin, redemandé le soir — mais part sur son propre canal, à
-        // son propre public.
-        if (dansLaFenetreDuDigest(heure)) {
-            var giteMatin = messageGite(sejours, ajd, etat, 'annonce');
-            if (giteMatin) messages.push(giteMatin);
-        } else if (dansLaFenetreDuBilan(heure)) {
-            var giteSoir = messageGite(sejours, ajd, etat, 'rappel');
-            if (giteSoir) messages.push(giteSoir);
-        }
     }
+
+    // ⚠ LE GÎTE A SES PROPRES FENÊTRES — 11 h, 12 h, 17 h, 18 h — et ne
+    // dépend plus de celles des résumés personnels. Deux publics, deux
+    // rythmes : 07:30 est trop tôt pour agir et 20:00 trop tard, alors
+    // que ces heures-là sont des moments où l'on a son téléphone et une
+    // main libre.
+    //
+    // Il n'est pas non plus soumis à `listeComplete` : ce drapeau dit si
+    // la liste des TÂCHES est complète, or le gîte n'en lit aucune. Les
+    // lier ferait disparaître les rappels du logement chaque fois qu'un
+    // résumé personnel est déjà parti.
+    var gite = messageGite(sejours, ajd, heure, etat);
+    if (gite) messages.push(gite);
 
     return messages.concat(rappelsCreneaux(taches, ajd, heure));
 }
@@ -597,15 +575,14 @@ module.exports = {
     cleRappel: cleRappel,
     cleDigest: cleDigest,
     cleBilan: cleBilan,
-    cleGite: cleGite,
     messageGite: messageGite,
+    blocRappel: blocRappel,
     dansLaFenetreDuDigest: dansLaFenetreDuDigest,
     dansLaFenetreDuBilan: dansLaFenetreDuBilan,
     dansUneFenetreDeResume: dansUneFenetreDeResume,
     bilanDuSoir: bilanDuSoir,
     rappelsCreneaux: rappelsCreneaux,
     digestDuMatin: digestDuMatin,
-    sectionSejours: sectionSejours,
     periodeCourte: periodeCourte,
     messagesDus: messagesDus
 };

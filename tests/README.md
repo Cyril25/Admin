@@ -52,11 +52,16 @@ recouvrent jamais** : les deux résumés annonceraient sinon la même journée d
 deux angles, à la suite. Et que la fenêtre du soir ne franchit pas minuit — au-delà, le
 « demain » du message ne serait plus demain.
 
-**Le gîte** ajoute une vingtaine d'assertions sur la lecture du flux iCal. Le piège figé est
-le **repliage de lignes** : une ligne iCal se coupe au-delà de 75 octets, et la `DESCRIPTION`
-d'Airbnb — qui porte l'URL de la réservation — est toujours repliée. Sans dépliage, le lien
-part tronqué dans le message, et rien ne le signale avant qu'on tape dessus. Le gabarit du
-test reprend exactement la coupure du vrai flux.
+**Le gîte** ajoute une quarantaine d'assertions. Les pièges figés y sont de deux ordres.
+Sur le **format iCal** : le repliage des lignes à 75 octets, sans lequel l'URL de
+réservation arrive tronquée — un lien mort que personne ne voit avant d'avoir tapé dessus —
+et la lecture de `DTEND` comme date de départ réelle. Sur la **séquence** : que les six
+rappels portent bien six gestes distincts, que 17 h et 18 h n'ouvrent jamais la même fenêtre
+(la borne haute est exclue, sinon deux messages porteraient la même clé), et qu'il n'existe
+**aucune action de départ le jour même** — les voyageurs partent le matin, une action à
+11 h arriverait après leur voiture. Une assertion vérifie enfin que l'action et
+l'information ne se ressemblent pas : `🔴 À FAIRE` contre `▫️ pour info`, parce que deux
+icônes de même poids se confondaient à l'usage.
 
 L'autre cas verrouillé est la **provenance** : la plateforme se lit dans le domaine de
 l'`UID`, jamais dans le libellé. Et un `Airbnb (Not available)` compte comme une arrivée

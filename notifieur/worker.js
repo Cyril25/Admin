@@ -81,7 +81,19 @@ export default {
         if (url.searchParams.get('cle') !== env.TELEGRAM_TOKEN) {
             return new Response('Non.', { status: 403 });
         }
-        const bilan = await tourDeGarde(env, url.searchParams.get('blanc') === '1');
+        // ⚠ SIMULATION D'UNE AUTRE DATE. `?jour=2026-09-02&heure=07:30`
+        // rejoue le tour de garde comme si on y était. Les messages
+        // partent POUR DE VRAI — c'est tout l'intérêt, on veut les voir
+        // arriver — mais la mémoire des envois n'est ni consultée ni
+        // écrite : le vrai message du jour simulé partira quand même à
+        // son heure. Sans cette précaution, tester le 2 septembre
+        // supprimerait le rappel du 2 septembre.
+        const jourSimule = url.searchParams.get('jour');
+        const simule = jourSimule
+            ? { jour: jourSimule, heure: url.searchParams.get('heure') || '07:30' }
+            : null;
+
+        const bilan = await tourDeGarde(env, url.searchParams.get('blanc') === '1', simule);
         return new Response(JSON.stringify(bilan, null, 2), {
             headers: { 'content-type': 'application/json; charset=utf-8' }
         });
@@ -94,11 +106,22 @@ export default {
 // `aBlanc` calcule et rend le bilan SANS rien envoyer ni marquer comme
 // envoyé. C'est ce qui permet d'essayer un réglage à 15 h sans polluer la
 // conversation, et sans consommer les clés de déduplication du jour.
-async function tourDeGarde(env, aBlanc = false) {
-    const bilan = { instant: new Date().toISOString(), aBlanc, erreur: null };
+async function tourDeGarde(env, aBlanc = false, simule = null) {
+    const bilan = {
+        instant: new Date().toISOString(),
+        aBlanc,
+        simule: simule ? simule.jour + ' ' + simule.heure : null,
+        erreur: null
+    };
 
     try {
-        const maintenant = instantParisien();
+        const maintenant = simule || instantParisien();
+
+        // En simulation, la mémoire est ignorée dans les deux sens : on
+        // ne saute rien parce que « c'est déjà parti », et on ne marque
+        // rien comme parti. Le vrai rappel du jour simulé tombera donc
+        // quand même à son heure.
+        const dejaFait = (cle) => simule ? Promise.resolve(false) : dejaEnvoye(env, cle);
         bilan.jour = maintenant.jour;
         bilan.heure = maintenant.heure;
 
@@ -135,18 +158,27 @@ async function tourDeGarde(env, aBlanc = false) {
             : await lireCreneauxProches(env, jeton, maintenant.jour);
         bilan.tachesLues = taches.length;
 
-        // Le gîte entre dans LES DEUX résumés : annoncé le matin,
-        // re-demandé le soir (« le message est-il parti ? »). C'est la
-        // seule répétition assumée du notifieur — voir lignesSejour dans
-        // notifieur-messages.js pour la raison.
+        // ⚠ LE GÎTE A SES PROPRES FENÊTRES — 11 h, 12 h, 17 h, 18 h — et
+        // ne suit plus celles des résumés personnels. Deux publics, deux
+        // rythmes : 07:30 est trop tôt pour agir, 20:00 trop tard.
+        //
+        // La clé de déduplication porte la fenêtre et le jour, pas le
+        // séjour : elle est donc calculable SANS avoir lu le calendrier.
+        // C'est ce qui permet d'interroger la mémoire d'abord, et de
+        // n'aller chercher le calendrier que s'il reste quelque chose à
+        // dire — la plupart des 288 tours n'ont rien à voir avec le gîte.
+        const fenetreGite = sejoursGite.fenetreGite(maintenant.heure);
+        const giteADire = !!fenetreGite
+            && !(await dejaFait(sejoursGite.cleGite(maintenant.jour, fenetreGite)));
+        bilan.fenetreGite = fenetreGite || null;
+
         // ⚠ `null` ET `[]` NE VEULENT PAS DIRE LA MÊME CHOSE. Un tableau
         // vide dit « rien à annoncer » ; `null` dit « je n'ai pas pu
         // lire ». Les confondre a coûté un message d'accueil le 31 août
-        // 2026 : la section disparaissait en silence et le digest
-        // arrivait normal.
-        let sejours = listeComplete ? null : [];
+        // 2026 : la section disparaissait en silence.
+        let sejours = giteADire ? null : [];
         let etatGite = null;
-        if (listeComplete) {
+        if (giteADire) {
             try {
                 const gite = await lireGite(env);
                 bilan.giteVia = env.GITE ? 'liaison de service' : 'URL publique';
@@ -172,7 +204,7 @@ async function tourDeGarde(env, aBlanc = false) {
 
         const aEnvoyer = [];
         for (const message of dus) {
-            if (await dejaEnvoye(env, message.cle)) continue;
+            if (await dejaFait(message.cle)) continue;
             aEnvoyer.push(message);
         }
         bilan.aEnvoyer = aEnvoyer.map((m) => m.canal + ' → ' + m.cle);
@@ -184,11 +216,20 @@ async function tourDeGarde(env, aBlanc = false) {
 
         bilan.envoyes = [];
         for (const message of aEnvoyer) {
-            await envoyerTelegram(env, message.texte, message.canal);
+            // Un message simulé se signale comme tel. Sans ça, un test du
+            // 2 septembre lancé le 1er ressemblerait au vrai rappel, et
+            // quelqu'un finirait par agir dessus — ou pire, par ignorer
+            // le vrai le lendemain en croyant l'avoir déjà lu.
+            const texte = simule
+                ? '🧪 <i>Simulation du ' + simule.jour + ' à ' + simule.heure + '</i>\n\n' + message.texte
+                : message.texte;
+
+            await envoyerTelegram(env, texte, message.canal);
+
             // Marqué APRÈS l'envoi, jamais avant : si Telegram échoue, le
             // prochain tour réessaiera. Une clé posée d'avance ferait
             // disparaître le message pour de bon, sans un mot.
-            await marquerEnvoye(env, message.cle);
+            if (!simule) await marquerEnvoye(env, message.cle);
             bilan.envoyes.push(message.canal + ' → ' + message.cle);
         }
     } catch (erreur) {

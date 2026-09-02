@@ -6,10 +6,10 @@
 // Ce fichier le lit et en tire les séjours ; il ne décide de rien
 // d'autre, et ne touche ni au réseau ni à l'horloge.
 //
-// À QUOI ÇA SERT : prévenir la veille d'une arrivée qu'il faut écrire le
-// message d'accueil, et la veille d'un départ qu'il faut écrire le
-// message de sortie. Aucune plateforme ne le fait à la place de
-// l'hôte, et c'est typiquement ce qu'on oublie.
+// À QUOI ÇA SERT : rappeler, à chaque moment utile, le geste que
+// personne ne fera à la place de l'hôte — demander l'heure d'arrivée,
+// envoyer la procédure, donner le code de la boîte à clés. Aucune
+// plateforme ne s'en charge, et c'est typiquement ce qu'on oublie.
 //
 // ------------------------------------------------------------
 // TROIS SORTES D'ÉVÉNEMENTS, ET IL A FALLU LES DONNÉES POUR LE VOIR
@@ -161,40 +161,136 @@ function analyserIcal(texte) {
 }
 
 // ------------------------------------------------------------
-// 4. Ce qu'il faut annoncer
+// 4. Qui écrit — la plateforme le dit
 // ------------------------------------------------------------
-// La veille pour préparer, LE JOUR MÊME pour rattraper.
+// Dans un groupe partagé, le message doit dire s'il est pour vous ou
+// pour l'autre. Sans ça on retombe sur « je pensais que tu t'en
+// occupais », qui a déjà coûté un message d'accueil.
 //
-// ⚠ LE JOUR MÊME EXISTE PARCE QU'IL A MANQUÉ. Le 31 août 2026, un
-// message d'accueil n'est pas parti et ça a posé de vrais problèmes.
-// Le notifieur n'annonçait alors QUE demain : dès que la veille échouait
-// — réseau, message survolé, téléphone en silencieux — plus rien ne
-// rattrapait. Un rappel qui n'a qu'une seule chance n'est pas un filet.
+// La répartition suit le canal de réservation : Airbnb est géré par
+// Alisson, Booking par Cyril, et le direct passe par WhatsApp — donc
+// Cyril aussi.
+var RESPONSABLE = {
+    airbnb: 'Alisson',
+    booking: 'Cyril',
+    direct: 'Cyril',
+    inconnu: 'à voir'
+};
+
+function responsableDe(plateforme) {
+    return RESPONSABLE[plateforme] || RESPONSABLE.inconnu;
+}
+
+// ------------------------------------------------------------
+// 5. Les six rappels, et pourquoi ceux-là
+// ------------------------------------------------------------
+// ⚠ CETTE TABLE A REMPLACÉ UNE RÉPÉTITION PAR UNE SÉQUENCE.
 //
-// Le jour même n'est pas « trop tard » : les gens arrivent en fin
-// d'après-midi, un message envoyé le matin arrive largement à temps.
-// C'est simplement moins confortable que la veille, d'où le libellé
-// distinct — voir `lignesSejour` dans notifieur-messages.js.
-function sejoursAAnnoncer(sejours, ajd) {
+// La première version disait trois fois la même chose — « envoyer le
+// message d'arrivée » — sans jamais préciser lequel. Une répétition, on
+// finit par l'ignorer ; une séquence d'actions distinctes, on la suit.
+//
+// Chaque ligne porte une action réelle, à son moment utile :
+//
+//   `veille: true`  → la veille de l'événement
+//   `veille: false` → le jour même
+//   `heure`         → l'heure d'ouverture de sa fenêtre
+//
+// LES HEURES VIENNENT DE L'USAGE, pas d'une symétrie. 07:30 et 20:00
+// avaient été choisis pour le rythme des tâches personnelles : trop tôt
+// pour agir le matin, trop tard le soir. Midi et 18 h sont des moments
+// où l'on a son téléphone et une main libre — c'est ce qui compte, parce
+// que le bon moment n'est pas celui où l'on peut LIRE mais celui où l'on
+// peut AGIR.
+//
+// ⚠ ASYMÉTRIE ARRIVÉE / DÉPART. Les voyageurs arrivent en fin
+// d'après-midi mais partent le matin. Un rappel de départ le jour même
+// n'existe donc qu'en information (11 h, « le logement est libre ») :
+// une action à cette heure-là arriverait après leur voiture.
+var RAPPELS_GITE = [
+    { cle: 'heure-arrivee', sur: 'arrivee', veille: true, heure: '12:00',
+      action: 'demander à quelle heure ils pensent arriver' },
+
+    { cle: 'procedure-arrivee', sur: 'arrivee', veille: true, heure: '18:00',
+      action: 'envoyer la procédure d\'arrivée' },
+
+    { cle: 'code-boite', sur: 'arrivee', veille: false, heure: '12:00',
+      action: 'envoyer le code de la boîte à clés, si besoin' },
+
+    // Une info, pas une action : elle dit que la maison va être occupée.
+    { cle: 'arrivee-ce-soir', sur: 'arrivee', veille: false, heure: '17:00',
+      info: 'Arrivée ce soir' },
+
+    { cle: 'procedure-depart', sur: 'depart', veille: true, heure: '18:00',
+      action: 'envoyer la procédure de départ' },
+
+    // Celle-ci est opérationnelle : le ménage peut commencer.
+    { cle: 'depart-libre', sur: 'depart', veille: false, heure: '11:00',
+      info: 'Départ ce matin', suite: 'Le logement est libre.' }
+];
+
+// Une heure d'ouverture, puis une heure pleine de rattrapage. Le cron
+// passe toutes les 5 minutes : douze occasions suffisent largement, et
+// la borne haute est EXCLUE pour que deux fenêtres consécutives — 17 h
+// et 18 h — ne se recouvrent jamais.
+var FENETRE_RAPPEL_MINUTES = 60;
+
+// L'heure d'ouverture de la fenêtre en cours, ou '' hors de toute
+// fenêtre. Le Worker s'en sert AVANT de lire le calendrier : la plupart
+// des tours n'ont rien à faire du gîte.
+function fenetreGite(heureCourante) {
+    var maintenant = calcul.minutesDeHeure(heureCourante);
+    if (maintenant === null) return '';
+
+    for (var i = 0; i < RAPPELS_GITE.length; i++) {
+        var ouverture = calcul.minutesDeHeure(RAPPELS_GITE[i].heure);
+        if (maintenant >= ouverture && maintenant < ouverture + FENETRE_RAPPEL_MINUTES) {
+            return RAPPELS_GITE[i].heure;
+        }
+    }
+    return '';
+}
+
+// ⚠ LA CLÉ PORTE LA FENÊTRE ET LE JOUR, PAS LE SÉJOUR.
+//
+// C'est délibéré : elle doit être calculable SANS avoir lu le
+// calendrier, pour que le Worker puisse interroger sa mémoire avant de
+// décider s'il vaut la peine d'aller le chercher. Un même rappel ne
+// pouvant tomber qu'une fois par jour, ça suffit à ne rien envoyer deux
+// fois.
+function cleGite(ajd, fenetre) {
+    return 'gite:' + fenetre + ':' + ajd;
+}
+
+// Ce qui est dû maintenant : [{ rappel, sejour }].
+//
+// Plusieurs rappels peuvent tomber dans la même fenêtre — typiquement à
+// 18 h, la procédure de départ d'un séjour et celle d'arrivée du
+// suivant, quand les deux s'enchaînent. Ils partent alors dans un seul
+// message, chacun dans son bloc.
+function rappelsDus(sejours, ajd, heureCourante) {
+    var fenetre = fenetreGite(heureCourante);
+    if (!fenetre) return [];
+
     var demain = calcul.ajouterJours(ajd, 1);
-    var parDate = function(a, b) { return a.debut < b.debut ? -1 : 1; };
-    var quand = function(date) {
-        if (date === ajd) return 'aujourdhui';
-        if (date === demain) return 'demain';
-        return '';
-    };
+    var dus = [];
 
-    var marquer = function(champ) {
-        return (sejours || [])
-            .map(function(s) {
-                var q = quand(s[champ]);
-                return q ? Object.assign({}, s, { quand: q }) : null;
-            })
-            .filter(Boolean)
-            .sort(parDate);
-    };
+    RAPPELS_GITE.forEach(function(rappel) {
+        if (rappel.heure !== fenetre) return;
+        var jourVise = rappel.veille ? demain : ajd;
+        var champ = (rappel.sur === 'arrivee') ? 'debut' : 'fin';
 
-    return { arrivees: marquer('debut'), departs: marquer('fin') };
+        (sejours || []).forEach(function(sejour) {
+            if (sejour[champ] === jourVise) dus.push({ rappel: rappel, sejour: sejour });
+        });
+    });
+
+    // Les actions avant les informations : ce qui demande un geste passe
+    // devant ce qui ne demande que d'être lu.
+    return dus.sort(function(a, b) {
+        var ordre = function(x) { return x.rappel.action ? 0 : 1; };
+        return ordre(a) - ordre(b);
+    });
 }
 
 // ------------------------------------------------------------
@@ -211,6 +307,17 @@ function detailsArrivee(etat, dateArrivee) {
     return {
         personnes: Number(info.nbPersons) || 0,
         langue: String(info.lang || '').toLowerCase(),
+        // ⚠ `voyageurs` et `comment` ne servent PAS au même public. Le
+        // commentaire s'adresse aux personnes qui font le ménage
+        // (« mettre le livret en allemand en premier ») et s'affiche
+        // pour tout le monde ; `voyageurs` est le prénom des occupants,
+        // saisi dans la vue admin de la page ménage et réservé aux
+        // notifications. Les mélanger ferait passer un prénom dans les
+        // consignes de ménage, et une consigne dans un message d'accueil.
+        //
+        // Nommé `voyageurs` et non `qui` : sur la page ménage, « Qui ? »
+        // désigne déjà la personne qui a fait le ménage.
+        voyageurs: String(info.voyageurs || '').trim(),
         commentaire: String(info.comment || '').trim()
     };
 }
@@ -231,7 +338,12 @@ module.exports = {
     libellePlateforme: libellePlateforme,
     lienDeReservation: lienDeReservation,
     analyserIcal: analyserIcal,
-    sejoursAAnnoncer: sejoursAAnnoncer,
+    RAPPELS_GITE: RAPPELS_GITE,
+    FENETRE_RAPPEL_MINUTES: FENETRE_RAPPEL_MINUTES,
+    responsableDe: responsableDe,
+    fenetreGite: fenetreGite,
+    cleGite: cleGite,
+    rappelsDus: rappelsDus,
     detailsArrivee: detailsArrivee,
     libelleLangue: libelleLangue
 };

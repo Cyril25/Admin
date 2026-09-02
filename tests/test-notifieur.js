@@ -237,9 +237,11 @@ verifie('le digest passe en tete, avant les rappels',
 verifie('hors fenetre du digest, il ne reste que les rappels',
   messages.messagesDus(journee, AJD, '13:50').every((m) => m.cle.indexOf('heure:') === 0),
   cles(messages.messagesDus(journee, AJD, '13:50')));
+// 17 h est desormais une fenetre du GITE : on prend 15 h, qui n'est une
+// fenetre de personne.
 verifie('a une heure creuse, rien ne part',
-  messages.messagesDus(journee, AJD, '17:00').length === 0,
-  cles(messages.messagesDus(journee, AJD, '17:00')));
+  messages.messagesDus(journee, AJD, '15:00').length === 0,
+  cles(messages.messagesDus(journee, AJD, '15:00')));
 
 // --- 9. Le bilan du soir ---------------------------------------------
 console.log('\n9. Le bilan du soir');
@@ -380,98 +382,155 @@ verifie('un evenement booking est etiquete Booking', lus[2].plateforme === 'book
 verifie('un UID d\'un autre domaine ne ment pas sur la plateforme',
   sejoursGite.plateformeDe('x@example.com', 'Reserved') === 'inconnu');
 
-// J-1 DES DEUX COTES : on previent la veille de l'arrivee pour ecrire le
-// message d'accueil, la veille du depart pour celui de sortie. Le jour
-// meme, les gens sont deja en route.
-const veilleArrivee = sejoursGite.sejoursAAnnoncer(lus, '2026-08-27');
-verifie('la veille de l\'arrivee, l\'arrivee est annoncee',
-  veilleArrivee.arrivees.length === 1 && veilleArrivee.departs.length === 0);
-const veilleDepart = sejoursGite.sejoursAAnnoncer(lus, '2026-08-29');
-verifie('la veille du depart, le depart est annonce',
-  veilleDepart.departs.length === 1 && veilleDepart.arrivees.length === 0);
-// ⚠ CETTE ASSERTION DISAIT L'INVERSE JUSQU'AU 31 AOUT 2026. Le jour
-// meme ne produisait rien, et c'est exactement ce qui a laisse passer
-// un message d'accueil. Le libelle distinct est teste plus bas.
-verifie('le jour meme de son arrivee, un dernier rappel part',
-  sejoursGite.sejoursAAnnoncer(lus, '2026-08-28').arrivees.length === 1);
-verifie('un jour sans rien ne produit rien',
-  sejoursGite.sejoursAAnnoncer(lus, '2026-09-15').arrivees.length === 0
-  && sejoursGite.sejoursAAnnoncer(lus, '2026-09-15').departs.length === 0);
+// ⚠ CE QUI EST DU DEPEND DESORMAIS DE L'HEURE, pas seulement du jour.
+// Chaque rappel a sa fenetre : demander l'heure d'arrivee a midi la
+// veille, la procedure a 18 h, le code le jour meme a midi.
+verifie('la veille a midi, on demande a quelle heure ils arrivent',
+  sejoursGite.rappelsDus(lus, '2026-08-27', '12:00')
+    .some((d) => d.rappel.cle === 'heure-arrivee'));
+verifie('la veille a 18 h, la procedure entrante',
+  sejoursGite.rappelsDus(lus, '2026-08-27', '18:00')
+    .some((d) => d.rappel.cle === 'procedure-arrivee'));
+verifie('la veille du depart a 18 h, la procedure de depart',
+  sejoursGite.rappelsDus(lus, '2026-08-29', '18:00')
+    .some((d) => d.rappel.cle === 'procedure-depart'));
+// ⚠ LE JOUR MEME EXISTE PARCE QU'IL A MANQUE. Le 31 aout 2026, un
+// message d'accueil n'est pas parti : le notifieur n'annoncait alors que
+// demain, et des que la veille echouait, plus rien ne rattrapait.
+verifie('le jour meme, le code de la boite reste a envoyer',
+  sejoursGite.rappelsDus(lus, '2026-08-28', '12:00')
+    .some((d) => d.rappel.cle === 'code-boite'));
+verifie('un jour sans sejour ne produit rien',
+  sejoursGite.rappelsDus(lus, '2026-09-15', '12:00').length === 0);
+verifie('hors fenetre non plus',
+  sejoursGite.rappelsDus(lus, '2026-08-27', '09:00').length === 0);
 
-// --- Le message du gite, sur son propre canal ------------------------
+function premiereLigne(texte) { return texte.split('\n')[0]; }
+
+// --- Les six rappels du gite -----------------------------------------
 const etatGite = {
-  'info_2026-08-28': { nbPersons: 3, comment: 'Livret en allemand en premier', lang: 'de' }
+  'info_2026-08-28': { nbPersons: 3, comment: 'Livret en allemand en premier',
+                       lang: 'de', voyageurs: 'Marie et Paul' }
 };
-const giteMatin = messages.messageGite(lus, '2026-08-27', etatGite, 'annonce');
 
-// ⚠ DEUX CANAUX, DEUX PUBLICS. Le gite part sur le bot partage, ou l'on
-// peut inviter quelqu'un sans lui donner au passage la liste des corvees
-// personnelles. C'est le PARTAGE qui a impose la separation : tant que
-// tout allait au meme endroit, une section du digest suffisait.
-verifie('le message du gite part sur le canal partage',
-  giteMatin.canal === 'gite', giteMatin.canal);
-verifie('...et porte sa propre cle de deduplication',
-  giteMatin.cle === 'gite:2026-08-27', giteMatin.cle);
-verifie('...distincte de celle du soir',
-  messages.cleGite('2026-08-27', 'annonce') !== messages.cleGite('2026-08-27', 'rappel'));
+// ⚠ UNE SEQUENCE, PAS UNE REPETITION. La premiere version disait trois
+// fois « envoyer le message d'arrivee » sans jamais preciser lequel. Une
+// repetition, on finit par l'ignorer ; une suite d'actions distinctes,
+// on la suit.
+verifie('six rappels, chacun son action', sejoursGite.RAPPELS_GITE.length === 6,
+  String(sejoursGite.RAPPELS_GITE.length));
+verifie('quatre sont des actions, deux des informations',
+  sejoursGite.RAPPELS_GITE.filter((r) => r.action).length === 4
+  && sejoursGite.RAPPELS_GITE.filter((r) => r.info).length === 2);
 
-const texteGite = giteMatin.texte;
-verifie('il porte son propre en-tete, ne s\'appuyant plus sur le digest',
-  texteGite.indexOf('Gîte — jeudi 27 août') !== -1, texteGite);
-verifie('la plateforme est nommee', texteGite.indexOf('Arrivée demain — Airbnb') !== -1);
-// Le nombre de personnes et la LANGUE viennent de l'etat menage : on
-// n'accueille pas trois Allemands comme un couple de Francais.
-verifie('le nombre de personnes et la langue y sont',
-  texteGite.indexOf('3 personnes') !== -1 && texteGite.indexOf('en allemand') !== -1);
-verifie('la periode est lisible', texteGite.indexOf('du 28 au 30 août') !== -1, texteGite);
-verifie('le commentaire du menage est repris',
-  texteGite.indexOf('Livret en allemand en premier') !== -1);
-verifie('le lien de reservation est la, entier',
-  texteGite.indexOf('details/HMY45JSW55') !== -1);
+// ⚠ LES FENETRES NE SE RECOUVRENT JAMAIS. 17 h et 18 h se suivent d'une
+// heure : sans borne haute EXCLUE, les deux seraient ouvertes a 18 h et
+// deux messages porteraient la meme cle.
+verifie('chaque heure ouvre sa propre fenetre',
+  sejoursGite.fenetreGite('11:30') === '11:00'
+  && sejoursGite.fenetreGite('12:30') === '12:00'
+  && sejoursGite.fenetreGite('17:59') === '17:00'
+  && sejoursGite.fenetreGite('18:00') === '18:00');
+verifie('...et hors fenetre, rien',
+  sejoursGite.fenetreGite('10:30') === '' && sejoursGite.fenetreGite('13:00') === ''
+  && sejoursGite.fenetreGite('19:00') === '' && sejoursGite.fenetreGite('07:30') === '');
 
-// Un depart n'a pas de nombre de personnes a annoncer : ils s'en vont.
-const giteDepart = messages.messageGite(lus, '2026-08-29', etatGite, 'annonce').texte;
-verifie('un depart s\'annonce sans compter les personnes',
-  giteDepart.indexOf('Départ demain') !== -1 && giteDepart.indexOf('3 personnes') === -1);
+// ⚠ LA CLE NE PORTE PAS LE SEJOUR. Elle doit etre calculable SANS avoir
+// lu le calendrier, pour que le Worker interroge sa memoire d'abord et
+// n'aille chercher le flux que s'il reste quelque chose a dire.
+verifie('la cle porte la fenetre et le jour, pas le sejour',
+  sejoursGite.cleGite('2026-08-27', '12:00') === 'gite:12:00:2026-08-27');
+verifie('...donc deux fenetres du meme jour ont des cles distinctes',
+  sejoursGite.cleGite('2026-08-27', '12:00') !== sejoursGite.cleGite('2026-08-27', '18:00'));
 
-// L'etat menage est un CONFORT : son absence ne doit pas priver du rappel.
-const sansEtat = messages.messageGite(lus, '2026-08-27', null, 'annonce').texte;
-verifie('sans l\'etat menage, le rappel part quand meme',
-  sansEtat.indexOf('Arrivée demain — Airbnb') !== -1 && sansEtat.indexOf('personnes') === -1);
+// --- La sequence complete d'un sejour --------------------------------
+// `lus` contient une arrivee le 28 aout et un depart le 30.
+const sequence = [
+  ['2026-08-27', '12:00', "demander à quelle heure ils pensent arriver"],
+  ['2026-08-27', '18:00', "envoyer la procédure d'arrivée"],
+  ['2026-08-28', '12:00', 'envoyer le code de la boîte à clés'],
+  ['2026-08-28', '17:00', 'Arrivée ce soir'],
+  ['2026-08-29', '18:00', 'envoyer la procédure de départ'],
+  ['2026-08-30', '11:00', 'Départ ce matin'],
+];
+sequence.forEach(([jour, heure, attendu]) => {
+  const msg = messages.messageGite(lus, jour, heure, etatGite);
+  verifie('le ' + jour + ' a ' + heure + ' : ' + attendu.slice(0, 34),
+    msg && msg.texte.indexOf(attendu) !== -1, msg ? msg.texte.split('\n')[2] : '(aucun message)');
+});
 
-verifie('aucun message quand rien n\'arrive',
-  messages.messageGite(lus, '2026-09-15', etatGite, 'annonce') === null);
+const rappelMidi = messages.messageGite(lus, '2026-08-27', '12:00', etatGite);
+verifie('le message part sur le canal partage', rappelMidi.canal === 'gite');
+// L'en-tete ne dit plus « Gite » : la maison et la date suffisent.
+verifie('l\'en-tete tient en une maison et une date',
+  premiereLigne(rappelMidi.texte) === '🏠 <b>jeudi 27 août</b>',
+  premiereLigne(rappelMidi.texte));
 
-// ⚠ LE DIGEST NE PARLE PLUS DU GITE. Les deux publics sont distincts :
-// melanger les deux reviendrait a exposer les corvees personnelles a qui
-// ne s'interesse qu'au logement.
+// ⚠ ACTION ET INFO DOIVENT SE DISTINGUER SANS ETRE LUES. Deux icones de
+// meme poids se confondaient a l'usage ; l'asymetrie est donc dans le
+// ton — l'action crie, l'info chuchote.
+verifie('une action crie en majuscules avec un rond rouge',
+  rappelMidi.texte.indexOf('🔴 <b>À FAIRE') !== -1);
+const info = messages.messageGite(lus, '2026-08-28', '17:00', etatGite);
+verifie('une info chuchote en minuscules',
+  info.texte.indexOf('▫️ <i>pour info</i>') !== -1
+  && info.texte.indexOf('À FAIRE') === -1);
+
+// ⚠ QUI ECRIT. Dans un groupe partage, le message doit dire s'il est
+// pour vous ou pour l'autre — sans quoi on retombe sur « je pensais que
+// tu t'en occupais », qui a deja coute un message d'accueil.
+verifie('l\'action nomme son responsable',
+  rappelMidi.texte.indexOf('À FAIRE — Alisson') !== -1, rappelMidi.texte);
+verifie('Airbnb va a Alisson, Booking et le direct a Cyril',
+  sejoursGite.responsableDe('airbnb') === 'Alisson'
+  && sejoursGite.responsableDe('booking') === 'Cyril'
+  && sejoursGite.responsableDe('direct') === 'Cyril');
+
+// Le prenom vient de `voyageurs`, PAS de `comment` : le commentaire
+// s'adresse aux personnes du menage et s'affiche pour tout le monde.
+verifie('le prenom des voyageurs est repris',
+  rappelMidi.texte.indexOf('Marie et Paul') !== -1);
+verifie('...ainsi que le nombre et la langue',
+  rappelMidi.texte.indexOf('3 pers.') !== -1
+  && rappelMidi.texte.indexOf('en allemand') !== -1);
+verifie('le commentaire du menage reste distinct du prenom',
+  rappelMidi.texte.indexOf('Livret en allemand en premier') !== -1);
+verifie('sans etat menage, le rappel part quand meme',
+  messages.messageGite(lus, '2026-08-27', '12:00', null).texte.indexOf('À FAIRE') !== -1);
+
+// ⚠ ASYMETRIE ARRIVEE / DEPART. Les voyageurs arrivent en fin
+// d'apres-midi mais partent le matin : une ACTION de depart le jour meme
+// arriverait apres leur voiture. Le 11 h n'est donc qu'une information.
+verifie('aucune action de depart le jour meme',
+  sejoursGite.RAPPELS_GITE.filter((r) => r.sur === 'depart' && !r.veille && r.action).length === 0);
+
+verifie('rien hors des fenetres du gite',
+  messages.messageGite(lus, '2026-08-27', '07:30', etatGite) === null
+  && messages.messageGite(lus, '2026-08-27', '20:00', etatGite) === null);
+verifie('rien un jour sans sejour',
+  messages.messageGite(lus, '2026-09-15', '12:00', etatGite) === null);
+
+// Le digest personnel ne parle plus du gite : deux publics distincts.
 const digestSeul = messages.digestDuMatin([], '2026-08-27', '07:30');
-verifie('le digest ne contient plus rien du gite',
-  digestSeul.texte.indexOf('🏠') === -1 && digestSeul.texte.indexOf('Arrivée') === -1);
+verifie('le digest ne contient rien du gite',
+  digestSeul.texte.indexOf('🏠') === -1 && digestSeul.texte.indexOf('À FAIRE') === -1);
 verifie('...et porte le canal personnel', digestSeul.canal === 'taches');
-
-// Un tour complet doit produire les DEUX messages, chacun sur son canal.
-const tourMatin = messages.messagesDus([], '2026-08-27', '07:30', true, lus, etatGite);
-verifie('un tour du matin produit le digest ET le message du gite',
-  tourMatin.length === 2
-  && tourMatin.filter((m) => m.canal === 'taches').length === 1
-  && tourMatin.filter((m) => m.canal === 'gite').length === 1,
-  tourMatin.map((m) => m.canal + ':' + m.cle).join(', '));
-// Le soir, c'est le filet — « envoye ? » et non « envoyer ».
-const tourSoir = messages.messagesDus([], '2026-08-27', '20:00', true, lus, etatGite);
-const giteSoir = tourSoir.find((m) => m.canal === 'gite');
-verifie('le soir, le gite repart en FILET sur le meme canal',
-  giteSoir && giteSoir.texte.indexOf("message d'arrivée envoyé ?") !== -1
-  && giteSoir.cle === 'gite-soir:2026-08-27',
-  giteSoir && giteSoir.cle);
 
 // ⚠ LE GITE NE DOIT JAMAIS FAIRE TOMBER LE DIGEST. C'est une source
 // EXTERNE au hub : si elle est en panne, les taches n'ont pas a en
 // souffrir. La section disparait, le reste part, et le bilan le dit.
 verifie('le Worker attrape la panne du gite sans laisser tomber le digest',
   /catch \(erreur\)[\s\S]{0,600}giteIndisponible/.test(workerSource));
-verifie('le Worker lit le gite pour LES DEUX fenetres, pas seulement le matin',
-  /if \(listeComplete\) \{[\s\S]{0,400}lireGite\(env\)/.test(workerSource));
+// ⚠ LE GITE NE DEPEND PLUS DES FENETRES DES TACHES. Il a les siennes —
+// 11 h, 12 h, 17 h, 18 h — et le Worker decide d'aller lire le
+// calendrier a partir d'elles SEULES.
+verifie('le Worker ouvre le gite sur ses propres fenetres',
+  workerSource.indexOf('sejoursGite.fenetreGite(maintenant.heure)') !== -1);
+// La memoire est interrogee AVANT le calendrier : la plupart des tours
+// n'ont rien a dire du gite, et le flux iCal n'a alors pas a etre lu.
+verifie('...et consulte sa memoire avant de lire le flux',
+  workerSource.indexOf('dejaFait(sejoursGite.cleGite') !== -1
+  && workerSource.indexOf('giteADire') < workerSource.indexOf('lireGite(env)'));
 // ⚠ LA PANNE DU 24 AOUT AU 1er SEPTEMBRE 2026. Le Worker appelait le
 // calendrier par son URL PUBLIQUE. Les deux Workers vivant sur le meme
 // sous-domaine workers.dev, l'appel ne sortait pas sur Internet : il
@@ -494,7 +553,7 @@ verifie('le Worker lit bien les deux endpoints du gite',
 // Le routage cote Worker : deux jetons, et une LISTE de destinataires.
 // Un bot n'ecrit jamais « a plusieurs », il ecrit dans une conversation.
 verifie('le Worker route selon le canal du message',
-  /envoyerTelegram\(env, message\.texte, message\.canal\)/.test(workerSource));
+  /envoyerTelegram\(env, texte, message\.canal\)/.test(workerSource));
 verifie('...vers un second jeton pour les taches',
   /TELEGRAM_TOKEN_TACHES/.test(workerSource) && /TELEGRAM_CHAT_ID_TACHES/.test(workerSource));
 verifie('...et accepte plusieurs destinataires par canal',
@@ -506,6 +565,20 @@ verifie('un jeton personnel manquant se replie sur le bot du gite',
 // Une panne technique ne regarde pas les invites du gite.
 verifie('les pannes techniques restent sur le canal personnel',
   /const voie = canalDe\(env, 'taches'\);/.test(workerSource));
+
+// ⚠ LA SIMULATION NE DOIT PAS MANGER LE VRAI MESSAGE. Tester le 2
+// septembre depuis le 1er envoie de vrais messages — c'est le but, on
+// veut les voir arriver — mais si elle ecrivait la cle de dedup, le
+// rappel du 2 ne partirait jamais le 2. La memoire est donc ignoree
+// dans les deux sens.
+verifie('une simulation n ecrit pas la memoire des envois',
+  /if \(!simule\) await marquerEnvoye/.test(workerSource));
+verifie('...et ne saute rien sous pretexte que ce serait deja parti',
+  /const dejaFait = \(cle\) => simule \?/.test(workerSource));
+// Un message simule doit se reconnaitre : sinon quelqu'un agit dessus,
+// ou ignore le vrai le lendemain en croyant l'avoir deja lu.
+verifie('un message simule se signale comme tel',
+  /Simulation du/.test(workerSource));
 
 verifie('le Worker lit bien la collection taches',
   /collectionId: 'taches'/.test(workerSource));

@@ -641,11 +641,18 @@ minutes comble ce trou. Trois déclencheurs : **digest à 07:30** (créneaux du 
 urgences sans créneau), **rappel 15 minutes avant chaque créneau**, et **bilan à 20:00**.
 Mise en place complète dans [`notifieur/README.md`](notifieur/README.md).
 
-Les **deux résumés** portent aussi, en tête, les arrivées et départs du gîte de Labergement
-prévus le lendemain — annoncés le matin, redemandés le soir (« message d'arrivée envoyé ? »).
-C'est la seule répétition assumée du notifieur : une tâche se coche, un message envoyé aux
-gens ne se coche pas, et l'oubli coûte à eux plutôt qu'à soi. Ils portent — lus sur le calendrier iCal de `menage-state`, avec la plateforme, le
-nombre de personnes, la langue et le lien vers la réservation. C'est la seule partie du
+Le gîte de Labergement suit **un rythme à lui**, sur un **second canal Telegram** partagé
+avec Alisson : six rappels répartis sur la veille et le jour même — demander l'heure
+d'arrivée à midi, envoyer la procédure à 18 h, le code de la boîte le lendemain à midi, et
+deux informations (« arrivée ce soir » à 17 h, « départ ce matin » à 11 h). Ce sont **six
+gestes distincts, pas une même phrase répétée** : une répétition, on l'ignore ; une
+séquence, on la suit. Chaque action nomme **qui écrit** — Airbnb va à Alisson, Booking et le
+direct à Cyril — sans quoi on retombe sur « je pensais que tu t'en occupais ».
+
+Les heures viennent de l'usage : 07:30 est trop tôt pour agir, 20:00 trop tard. Le bon
+moment n'est pas celui où l'on peut *lire* mais celui où l'on peut *agir*. Les séjours sont
+lus sur le calendrier iCal de `menage-state`, avec la plateforme, le nombre de personnes, la
+langue, le prénom des voyageurs et le lien vers la réservation. C'est la seule partie du
 notifieur qui ne parle pas de `taches`, et la seule qui dépende d'une source **externe** au
 hub : sa panne coûte une section, jamais le message.
 

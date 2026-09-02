@@ -10,7 +10,7 @@ l'on ouvre l'accueil. Une alerte qui suppose qu'on aille la chercher n'est pas u
 | Fichier | Rôle |
 |---|---|
 | `notifieur-messages.js` | **Quoi envoyer, et quand.** Fonctions pures, sans réseau ni horloge — donc testables |
-| `notifieur-sejours.js` | Lit le calendrier iCal du gîte : arrivées, départs, plateforme |
+| `notifieur-sejours.js` | Lit le calendrier iCal du gîte, et porte la table des six rappels |
 | `worker.js` | La glu : se connecter, lire Firestore, appeler Telegram. Aucune décision |
 | `wrangler.toml` | Cron, binding KV, variables publiques. **Aucun secret** |
 
@@ -23,7 +23,7 @@ remarque pas.
 
 | Canal | Bot | Contenu | Secrets |
 |---|---|---|---|
-| **`gite`** | O'Fil du Doubs — **partagé** | Arrivées et départs du logement, et rien d'autre | `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID` |
+| **`gite`** | O'Fil du Doubs — **partagé** | Les rappels du logement, et rien d'autre | `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID` |
 | **`taches`** | Personnel | Digest, rappels d'heure, bilan du soir, pannes techniques | `TELEGRAM_TOKEN_TACHES`, `TELEGRAM_CHAT_ID_TACHES` |
 
 **C'est le partage qui a imposé la séparation.** Tant que tout arrivait au même endroit, une
@@ -51,9 +51,8 @@ part sur le canal du gîte — c'est là qu'il manque.
 | **15 min avant chaque heure fixée** | Un rappel, une seule fois. Une tâche sans heure n'en reçoit pas : il n'y a pas de moment à anticiper | — |
 | **20:00** | Bilan du soir — échéances qui basculent cette nuit, heures passées sans être faites, programme de demain | Qu'est-ce qui a glissé, et que fais-je de demain ? |
 
-Le gîte suit **les mêmes fenêtres** — annoncé le matin (« envoyer le message d'arrivée »),
-redemandé le soir (« message d'arrivée envoyé ? ») — mais dans **son propre message**, sur
-le canal partagé. Voir plus bas.
+Le gîte a **ses propres fenêtres** — 11 h, 12 h, 17 h, 18 h — et son propre message, sur le
+canal partagé. Il ne suit plus celles des tâches : deux publics, deux rythmes. Voir plus bas.
 
 Le notifieur est **silencieux le reste du temps**. Il se réveille 288 fois par jour et ne
 dit rien la quasi-totalité de ces fois : une alerte qu'on reçoit sans cesse est une alerte
@@ -119,7 +118,7 @@ manuelle de plus dans la console, et une panne le jour où on l'oublie. C'est po
 index pour écarter une poignée de documents. Un test échoue si les deux champs se
 retrouvent dans la même requête.
 
-## Le gîte — arrivées et départs
+## Le gîte — la séquence des six rappels
 
 La seule partie du notifieur qui ne parle pas de `taches`. Elle lit le calendrier du gîte
 servi par le Worker `menage-state` : `/ical` pour les séjours, `/` pour l'état du ménage.
@@ -139,22 +138,109 @@ La liaison `[[services]]` de `wrangler.toml` transforme l'appel en RPC interne, 
 réseau. Le bilan porte `giteVia` pour dire quelle voie a servi : un binding oublié ne doit
 pas redevenir une panne muette. Deux assertions l'exigent.
 
-**La veille d'une arrivée**, le digest rappelle d'envoyer le message d'accueil ; **la veille
-d'un départ**, celui de sortie. Un jour d'avance des deux côtés : prévenir le jour même ne
-sert plus à rien, les gens sont déjà en route. Aucune plateforme ne fait ce rappel à la
-place de l'hôte, et c'est typiquement ce qu'on oublie.
+### Six rappels, chacun son geste
+
+⚠ **Une séquence, pas une répétition.** La première version disait trois fois la même
+chose — « envoyer le message d'arrivée » — sans jamais préciser lequel. Une répétition, on
+finit par l'ignorer ; une suite d'actions distinctes, on la suit.
+
+| Quand | Quoi | Nature |
+|---|---|---|
+| **Veille de l'arrivée, 12 h** | Demander à quelle heure ils pensent arriver | action |
+| **Veille de l'arrivée, 18 h** | Envoyer la procédure d'arrivée | action |
+| **Jour de l'arrivée, 12 h** | Envoyer le code de la boîte à clés, si besoin | action |
+| **Jour de l'arrivée, 17 h** | « Arrivée ce soir » | information |
+| **Veille du départ, 18 h** | Envoyer la procédure de départ | action |
+| **Jour du départ, 11 h** | « Départ ce matin — le logement est libre » | information |
+
+**Les heures viennent de l'usage, pas d'une symétrie.** 07:30 et 20:00 avaient été repris du
+rythme des tâches personnelles ; à l'essai, c'était trop tôt pour agir le matin et trop tard
+le soir. Midi et 18 h sont des moments où l'on a son téléphone et une main libre — et le bon
+moment n'est pas celui où l'on peut *lire*, mais celui où l'on peut *agir*.
+
+⚠ **Asymétrie arrivée / départ.** Les voyageurs arrivent en fin d'après-midi mais partent le
+matin. Il n'y a donc **aucune action de départ le jour même** : elle arriverait après leur
+voiture. Le 11 h n'est qu'une information — le ménage peut commencer. Une assertion l'exige,
+pour que la symétrie ne se réintroduise pas d'elle-même.
+
+Les séjours d'une nuit ne sont pas proposés à la location, et aucune réservation n'est
+acceptée à moins de 24 h : la veille existe donc toujours, et la séquence ne se replie
+jamais sur elle-même.
+
+### ⚠ Action et information doivent se distinguer sans être lues
+
+Deux icônes de même poids — ℹ️ et ➡️ — se confondaient à l'usage. L'asymétrie est donc dans
+le **ton** : l'action crie, l'information chuchote. On voit lequel est lequel avant même de
+lire.
 
 ```
-🏠 Arrivée demain — Airbnb
-3 personnes · en allemand · du 28 au 30 août
-→ envoyer le message d'arrivée
+🏠 jeudi 27 août
+
+🔴 À FAIRE — Alisson (Airbnb)
+Arrivée demain · Marie et Paul · 3 pers. · en allemand
+du 28 au 30 août
+→ demander à quelle heure ils pensent arriver
 https://www.airbnb.com/hosting/reservations/details/HMY45JSW55
 Livret en allemand en premier
 ```
 
-Le nombre de personnes, la langue et le commentaire viennent de `info_<date d'arrivée>` dans
-l'état ménage. Le lien de réservation vient de la `DESCRIPTION` du flux Airbnb : un lien à
-toucher plutôt qu'une réservation à retrouver à la main.
+```
+🏠 vendredi 28 août
+
+▫️ pour info
+Arrivée ce soir · Marie et Paul · 3 pers. · en allemand · Airbnb
+```
+
+L'en-tête ne dit pas « Gîte » : la maison et la date suffisent, sur un canal qui ne parle que
+de ça.
+
+### ⚠ Qui écrit — le message le dit
+
+Dans un groupe partagé, un rappel qui ne nomme personne n'est adressé à personne. Sans ça on
+retombe sur « je pensais que tu t'en occupais », qui a déjà coûté un message d'accueil.
+
+| Plateforme | Responsable |
+|---|---|
+| Airbnb | Alisson |
+| Booking | Cyril |
+| Direct (WhatsApp) | Cyril |
+| Inconnue | « à voir » |
+
+La répartition suit le canal de réservation, parce que c'est là que se trouve la
+conversation. Une plateforme non identifiée ne se rabat sur personne : « à voir » est plus
+honnête qu'un nom faux, qui ferait attendre l'autre.
+
+### Ce qui vient de l'état ménage
+
+Le nombre de personnes, la langue, le commentaire et le **prénom des voyageurs** viennent de
+`info_<date d'arrivée>`. Le lien de réservation, lui, vient de la `DESCRIPTION` du flux
+Airbnb : un lien à toucher plutôt qu'une réservation à retrouver à la main.
+
+⚠ **`voyageurs` et `comment` ne s'adressent pas au même public.** Le commentaire est une
+consigne pour les personnes qui font le ménage (« mettre le livret en allemand en premier »)
+et s'affiche pour tout le monde sur la page ménage. `voyageurs` est le prénom des occupants,
+saisi dans la **vue admin seulement**, et ne sert qu'aux notifications. Les mélanger ferait
+passer un prénom dans les consignes de ménage, et une consigne de ménage dans un message
+d'accueil.
+
+*(La page ménage sert son état par un endpoint public non authentifié : le champ est caché
+dans l'interface, il n'est pas secret sur le réseau. À traiter le jour où l'endpoint le
+sera.)*
+
+### La fenêtre, et pourquoi la clé ne porte pas le séjour
+
+Chaque rappel ouvre une fenêtre d'une heure, **borne haute exclue** — sans quoi 17 h et 18 h
+se recouvriraient et deux messages porteraient la même clé. Le cron passant toutes les
+5 minutes, ça laisse douze occasions de rattraper un échec réseau.
+
+La clé de déduplication est `gite:<fenêtre>:<jour>` — elle ne porte **pas** le séjour. C'est
+délibéré : elle doit être calculable *sans avoir lu le calendrier*, pour que le Worker
+interroge sa mémoire d'abord et n'aille chercher le flux iCal que s'il reste quelque chose à
+dire. La plupart des 288 réveils quotidiens n'ont rien à faire du gîte.
+
+Plusieurs rappels peuvent tomber dans la même fenêtre — typiquement à 18 h, la procédure de
+départ d'un séjour et celle d'arrivée du suivant quand les deux s'enchaînent. Ils partent
+alors dans un seul message, un bloc chacun, les actions avant les informations.
 
 ### ⚠ Trois sortes d'événements, et il a fallu les données pour le voir
 
@@ -196,24 +282,8 @@ silence qui a laissé la panne des huit jours passer inaperçue. L'état ménage
 un confort supplémentaire : sans lui, le rappel part quand même, sans le nombre de personnes
 ni la langue.
 
-Le calendrier n'est lu **que dans les fenêtres de résumé**, deux fois par jour — pas à
-chacun des 288 réveils.
-
-### ⚠ La seule répétition assumée du notifieur
-
-Le gîte apparaît **deux fois dans la journée**, ce qui contredit la parcimonie appliquée
-partout ailleurs. La raison tient en deux points.
-
-**Une tâche se coche** : le notifieur sait qu'elle est faite et se tait. Le gîte n'a pas de
-« fait » — rien ne lui dira jamais que le message est parti. Le choix est donc binaire :
-une seule chance, ou deux.
-
-**Et l'oubli ne coûte pas à celui qui oublie.** Une corvée repoussée n'ennuie que soi ; des
-clients qui arrivent sans code d'entrée, non.
-
-Le soir n'est donc pas une copie mais un filet, et la ligne d'action le dit — « envoyer » le
-matin, « envoyé ? » le soir. Le reste du bloc est identique à dessein : si le message n'est
-pas parti le matin, on veut pouvoir l'écrire là, sans rien rouvrir.
+Le calendrier n'est lu **que dans les fenêtres du gîte**, et seulement si la mémoire dit que
+le rappel n'est pas déjà parti — pas à chacun des 288 réveils.
 
 ## ⚠ Le compte robot, et pourquoi pas une clé de service
 
