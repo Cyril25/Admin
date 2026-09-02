@@ -431,12 +431,29 @@ $env:CLOUDFLARE_API_TOKEN = "..."
 
 Jamais dans un fichier du dépôt : `.gitignore` couvre `.wrangler/`, pas `.env`.
 
-### ⚠ Déployer quand le VPN bloque wrangler
+### ⚠ Le VPN du travail — le certificat suffit à débloquer wrangler
 
-Sur le poste du travail, l'interception TLS de l'employeur casse Node et wrangler
-(`SELF_SIGNED_CERT_IN_CHAIN`) : `wrangler deploy` ne peut pas joindre Cloudflare. Le
-navigateur, lui, passe — git fonctionne, le dashboard aussi. **Le déploiement à la main est
-donc parfaitement possible**, en deux temps.
+Sur le poste du travail, l'interception TLS de l'employeur casse Node : wrangler s'arrête sur
+`SELF_SIGNED_CERT_IN_CHAIN` et ne joint pas Cloudflare. Ce n'est **pas** une raison de
+renoncer à `wrangler deploy` — il suffit de lui donner l'autorité qui signe les certificats
+réécrits :
+
+```powershell
+$env:NODE_EXTRA_CA_CERTS = "C:\Users\csamson\.claude\secrets\ne-ca-bundle.pem"
+cd c:\Users\csamson\Documents\Perso\GitHub\Admin\notifieur; npx wrangler deploy
+```
+
+Vérifié le 2026-09-02 : `whoami`, `deployments list` et le déploiement passent, VPN actif.
+Le bundle avait été exporté en juillet pour le proxy billets — il sert aux deux.
+
+La variable ne vaut que pour la session PowerShell en cours. La poser en variable
+d'environnement utilisateur une fois pour toutes évite d'y repenser.
+
+### Si le certificat ne suffit pas : le déploiement à la main
+
+Voie de secours, quand la variable ci-dessus ne débloque rien (l'autorité a changé, un autre
+réseau, un poste neuf). Le navigateur, lui, passe toujours — git fonctionne, le dashboard
+aussi.
 
 **1. Fabriquer le paquet, hors ligne.** esbuild tourne en local, il n'a besoin de personne :
 
@@ -466,10 +483,10 @@ panne qui ne se voit pas.
 Un `npx wrangler deploy` ultérieur, depuis une connexion libre, écrase sans dommage ce qui a
 été posé par le dashboard.
 
-**Deux autres issues**, selon ce qui est le plus simple sur le moment : le partage de
-connexion du téléphone, qui contourne le VPN d'un coup ; ou une action GitHub avec
+**Deux autres issues** si les deux précédentes tombent : le partage de connexion du
+téléphone, qui contourne le VPN d'un coup ; ou une action GitHub avec
 `cloudflare/wrangler-action` et un jeton d'API en secret de dépôt, qui déploie depuis les
-machines de GitHub et supprime le problème pour de bon.
+machines de GitHub et rend la question sans objet.
 
 ## Vérifier sans attendre le cron
 
