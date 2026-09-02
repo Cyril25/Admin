@@ -431,6 +431,46 @@ $env:CLOUDFLARE_API_TOKEN = "..."
 
 Jamais dans un fichier du dépôt : `.gitignore` couvre `.wrangler/`, pas `.env`.
 
+### ⚠ Déployer quand le VPN bloque wrangler
+
+Sur le poste du travail, l'interception TLS de l'employeur casse Node et wrangler
+(`SELF_SIGNED_CERT_IN_CHAIN`) : `wrangler deploy` ne peut pas joindre Cloudflare. Le
+navigateur, lui, passe — git fonctionne, le dashboard aussi. **Le déploiement à la main est
+donc parfaitement possible**, en deux temps.
+
+**1. Fabriquer le paquet, hors ligne.** esbuild tourne en local, il n'a besoin de personne :
+
+```powershell
+cd c:\Users\csamson\Documents\Perso\GitHub\Admin\notifieur; npx wrangler deploy --dry-run --outdir .wrangler\dist
+```
+
+Ça produit `.wrangler/dist/worker.js` : **un seul fichier**, tous les modules aplatis dedans.
+C'est indispensable — le Worker est un bundle de quatre fichiers, dont
+`../taches/taches-calcul.js` en CommonJS, et l'éditeur du dashboard ne sait ni suivre un
+chemin qui remonte d'un dossier ni interpréter `require()`.
+
+Supprimer la dernière ligne `//# sourceMappingURL=…` : la carte n'ira pas avec.
+
+**2. Coller dans le dashboard.** *Workers & Pages* → `ofildudoubs-notifieur` → *Edit code* →
+tout remplacer par le contenu du fichier → *Deploy*.
+
+**Les bindings ne bougent pas.** KV, liaison de service, variables, secrets et cron vivent
+dans la configuration du Worker, pas dans son code : un déploiement par le dashboard les
+laisse intacts. Seul le code est remplacé.
+
+⚠ Le `wrangler.toml` n'est **pas** appliqué par cette voie. Si un déploiement change un
+binding ou une expression cron, la modification doit être refaite à la main dans *Settings* —
+sinon le code neuf tourne avec l'ancienne configuration, ce qui est exactement le genre de
+panne qui ne se voit pas.
+
+Un `npx wrangler deploy` ultérieur, depuis une connexion libre, écrase sans dommage ce qui a
+été posé par le dashboard.
+
+**Deux autres issues**, selon ce qui est le plus simple sur le moment : le partage de
+connexion du téléphone, qui contourne le VPN d'un coup ; ou une action GitHub avec
+`cloudflare/wrangler-action` et un jeton d'API en secret de dépôt, qui déploie depuis les
+machines de GitHub et supprime le problème pour de bon.
+
 ## Vérifier sans attendre le cron
 
 Le Worker répond aussi à une requête HTTP, protégée par le jeton Telegram — l'URL d'un
