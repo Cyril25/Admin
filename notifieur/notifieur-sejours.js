@@ -17,10 +17,12 @@
 //   SUMMARY:Reserved              @airbnb.com   → réservation Airbnb,
 //       avec l'URL de la réservation en DESCRIPTION ;
 //   SUMMARY:Airbnb (Not available) @airbnb.com  → dates bloquées sur
-//       Airbnb. Le flux ne dit pas pourquoi — mais l'hôte bloque en
-//       général pour des clients qui viennent EN DIRECT. Ce sont donc
-//       de vraies arrivées, et ce sont même celles qu'il ne faut
-//       surtout pas manquer : aucune plateforme ne relancera pour lui ;
+//       Airbnb. Le flux ne dit pas pourquoi — mais quand le blocage dure
+//       plusieurs jours, l'hôte a bloqué pour des clients qui viennent EN
+//       DIRECT. Ce sont de vraies arrivées, et ce sont même celles qu'il
+//       ne faut surtout pas manquer : aucune plateforme ne relancera pour
+//       lui. Vérifié sur l'état ménage : les blocages du 19-27 décembre et
+//       du 28 décembre-2 janvier portent un `info_` avec un prénom ;
 //   SUMMARY:CLOSED - Not available @booking.com → indiscernable. Booking
 //       n'exporte rien qui distingue un séjour d'un inventaire fermé.
 //
@@ -114,10 +116,50 @@ function lienDeReservation(description) {
 }
 
 // ------------------------------------------------------------
+// 2 bis. LES BLOCAGES D'UN SEUL JOUR NE SONT PAS DES SÉJOURS
+// ------------------------------------------------------------
+// ⚠ CETTE RÈGLE A COÛTÉ UNE FAUSSE NOTIFICATION. Le 3 septembre 2026 à
+// 17 h, « Arrivée ce soir · en direct » est parti alors que personne
+// n'arrivait : le flux portait un blocage `Airbnb (Not available)` du
+// 3 au 4 septembre, et tout blocage était lu comme une arrivée.
+//
+// Les plateformes exportent des blocages qui ne sont PAS des séjours,
+// et on les reconnaît à leur durée d'un seul jour :
+//
+//   • LE JOUR MÊME DEVENU NON RÉSERVABLE. Le préavis d'Airbnb ferme la
+//     journée en cours ; elle ressort en blocage d'un jour, et elle
+//     apparaît le matin même — d'où une notification qui tombe sans que
+//     rien n'ait changé au calendrier. C'était le cas du 3 septembre.
+//   • LA BORNE DES 12 MOIS. Airbnb bloque un jour à l'exacte limite de
+//     sa fenêtre de réservation, et ce jour glisse avec le calendrier :
+//     le 24 août 2026 le flux portait 2027-08-24, le 3 septembre il
+//     portait 2027-09-03. Booking fait pareil avec un `CLOSED` fourre-
+//     tout qui court jusqu'à la fin de sa propre fenêtre.
+//
+// Un vrai séjour en direct, lui, dure plusieurs jours — vérifié sur
+// l'état ménage, où les blocages de décembre portent un prénom.
+//
+// ⚠ CE QU'ON ACCEPTE DE PERDRE : une vraie nuit unique en direct, que
+// l'hôte bloquerait pour un seul soir, deviendrait invisible. C'est le
+// prix, et c'est celui que paie déjà la page ménage, qui applique
+// exactement cette règle (`durationDays <= 1 && summary.includes('Not
+// available')`) et affichait donc juste ce jour-là. Les distinguer
+// demanderait de recouper avec `info_`, ce que seul un endpoint partagé
+// pourrait faire proprement.
+//
+// La règle porte sur le LIBELLÉ et pas sur la plateforme : une
+// réservation `Reserved` d'une seule nuit reste un séjour.
+function estArtefactDeCalendrier(sejour) {
+    if (String(sejour.resume || '').indexOf('Not available') === -1) return false;
+    var jours = calcul.joursEntre(sejour.debut, sejour.fin);
+    return jours !== null && jours <= 1;
+}
+
+// ------------------------------------------------------------
 // 3. L'analyseur
 // ------------------------------------------------------------
 // Rend [{ debut, fin, plateforme, lien, resume }], les séjours sans
-// dates exploitables écartés.
+// dates exploitables écartés, et les blocages d'un jour avec eux.
 function analyserIcal(texte) {
     var lignes = deplier(texte).split('\n');
     var sejours = [];
@@ -130,13 +172,14 @@ function analyserIcal(texte) {
         }
         if (ligne.indexOf('END:VEVENT') === 0) {
             if (courant && courant.debut && courant.fin) {
-                sejours.push({
+                var sejour = {
                     debut: courant.debut,
                     fin: courant.fin,
                     resume: courant.resume,
                     plateforme: plateformeDe(courant.uid, courant.resume),
                     lien: lienDeReservation(courant.description)
-                });
+                };
+                if (!estArtefactDeCalendrier(sejour)) sejours.push(sejour);
             }
             courant = null;
             return;
@@ -337,6 +380,7 @@ module.exports = {
     plateformeDe: plateformeDe,
     libellePlateforme: libellePlateforme,
     lienDeReservation: lienDeReservation,
+    estArtefactDeCalendrier: estArtefactDeCalendrier,
     analyserIcal: analyserIcal,
     RAPPELS_GITE: RAPPELS_GITE,
     FENETRE_RAPPEL_MINUTES: FENETRE_RAPPEL_MINUTES,

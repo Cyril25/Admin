@@ -334,6 +334,15 @@ const FLUX = [
   'DESCRIPTION:Reservation URL: https://www.airbnb.com/hosting/reservations/de',
   ' tails/HMY45JSW55\\nPhone Number (Last 4 Digits): 6792',
   'END:VEVENT',
+  // Le blocage d'un jour qui a fait partir « Arrivee ce soir » le
+  // 3 septembre 2026 alors que personne n'arrivait. Repris tel quel du
+  // vrai flux.
+  'BEGIN:VEVENT',
+  'DTSTART;VALUE=DATE:20260903',
+  'DTEND;VALUE=DATE:20260904',
+  'SUMMARY:Airbnb (Not available)',
+  'UID:7f662ec65913-1e61b62a8c0a7b499d5f9e3595317541@airbnb.com',
+  'END:VEVENT',
   'BEGIN:VEVENT',
   'DTSTART;VALUE=DATE:20261219',
   'DTEND;VALUE=DATE:20261227',
@@ -354,7 +363,8 @@ const FLUX = [
 ].join('\r\n');
 
 const lus = sejoursGite.analyserIcal(FLUX);
-verifie('les evenements sans date sont ecartes', lus.length === 3, lus.length + ' sejours');
+verifie('les evenements sans date sont ecartes, les blocages d\'un jour aussi',
+  lus.length === 2, lus.length + ' sejours');
 
 // ⚠ LE REPLIAGE. Une ligne iCal se coupe au-dela de 75 octets et la
 // suite commence par une espace. Sans depliage, l'URL de reservation
@@ -373,14 +383,49 @@ verifie('« du 28 au 30 » se lit sans decalage',
 // LA PLATEFORME NE SE LIT PAS DANS LE LIBELLE mais dans le domaine de
 // l'UID : c'est le seul champ que les deux plateformes remplissent.
 verifie('Reserved chez airbnb = une reservation Airbnb', lus[0].plateforme === 'airbnb');
-// Un blocage Airbnb n'est PAS un trou : l'hote bloque en general pour
+// Un blocage Airbnb QUI DURE n'est pas un trou : l'hote a bloque pour
 // des clients qui viennent en direct. Ce sont meme ceux a qui il faut le
 // plus penser, puisque aucune plateforme ne relance a sa place.
-verifie('un blocage Airbnb compte comme une arrivee en direct',
+verifie('un blocage Airbnb de plusieurs jours reste une arrivee en direct',
   lus[1].plateforme === 'direct', lus[1].plateforme);
-verifie('un evenement booking est etiquete Booking', lus[2].plateforme === 'booking');
+verifie('un evenement booking est etiquete Booking',
+  sejoursGite.plateformeDe('abc@booking.com', 'CLOSED - Not available') === 'booking');
 verifie('un UID d\'un autre domaine ne ment pas sur la plateforme',
   sejoursGite.plateformeDe('x@example.com', 'Reserved') === 'inconnu');
+
+// ⚠ LA FAUSSE NOTIFICATION DU 3 SEPTEMBRE 2026. A 17 h, « Arrivee ce
+// soir · en direct » est parti alors que personne n'arrivait : le flux
+// portait un blocage d'un jour, et tout blocage etait lu comme un
+// sejour. La page menage, elle, affichait juste — elle ecarte deja les
+// blocages d'un jour. Ce test dit que le notifieur le fait aussi.
+verifie('un blocage d\'un jour ne devient pas un sejour',
+  !lus.some((s) => s.debut === '2026-09-03'),
+  JSON.stringify(lus.map((s) => s.debut)));
+verifie('...et il ne declenche donc plus « Arrivee ce soir »',
+  sejoursGite.rappelsDus(lus, '2026-09-03', '17:00').length === 0);
+verifie('...ni les cinq autres rappels de ce faux sejour',
+  sejoursGite.rappelsDus(lus, '2026-09-02', '12:00').length === 0
+  && sejoursGite.rappelsDus(lus, '2026-09-02', '18:00').length === 0
+  && sejoursGite.rappelsDus(lus, '2026-09-03', '12:00').length === 0
+  && sejoursGite.rappelsDus(lus, '2026-09-03', '18:00').length === 0
+  && sejoursGite.rappelsDus(lus, '2026-09-04', '11:00').length === 0);
+
+// LES DEUX FORMES D'ARTEFACT, hors flux complet.
+verifie('la borne des 12 mois d\'Airbnb est un artefact',
+  sejoursGite.estArtefactDeCalendrier(
+    { debut: '2027-09-03', fin: '2027-09-04', resume: 'Airbnb (Not available)' }));
+verifie('un jour ferme chez Booking aussi',
+  sejoursGite.estArtefactDeCalendrier(
+    { debut: '2027-06-20', fin: '2027-06-21', resume: 'CLOSED - Not available' }));
+// ⚠ LA REGLE PORTE SUR LE LIBELLE, PAS SUR LA DUREE SEULE. Une vraie
+// reservation d'une seule nuit reste un sejour : sans cette precision,
+// le notifieur se tairait sur un client qui ne dort qu'un soir.
+verifie('une reservation d\'une seule nuit n\'est PAS un artefact',
+  !sejoursGite.estArtefactDeCalendrier(
+    { debut: '2026-08-28', fin: '2026-08-29', resume: 'Reserved' }));
+verifie('un blocage de plusieurs jours n\'est PAS un artefact',
+  !sejoursGite.estArtefactDeCalendrier(
+    { debut: '2026-12-19', fin: '2026-12-27', resume: 'Airbnb (Not available)' }));
 
 // ⚠ CE QUI EST DU DEPEND DESORMAIS DE L'HEURE, pas seulement du jour.
 // Chaque rappel a sa fenetre : demander l'heure d'arrivee a midi la
