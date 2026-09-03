@@ -22,6 +22,16 @@ compatibility_date = "2026-08-19"
 [triggers]
 crons = ["*/5 * * * *"]
 
+# Les journaux des invocations passees, consultables dans le dashboard.
+#
+# Sans eux, le doublon du 3 septembre 2026 s'est diagnostique en lisant
+# les valeurs du KV a la main : il a fallu deviner quelle cle regarder.
+# Une ligne de journal donnait la reponse — le 504 de Telegram — en dix
+# secondes. C'est compris dans le forfait, et ca ne se voit que le jour
+# ou l'on en a besoin, c'est-a-dire trop tard si ce n'est pas deja pose.
+[observability]
+enabled = true
+
 # La memoire des envois : sans elle, le rappel de 9 h 00 repartirait a
 # 8 h 45, 8 h 50 et 8 h 55. Creer le namespace une fois avec
 #   npx wrangler kv namespace create ENVOIS

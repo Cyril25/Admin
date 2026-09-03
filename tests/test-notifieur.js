@@ -529,7 +529,7 @@ verifie('le Worker ouvre le gite sur ses propres fenetres',
 // La memoire est interrogee AVANT le calendrier : la plupart des tours
 // n'ont rien a dire du gite, et le flux iCal n'a alors pas a etre lu.
 verifie('...et consulte sa memoire avant de lire le flux',
-  workerSource.indexOf('dejaFait(sejoursGite.cleGite') !== -1
+  /restantsPour\(\s+sejoursGite\.cleGite/.test(workerSource)
   && workerSource.indexOf('giteADire') < workerSource.indexOf('lireGite(env)'));
 // ⚠ LA PANNE DU 24 AOUT AU 1er SEPTEMBRE 2026. Le Worker appelait le
 // calendrier par son URL PUBLIQUE. Les deux Workers vivant sur le meme
@@ -553,7 +553,7 @@ verifie('le Worker lit bien les deux endpoints du gite',
 // Le routage cote Worker : deux jetons, et une LISTE de destinataires.
 // Un bot n'ecrit jamais « a plusieurs », il ecrit dans une conversation.
 verifie('le Worker route selon le canal du message',
-  /envoyerTelegram\(env, texte, message\.canal\)/.test(workerSource));
+  /envoyerTelegram\(env, texte, message\.canal, message\.restants\)/.test(workerSource));
 verifie('...vers un second jeton pour les taches',
   /TELEGRAM_TOKEN_TACHES/.test(workerSource) && /TELEGRAM_CHAT_ID_TACHES/.test(workerSource));
 verifie('...et accepte plusieurs destinataires par canal',
@@ -572,9 +572,9 @@ verifie('les pannes techniques restent sur le canal personnel',
 // rappel du 2 ne partirait jamais le 2. La memoire est donc ignoree
 // dans les deux sens.
 verifie('une simulation n ecrit pas la memoire des envois',
-  /if \(!simule\) await marquerEnvoye/.test(workerSource));
+  /if \(!simule && servis\.length\) await marquerEnvoye/.test(workerSource));
 verifie('...et ne saute rien sous pretexte que ce serait deja parti',
-  /const dejaFait = \(cle\) => simule \?/.test(workerSource));
+  /const restantsPour = \(cle, destinataires\) => simule/.test(workerSource));
 // Un message simule doit se reconnaitre : sinon quelqu'un agit dessus,
 // ou ignore le vrai le lendemain en croyant l'avoir deja lu.
 verifie('un message simule se signale comme tel',
@@ -592,17 +592,62 @@ verifie('...et calcule l\'heure de Paris, pas celle du Worker',
 // rappel se perdrait dans le tas — une alerte qu'on apprend a ignorer ne
 // vaut pas mieux que pas d'alerte.
 verifie('les messages de panne sont limites a un par heure',
-  /expirationTtl: 3600/.test(workerSource) && workerSource.indexOf('panne:') !== -1);
+  /'panne:' \+ heure, 3600\)/.test(workerSource));
 // En texte brut : si l'erreur vient d'un HTML mal forme, l'annoncer en
 // HTML echouerait a son tour et la panne resterait muette.
 verifie('...et en texte brut, sans parse_mode',
   workerSource.indexOf('Notifieur en panne') !== -1
-  && workerSource.slice(workerSource.indexOf('async function signalerPanne'))
+  && workerSource.indexOf('async function alerterTechnique') !== -1
+  && workerSource.slice(workerSource.indexOf('async function alerterTechnique'))
        .indexOf('parse_mode') === -1);
 
+// L'ancienne version de cette assertion cherchait un appel qui n'a
+// jamais existe : elle passait sur deux -1 et ne gardait rien. Les deux
+// reperes sont desormais verifies presents avant d'etre compares.
+const APPEL_ENVOI = 'await envoyerTelegram(env, texte, message.canal, message.restants);';
+const APPEL_MARQUE = 'await marquerEnvoye(env, message.cle, servis);';
 verifie('l\'envoi est marque APRES coup, jamais avant',
-  workerSource.indexOf('await envoyerTelegram(env, message.texte);') <
-  workerSource.indexOf('await marquerEnvoye(env, message.cle);'));
+  workerSource.indexOf(APPEL_ENVOI) !== -1
+  && workerSource.indexOf(APPEL_MARQUE) !== -1
+  && workerSource.indexOf(APPEL_ENVOI) < workerSource.indexOf(APPEL_MARQUE));
+
+// ============================================================
+// ⚠ LE DOUBLON DU 3 SEPTEMBRE 2026
+// ============================================================
+// Telegram a rendu 504 sur le rappel du gite de 11 h. Le message etait
+// bien parti — seule la reponse s'est perdue. L'envoi jetait, la cle de
+// deduplication n'etait donc pas posee, et le tour de 11 h 05 a tout
+// renvoye. L'alerte de panne, elle, ne verifiait pas sa propre reponse :
+// elle a ete avalee par le meme hoquet, tout en consommant son blocage
+// horaire. Le doublon a ete visible ; sa cause ne l'etait pas.
+//
+// Le choix retenu, et c'en est un : sur un doute, on prefere la PERTE
+// ANNONCEE au doublon silencieux. Un doublon n'apprend rien a personne
+// et use la confiance dans le canal ; un doute dit se lit et se verifie.
+verifie('un 5xx compte comme recu, et non comme a renvoyer',
+  /if \(reponse\.status >= 500\) \{/.test(workerSource)
+  && /resultat\.servis\.push\(destinataire\);\s+resultat\.incertains\.push/.test(workerSource));
+verifie('...mais ne passe jamais en silence',
+  /Envoi incertain/.test(workerSource)
+  && /alerterTechnique\(env,\s+'Envoi incertain/.test(workerSource));
+verifie('un refus franc, lui, garde sa chance au tour suivant',
+  /resultat\.refuses\.push/.test(workerSource)
+  && /Telegram a refuse/.test(workerSource.normalize('NFD').replace(/[\u0300-\u036f]/g, '')));
+verifie('un canal en panne n entraine pas les autres',
+  /faits: servis/.test(workerSource)
+  && /memoire\.faits/.test(workerSource)
+  && /destinataires\.filter\(\(d\) => faits\.indexOf\(d\) === -1\)/.test(workerSource));
+// Deployer ne doit pas vider le KV : les valeurs d'avant sont des
+// horodatages nus, illisibles en JSON, et ce refus vaut « tout est parti ».
+verifie('...et les anciennes valeurs restent comprises comme completes',
+  workerSource.indexOf('let faits = destinataires;') !== -1);
+verifie('une alerte technique ne pose sa cle que si elle est partie',
+  /if \(reponse\.ok\) partie = true;/.test(workerSource)
+  && /if \(!partie \|\| !env\.ENVOIS\) return;/.test(workerSource));
+// La valeur de la cle porte le TEXTE de l'alerte : quand le message
+// n'arrive pas, c'est la seule trace lisible de ce qui s'est passe.
+verifie('...et garde le texte de l alerte comme trace',
+  /env\.ENVOIS\.put\(cle, texte\.slice\(0, 200\)/.test(workerSource));
 
 // ⚠ Le depot est PUBLIC. Un secret depose ici serait lisible par tout
 // le monde, pour toujours — meme retire au commit suivant.
@@ -611,6 +656,10 @@ verifie('wrangler.toml ne contient aucun secret',
   && !/FIREBASE_API_KEY\s*=/.test(wrangler));
 verifie('le cron est bien declare', /crons = \["\*\/5 \* \* \* \*"\]/.test(wrangler));
 verifie('le KV de deduplication est declare', /binding = "ENVOIS"/.test(wrangler));
+// Sans eux, le 504 du 3 septembre 2026 a du se deterrer a la main dans
+// les valeurs du KV. Une ligne de journal le disait en dix secondes.
+verifie('les journaux d invocation sont actives',
+  /\[observability\]/.test(wrangler) && /enabled = true/.test(wrangler));
 
 console.log('\n' + (echecs === 0 ? 'Tous les tests passent.' : echecs + ' test(s) en echec.'));
 process.exit(echecs === 0 ? 0 : 1);

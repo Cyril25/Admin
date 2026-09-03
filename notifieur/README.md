@@ -488,6 +488,52 @@ téléphone, qui contourne le VPN d'un coup ; ou une action GitHub avec
 `cloudflare/wrangler-action` et un jeton d'API en secret de dépôt, qui déploie depuis les
 machines de GitHub et rend la question sans objet.
 
+## Ce qui part, ce qui se retente
+
+Un envoi Telegram a **trois issues**, et les confondre coûte cher :
+
+| Réponse | Verdict | Suite |
+|---|---|---|
+| 2xx | parti | la clé est posée, on n'y revient pas |
+| **5xx** | **parti, probablement** | clé posée **et** doute annoncé sur le canal personnel |
+| 4xx, 429, réseau coupé | pas parti | rien n'est marqué, le tour suivant réessaie |
+
+La mémoire retient **qui** a reçu, pas seulement que le message est parti : la valeur de la
+clé est `{"le": "…", "faits": ["<chat_id>", …]}`. Un destinataire en panne ne fait donc pas
+renvoyer le message à ceux qui l'ont déjà lu — ce qui compte depuis que le canal gîte en a
+deux. *(Les valeurs d'avant sont des horodatages nus. Elles ne se parsent pas en JSON, et ce
+refus vaut « parti, pour tout le monde » : déployer ne vide pas le KV.)*
+
+### ⚠ Le doublon du 3 septembre 2026
+
+À 11 h, le rappel « départ ce matin » est arrivé. Telegram a répondu **504** — le message
+était bien livré, seule la réponse s'est perdue. L'envoi levait une exception sur tout code
+non-2xx, la clé `gite:11:00:2026-09-03` n'a donc pas été posée, et le tour de 11 h 05 a tout
+renvoyé. La preuve est dans la clé elle-même : elle porte `09:05:55Z`, l'heure du second
+tour, jamais celle du premier.
+
+L'alerte de panne, elle, n'est jamais arrivée. Elle ne regardait pas sa propre réponse et
+posait son blocage horaire dans tous les cas : le même hoquet Telegram a donc avalé
+l'annonce **et** consommé l'heure. Il n'est resté qu'une clé muette dans le KV — c'est elle,
+relue à la main, qui a donné le mot de la fin : `Telegram a refusé (504)`.
+
+Trois changements en sont sortis.
+
+**1. Un 5xx compte comme reçu.** Le renvoyer garantissait le doublon ; le compter comme reçu
+risque au pire une perte. Entre les deux, **on préfère la perte annoncée** : un doublon
+n'apprend rien à personne et use la confiance dans le canal, alors qu'un doute se lit et se
+vérifie. Le doute part sur le canal personnel, une fois par message, sous la forme
+`⚠️ Envoi incertain (<clé>)`.
+
+**2. Un refus franc ne punit plus que celui qui l'a provoqué.** Chaque destinataire a son
+sort propre : les autres gardent leur marque, celui qui a refusé retrouve sa chance au tour
+suivant, et le refus est annoncé — sinon un mauvais `chat_id` se répéterait toute la fenêtre
+puis disparaîtrait sans un mot.
+
+**3. Une alerte technique ne pose sa clé que si elle est vraiment partie.** Le blocage
+« une par heure » ne doit compter que les alertes **reçues**. Sinon le silence se prend pour
+une bonne nouvelle, ce qui est exactement la panne que ce projet cherche à ne pas avoir.
+
 ## Vérifier sans attendre le cron
 
 Le Worker répond aussi à une requête HTTP, protégée par le jeton Telegram — l'URL d'un
@@ -504,7 +550,9 @@ curl "https://ofildudoubs-notifieur.<ton-sous-domaine>.workers.dev/?cle=<TELEGRA
 ```
 
 La réponse dit le jour et l'heure retenus, le nombre de tâches lues, ce qui est dû, ce qui
-reste à envoyer une fois la déduplication passée, et l'erreur éventuelle.
+reste à envoyer une fois la déduplication passée — avec, entre parenthèses, combien de
+destinataires restent à servir sur le total — puis ce qui est parti, ce qui est `incertain`,
+ce qui a été `refuses`, et l'erreur éventuelle.
 
 ## Quand ça ne marche pas
 
@@ -516,9 +564,37 @@ reste à envoyer une fois la déduplication passée, et l'erreur éventuelle.
 | `tachesLues: 0` alors qu'il y a des tâches | Les règles autorisent la lecture mais le projet Firebase visé n'est pas le bon |
 | Rien ne part, aucune erreur | Regarder `dus` et `aEnvoyer` dans le bilan : la déduplication a probablement déjà tout marqué |
 | Telegram refuse en 400 | Un titre de tâche mal échappé — mais l'échappement est testé, donc vérifier plutôt le `chat_id` |
+| Le même message deux fois, à cinq minutes d'écart | Un envoi qui a échoué APRÈS la livraison. Lire la valeur de la clé dans le KV : si elle porte l'heure du second tour, c'est la marque qui a manqué |
+| Une alerte `Envoi incertain` | Telegram a rendu un 5xx. Le message est probablement passé : le vérifier dans la conversation, il ne sera pas renvoyé |
 
 Le Worker essaie de **dire ses propres pannes** dans la conversation Telegram, en texte
-brut. Si même ça échoue, il reste les logs : `npx wrangler tail`.
+brut — et ne considère l'alerte partie que si Telegram l'a acceptée. Si même ça échoue, il
+reste les journaux : `npx wrangler tail` en direct, le dashboard pour le passé.
+
+### Lire les journaux, puis fouiller la mémoire des envois
+
+Depuis le 3 septembre 2026, `[observability] enabled = true` est posé dans `wrangler.toml` :
+les invocations passées se relisent dans le dashboard, *Workers & Pages* →
+`ofildudoubs-notifieur` → *Logs*. **C'est la première chose à regarder.** Avant, il fallait
+deviner quelle clé du KV interroger.
+
+Ensuite seulement, la mémoire des envois :
+
+```powershell
+$env:NODE_EXTRA_CA_CERTS = "C:\Users\csamson\.claude\secrets\ne-ca-bundle.pem"
+npx wrangler kv key list --namespace-id 34945db6daea49a79edd4a04e0efa7a3 --remote
+npx wrangler kv key get "gite:11:00:2026-09-03" --namespace-id 34945db6daea49a79edd4a04e0efa7a3 --remote
+```
+
+⚠ **Sans `--remote`, `wrangler kv` interroge le KV LOCAL** — celui de `wrangler dev`, vide
+en général. Il répond `[]` sans le moindre avertissement, et on en conclut à tort que la
+déduplication n'a rien écrit. Ça a coûté une fausse piste le 3 septembre 2026.
+
+La valeur d'une clé d'envoi dit **quand** le message a été marqué et **pour qui** : c'est ce
+qui distingue « le message n'est pas parti » de « il est parti, et c'est la marque qui a
+manqué ». Celle d'une clé `panne:` ou `incertain:` porte le texte de l'alerte — la seule
+trace lisible quand l'alerte elle-même n'est pas arrivée.
+
 
 ## Tests
 

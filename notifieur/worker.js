@@ -121,7 +121,9 @@ async function tourDeGarde(env, aBlanc = false, simule = null) {
         // ne saute rien parce que « c'est déjà parti », et on ne marque
         // rien comme parti. Le vrai rappel du jour simulé tombera donc
         // quand même à son heure.
-        const dejaFait = (cle) => simule ? Promise.resolve(false) : dejaEnvoye(env, cle);
+        const restantsPour = (cle, destinataires) => simule
+            ? Promise.resolve(destinataires)
+            : resteAServir(env, cle, destinataires);
         bilan.jour = maintenant.jour;
         bilan.heure = maintenant.heure;
 
@@ -149,7 +151,8 @@ async function tourDeGarde(env, aBlanc = false, simule = null) {
             : (messages.dansLaFenetreDuBilan(maintenant.heure)
                 ? messages.cleBilan(maintenant.jour)
                 : null);
-        const listeComplete = resumeDu !== null && !(await dejaEnvoye(env, resumeDu));
+        const listeComplete = resumeDu !== null
+            && (await resteAServir(env, resumeDu, destinatairesDu(env, 'taches'))).length > 0;
         bilan.lecture = listeComplete ? 'complete' : 'creneaux';
 
         const jeton = await connexionFirebase(env);
@@ -168,8 +171,9 @@ async function tourDeGarde(env, aBlanc = false, simule = null) {
         // n'aller chercher le calendrier que s'il reste quelque chose à
         // dire — la plupart des 288 tours n'ont rien à voir avec le gîte.
         const fenetreGite = sejoursGite.fenetreGite(maintenant.heure);
-        const giteADire = !!fenetreGite
-            && !(await dejaFait(sejoursGite.cleGite(maintenant.jour, fenetreGite)));
+        const giteADire = !!fenetreGite && (await restantsPour(
+            sejoursGite.cleGite(maintenant.jour, fenetreGite),
+            destinatairesDu(env, 'gite'))).length > 0;
         bilan.fenetreGite = fenetreGite || null;
 
         // ⚠ `null` ET `[]` NE VEULENT PAS DIRE LA MÊME CHOSE. Un tableau
@@ -202,12 +206,25 @@ async function tourDeGarde(env, aBlanc = false, simule = null) {
             taches, maintenant.jour, maintenant.heure, listeComplete, sejours, etatGite);
         bilan.dus = dus.map((m) => m.canal + ' → ' + m.cle);
 
+        // ⚠ LA MÉMOIRE EST PAR DESTINATAIRE, PAS PAR MESSAGE.
+        //
+        // Un chat en panne ne doit pas faire renvoyer le message à ceux
+        // qui l'ont déjà reçu. C'est le doublon du 3 septembre 2026 : un
+        // 504 de Telegram sur le groupe du gîte a fait repartir le rappel
+        // de 11 h à 11 h 05, à tout le monde.
         const aEnvoyer = [];
         for (const message of dus) {
-            if (await dejaFait(message.cle)) continue;
-            aEnvoyer.push(message);
+            const tous = destinatairesDu(env, message.canal);
+            // Un canal sans destinataire est une panne de configuration,
+            // pas un message « déjà parti » : le dire, ne pas l'avaler.
+            if (!tous.length) throw new Error('aucun destinataire pour le canal ' + message.canal);
+
+            const restants = await restantsPour(message.cle, tous);
+            if (!restants.length) continue;
+            aEnvoyer.push({ ...message, tous, restants });
         }
-        bilan.aEnvoyer = aEnvoyer.map((m) => m.canal + ' → ' + m.cle);
+        bilan.aEnvoyer = aEnvoyer.map((m) => m.canal + ' → ' + m.cle
+            + ' (' + m.restants.length + '/' + m.tous.length + ')');
 
         if (aBlanc) {
             bilan.apercu = aEnvoyer.map((m) => m.texte);
@@ -215,6 +232,8 @@ async function tourDeGarde(env, aBlanc = false, simule = null) {
         }
 
         bilan.envoyes = [];
+        bilan.incertains = [];
+        bilan.refuses = [];
         for (const message of aEnvoyer) {
             // Un message simulé se signale comme tel. Sans ça, un test du
             // 2 septembre lancé le 1er ressemblerait au vrai rappel, et
@@ -224,13 +243,47 @@ async function tourDeGarde(env, aBlanc = false, simule = null) {
                 ? '🧪 <i>Simulation du ' + simule.jour + ' à ' + simule.heure + '</i>\n\n' + message.texte
                 : message.texte;
 
-            await envoyerTelegram(env, texte, message.canal);
+            const envoi = await envoyerTelegram(env, texte, message.canal, message.restants);
 
-            // Marqué APRÈS l'envoi, jamais avant : si Telegram échoue, le
-            // prochain tour réessaiera. Une clé posée d'avance ferait
-            // disparaître le message pour de bon, sans un mot.
-            if (!simule) await marquerEnvoye(env, message.cle);
-            bilan.envoyes.push(message.canal + ' → ' + message.cle);
+            // Marqué APRÈS l'envoi, jamais avant, et seulement pour ceux
+            // qui l'ont reçu : un refus franc garde sa chance au tour
+            // suivant, sans priver les autres ni les servir deux fois.
+            const servis = message.tous.filter((d) =>
+                message.restants.indexOf(d) === -1 || envoi.servis.indexOf(d) !== -1);
+            if (!simule && servis.length) await marquerEnvoye(env, message.cle, servis);
+
+            if (envoi.servis.length) bilan.envoyes.push(message.canal + ' → ' + message.cle);
+            for (const detail of envoi.incertains) bilan.incertains.push(message.cle + ' · ' + detail);
+            for (const detail of envoi.refuses) bilan.refuses.push(message.cle + ' · ' + detail);
+
+            // ⚠ LES JOURNAUX D'ABORD, TELEGRAM ENSUITE. L'alerte qui suit
+            // passe par le meme service que celui qui vient de trembler :
+            // elle peut se perdre, et c'est exactement ce qui est arrive
+            // le 3 septembre 2026. Une ligne de journal, elle, reste.
+            if (envoi.incertains.length) console.warn('Envoi incertain', message.cle, envoi.incertains);
+            if (envoi.refuses.length) console.error('Envoi refuse', message.cle, envoi.refuses);
+
+            // ⚠ LA PERTE ANNONCÉE. Un 5xx dit que la passerelle a lâché
+            // sur la RÉPONSE, presque jamais que le message n'est pas
+            // parti. On le compte donc comme reçu — sinon le tour suivant
+            // le renvoie à coup sûr — mais jamais en silence : le doute
+            // se lit et se vérifie, un doublon n'apprend rien à personne.
+            if (!simule && envoi.incertains.length) {
+                await alerterTechnique(env,
+                    'Envoi incertain (' + message.cle + '). Compté comme reçu, à vérifier :\n'
+                        + envoi.incertains.join('\n'),
+                    'incertain:' + message.cle, RETENTION_SECONDES);
+            }
+
+            // Un refus franc, lui, est une panne de configuration —
+            // mauvais chat_id, bot bloqué, HTML mal formé. Il se répétera
+            // à chaque tour de la fenêtre puis disparaîtra avec elle : le
+            // dire est la seule façon qu'il ne passe pas inaperçu.
+            if (!simule && envoi.refuses.length) {
+                await alerterTechnique(env,
+                    'Telegram a refusé (' + message.cle + ') :\n' + envoi.refuses.join('\n'),
+                    'refus:' + maintenantParisien(), 3600);
+            }
         }
     } catch (erreur) {
         bilan.erreur = String((erreur && erreur.message) || erreur);
@@ -494,19 +547,38 @@ async function lireGite(env) {
 // ------------------------------------------------------------
 // 5. Mémoire des envois
 // ------------------------------------------------------------
-async function dejaEnvoye(env, cle) {
-    return (await env.ENVOIS.get(cle)) !== null;
+// ⚠ LA VALEUR PORTE LA LISTE DES DESTINATAIRES SERVIS, pas un simple
+// horodatage.
+//
+// Une clé par message ET par destinataire aurait multiplié les lectures
+// du KV à chacun des 288 tours. Une seule clé, dont la valeur dit QUI a
+// reçu, garde le coût d'origine — une lecture par message — tout en
+// permettant qu'un chat en panne n'entraîne pas les autres dans sa chute.
+//
+// Les valeurs d'avant sont des horodatages ISO nus. Elles ne se parsent
+// pas en JSON, et ce refus vaut réponse : « parti, pour tout le monde ».
+// C'est ce qui permet de déployer sans vider le KV.
+async function resteAServir(env, cle, destinataires) {
+    const brut = await env.ENVOIS.get(cle);
+    if (brut === null) return destinataires.slice();
+
+    let faits = destinataires;
+    try {
+        const memoire = JSON.parse(brut);
+        if (memoire && Array.isArray(memoire.faits)) faits = memoire.faits;
+    } catch (ignore) {
+        // Ancienne valeur : tout est déjà parti, on n'y revient pas.
+    }
+    return destinataires.filter((d) => faits.indexOf(d) === -1);
 }
 
-async function marquerEnvoye(env, cle) {
-    await env.ENVOIS.put(cle, new Date().toISOString(), {
-        expirationTtl: RETENTION_SECONDES
-    });
+async function marquerEnvoye(env, cle, servis) {
+    await env.ENVOIS.put(cle, JSON.stringify({
+        le: new Date().toISOString(),
+        faits: servis
+    }), { expirationTtl: RETENTION_SECONDES });
 }
 
-// ------------------------------------------------------------
-// 6. Telegram
-// ------------------------------------------------------------
 // ------------------------------------------------------------
 // 6. Telegram — deux bots, deux publics
 // ------------------------------------------------------------
@@ -534,68 +606,146 @@ function listeDestinataires(valeur) {
         .filter(Boolean);
 }
 
-async function envoyerTelegram(env, texte, canal) {
-    const voie = canalDe(env, canal);
-    const destinataires = listeDestinataires(voie.destinataires);
-    if (!destinataires.length) throw new Error('aucun destinataire pour le canal ' + canal);
-
-    for (const destinataire of destinataires) {
-        const reponse = await fetch(
-            'https://api.telegram.org/bot' + voie.jeton + '/sendMessage',
-            {
-                method: 'POST',
-                headers: { 'content-type': 'application/json' },
-                body: JSON.stringify({
-                    chat_id: destinataire,
-                    text: texte,
-                    parse_mode: 'HTML',
-                    disable_web_page_preview: true
-                })
-            }
-        );
-
-        if (!reponse.ok) {
-            throw new Error('Telegram a refusé (' + reponse.status + ') pour ' + destinataire
-                + ' : ' + (await reponse.text()).slice(0, 300));
-        }
-    }
+// Qui écoute ce canal. Le tour de garde en a besoin AVANT d'envoyer :
+// c'est la liste qu'il compare à la mémoire pour savoir s'il reste
+// quelqu'un à servir.
+function destinatairesDu(env, canal) {
+    return listeDestinataires(canalDe(env, canal).destinataires);
 }
 
-// Message de panne : volontairement en texte brut, sans parse_mode. Si
-// l'erreur vient justement d'un HTML mal formé, l'annoncer en HTML
-// échouerait à son tour et la panne resterait muette.
+// ⚠ NE JETTE PLUS SUR UN REFUS.
 //
-// ⚠ UNE FOIS PAR HEURE AU PLUS. Le cron se réveille toutes les 5 minutes :
-// une panne durable — Firebase injoignable, mot de passe changé — enverrait
-// 288 messages par jour. On se ferait taire le bot, et le prochain vrai
-// rappel se perdrait dans le tas. Une alerte qu'on apprend à ignorer ne
-// vaut pas mieux que pas d'alerte.
-// ⚠ Sur le canal PERSONNEL : une panne technique regarde celui qui
+// Une exception ici sautait la pose de la clé de déduplication, et le
+// tour suivant renvoyait le message à TOUT LE MONDE — y compris à ceux
+// qui l'avaient déjà reçu. Chaque destinataire a maintenant son sort
+// propre, et l'appelant décide quoi en faire.
+//
+// Trois issues, et la nuance est tout l'intérêt :
+//   servis     — parti, ou réputé tel. Ne pas renvoyer.
+//   incertains — sous-ensemble des servis : la passerelle a lâché sur la
+//                RÉPONSE. Comptés comme reçus, mais annoncés.
+//   refuses    — le message n'est PAS parti. À réessayer au prochain tour.
+//
+// Le 504 du 3 septembre 2026 est le cas d'école : Telegram avait bien
+// livré le rappel du gîte et n'a échoué qu'à le DIRE. Le recompter comme
+// « à renvoyer » garantissait le doublon ; le compter comme reçu risque
+// au pire une perte — qui, elle, se dit.
+async function envoyerTelegram(env, texte, canal, destinataires) {
+    const voie = canalDe(env, canal);
+    const cibles = destinataires || listeDestinataires(voie.destinataires);
+    if (!cibles.length) throw new Error('aucun destinataire pour le canal ' + canal);
+
+    const resultat = { servis: [], incertains: [], refuses: [] };
+
+    for (const destinataire of cibles) {
+        let reponse;
+        try {
+            reponse = await fetch(
+                'https://api.telegram.org/bot' + voie.jeton + '/sendMessage',
+                {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_id: destinataire,
+                        text: texte,
+                        parse_mode: 'HTML',
+                        disable_web_page_preview: true
+                    })
+                }
+            );
+        } catch (erreur) {
+            // Pas de réponse du tout : la requête n'a pas abouti, donc
+            // rien n'est parti. Contrairement au 5xx, ce cas-là se
+            // réessaie sans risque de doublon.
+            resultat.refuses.push(destinataire + ' : '
+                + String((erreur && erreur.message) || erreur).slice(0, 200));
+            continue;
+        }
+
+        if (reponse.ok) {
+            resultat.servis.push(destinataire);
+            continue;
+        }
+
+        const detail = destinataire + ' : ' + reponse.status + ' '
+            + (await reponse.text().catch(() => '')).slice(0, 200);
+
+        // ⚠ 429 = refusé POUR CAUSE DE CADENCE, et jamais livré : celui-là
+        // se réessaie. Les 5xx, eux, ne disent rien de la livraison.
+        if (reponse.status >= 500) {
+            resultat.servis.push(destinataire);
+            resultat.incertains.push(detail);
+        } else {
+            resultat.refuses.push(detail);
+        }
+    }
+
+    return resultat;
+}
+
+// ------------------------------------------------------------
+// 7. Ce qui se dit au mainteneur, et à lui seul
+// ------------------------------------------------------------
+// Sur le canal PERSONNEL : une panne technique regarde celui qui
 // maintient le notifieur, pas les gens invités pour le gîte.
-async function signalerPanne(env, texte, heure) {
-    const cle = 'panne:' + heure;
+//
+// Volontairement en texte brut, sans parse_mode : si l'erreur vient
+// justement d'un HTML mal formé, l'annoncer en HTML échouerait à son
+// tour et la panne resterait muette.
+//
+// ⚠ LA CLÉ N'EST POSÉE QUE SI L'ALERTE EST RÉELLEMENT PARTIE.
+//
+// L'ancienne version ne regardait pas la réponse de Telegram et marquait
+// dans tous les cas. Le 3 septembre 2026, le hoquet Telegram qui a causé
+// la panne a aussi avalé son alerte, et le blocage horaire a été
+// consommé pour rien : il n'est resté qu'une clé muette dans le KV. Une
+// alerte perdue au moment précis où elle compte est pire que pas
+// d'alerte, parce qu'on prend le silence pour une bonne nouvelle.
+//
+// La valeur stockée reste le TEXTE de l'alerte, jamais un horodatage :
+// quand le message n'arrive pas, c'est la dernière trace lisible de ce
+// qui s'est passé — et c'est elle qui a permis de comprendre ce doublon.
+async function alerterTechnique(env, texte, cle, secondes) {
     try {
         if (env.ENVOIS && (await env.ENVOIS.get(cle)) !== null) return;
     } catch (ignore) {
         // KV injoignable : on préfère un message de trop à aucun.
     }
 
+    let partie = false;
     try {
         const voie = canalDe(env, 'taches');
         for (const destinataire of listeDestinataires(voie.destinataires)) {
-            await fetch('https://api.telegram.org/bot' + voie.jeton + '/sendMessage', {
-                method: 'POST',
-                headers: { 'content-type': 'application/json' },
-                body: JSON.stringify({
-                    chat_id: destinataire,
-                    text: '⚠️ Notifieur en panne : ' + texte
-                })
-            });
-        }
-        if (env.ENVOIS) {
-            await env.ENVOIS.put(cle, texte.slice(0, 200), { expirationTtl: 3600 });
+            const reponse = await fetch(
+                'https://api.telegram.org/bot' + voie.jeton + '/sendMessage',
+                {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({ chat_id: destinataire, text: '⚠️ ' + texte })
+                }
+            );
+            if (reponse.ok) partie = true;
         }
     } catch (ignore) {
         // Rien de plus à tenter : il reste les logs Cloudflare.
     }
+
+    // Rien n'est arrivé : pas de clé, donc le prochain tour réessaiera.
+    // Le blocage anti-répétition ne doit compter que les alertes REÇUES.
+    if (!partie) console.error('Alerte technique non delivree :', texte);
+    if (!partie || !env.ENVOIS) return;
+    try {
+        await env.ENVOIS.put(cle, texte.slice(0, 200), { expirationTtl: secondes });
+    } catch (ignore) {
+        // Au pire, l'alerte se répétera. C'est le bon sens de l'erreur.
+    }
+}
+
+// ⚠ UNE FOIS PAR HEURE AU PLUS. Le cron se réveille toutes les 5 minutes :
+// une panne durable — Firebase injoignable, mot de passe changé — enverrait
+// 288 messages par jour. On se ferait taire le bot, et le prochain vrai
+// rappel se perdrait dans le tas. Une alerte qu'on apprend à ignorer ne
+// vaut pas mieux que pas d'alerte.
+function signalerPanne(env, texte, heure) {
+    return alerterTechnique(env, 'Notifieur en panne : ' + texte, 'panne:' + heure, 3600);
 }
