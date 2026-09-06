@@ -49,6 +49,18 @@ var SITES = [
         description: 'Gestion de collection du groupe — le seul projet en equipe.'
     },
     {
+        slug: 'billets-test',
+        nom: 'Billets Touristiques — TEST',
+        icone: 'fa-solid fa-flask',
+        url: 'https://cyril25.github.io/BilletsTouristiques-TestEnv/',
+        libelleUrl: 'cyril25.github.io/BilletsTouristiques-TestEnv',
+        badge: 'test',
+        // Copie jetable (projet Supabase ijxajtxnhbczgiarkefo) : on peut y casser ce
+        // qu'on veut. Attention, Pages y publie la branche demande-16-refonte-collectes,
+        // pas main.
+        description: 'Environnement de test : meme site, mais branche sur une copie de la base. Rien de ce qu\'on y fait ne touche les membres.'
+    },
+    {
         slug: 'collections',
         nom: 'Collections',
         icone: 'fa-solid fa-boxes-stacked',
