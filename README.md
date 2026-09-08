@@ -390,6 +390,20 @@ Les deux dernières lignes ne sont pas cosmétiques : ce qui part sur ce CDN pub
 et sans authentification, ce sont des devis chiffrés et des mails contenant des
 coordonnées d'artisans.
 
+⚠ **Deuxième action manuelle, à faire une fois** — toujours dans la console
+Cloudinary, **Settings → Security**, autoriser la livraison des PDF (*PDF and ZIP
+files delivery*). Sur les comptes récents elle est **refusée par défaut** : le
+dépôt d'un devis réussit, mais l'ouvrir renvoie un `401` avec l'en-tête
+`X-Cld-Error: deny or ACL failure`, et l'onglet reste blanc. Le réglage vaut pour
+tout le compte et répare d'un coup tous les documents déjà déposés — rien à
+re-téléverser.
+
+> **Il n'y a pas de repli côté code.** Le blocage porte sur l'extension `.pdf`,
+> quel que soit le type de ressource — `image` comme `raw` sont refusés — et
+> `fl_attachment` ne le lève pas. Seule une transformation qui convertit le PDF
+> en image (`pg_1,f_jpg`) passe, mais elle ne rend plus le devis : juste une photo
+> de sa première page. C'est donc bien la case à cocher, ou rien.
+
 > **⚠ Une suppression n'est pas un effacement.** Supprimer un élément supprime le
 > document Firestore **uniquement** — le fichier reste chez Cloudinary. L'effacer
 > exigerait la clé secrète du compte, qu'on ne peut pas mettre dans une page
