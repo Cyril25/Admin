@@ -1,0 +1,20 @@
+{
+  "name": "Hub O'Fil du Doubs",
+  "short_name": "Hub O'Fil",
+  "description": "Point d'entrée privé de mes projets",
+  "id": "./",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F8FAFC",
+  "theme_color": "#2C4A63",
+  "lang": "fr",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

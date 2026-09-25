@@ -25,6 +25,7 @@ dans Firestore.
 | `cueillette/` | Projet « Calendrier de cueillette du Haut-Doubs » |
 | — | [collections.ofildudoubs.fr](https://collections.ofildudoubs.fr) est un **site** à part : seul son droit d'accès se coche ici, dans la liste des sites |
 | `style.css` | Feuille de styles unique |
+| `manifest.json` / `sw.js` | Rendent le site installable sur téléphone (Chrome Android : ⋮ → « Installer l'application »). Le service worker ne met **rien en cache** — pas de numéro de version à changer à chaque modification, contrairement à BilletsTouristiques |
 | `firestore.rules` | Règles de sécurité à publier dans la console Firebase |
 | `notifieur/` | **Worker Cloudflare** — rappels Telegram du projet `taches`. Déployé à part, pas servi par GitHub Pages |
 | `tests/` | Tests hors navigateur — `node tests/run-tests.js` |

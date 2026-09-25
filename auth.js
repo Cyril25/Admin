@@ -367,3 +367,17 @@ function logout() {
         window.location.href = hubRacine() + 'login.html';
     });
 }
+
+// ------------------------------------------------------------
+// 9. Installation sur l'écran d'accueil
+// ------------------------------------------------------------
+// Avec manifest.json, c'est ce qui fait proposer « Installer
+// l'application » par Chrome sur Android. Le worker ne garde rien en
+// cache : voir sw.js. (window.navigator et non navigator : les tests
+// chargent ce fichier hors navigateur, où navigator n'existe pas.)
+if (window.navigator && 'serviceWorker' in window.navigator) {
+    window.addEventListener('load', function() {
+        navigator.serviceWorker.register(hubRacine() + 'sw.js')
+            .catch(function(erreur) { console.warn('Service worker non enregistré :', erreur); });
+    });
+}
